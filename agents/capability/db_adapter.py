@@ -1,11 +1,10 @@
 import sqlalchemy
+from sqlalchemy.exc import SQLAlchemyError
 from orchestrator.schemas import CapabilityCheckInput, CapabilityCheckResult, CapabilityType
 
 class DbAdapter:
     """
-    Phase 14: Validates database state post-action (Read-Only).
-    Params: connection_string, query
-    Expected: row_count (int), values (dict of col:val for the first row)
+    Phase 18: Validates database state (Read-Only) with Cross-Modal Healing support.
     """
     capability_type: CapabilityType = CapabilityType.DATABASE
 
@@ -19,21 +18,19 @@ class DbAdapter:
         expected_values = expected.get("values")
         
         if not connection_string or not query:
-            return CapabilityCheckResult(
-                capability=self.capability_type, passed=False, confidence=1.0,
-                evidence={"error": "Missing 'connection_string' or 'query'"}, escalate=False
-            )
+            return self._fail("Missing 'connection_string' or 'query'")
             
         try:
             engine = sqlalchemy.create_engine(connection_string)
             with engine.connect() as conn:
-                # SQLAlchemy 2.0 requires text() for raw SQL strings
                 result = conn.execute(sqlalchemy.text(query))
-                rows = result.fetchall()
-                columns = result.keys()
+                
+                # Safe extraction of columns
+                columns = list(result.keys()) if result.returns_rows else []
+                rows = result.fetchall() if result.returns_rows else []
                 
             passed = True
-            evidence = {"row_count": len(rows), "columns": list(columns)}
+            evidence = {"row_count": len(rows), "columns": columns}
             
             if expected_row_count is not None and len(rows) != expected_row_count:
                 passed = False
@@ -50,8 +47,32 @@ class DbAdapter:
                 capability=self.capability_type, passed=passed, 
                 confidence=1.0 if passed else 0.5, evidence=evidence, escalate=False
             )
-        except Exception as e:
+            
+        except SQLAlchemyError as e:
+            # Debug Fix: Safe iterative unwrap of SQLAlchemy exception chains
+            raw_error = str(e)
+            orig = getattr(e, 'orig', None)
+            while orig is not None and hasattr(orig, 'orig'):
+                orig = orig.orig
+                
+            error_msg = str(orig) if orig is not None else raw_error
+            error_type = type(orig).__name__ if orig is not None else "UnknownSQLAlchemyError"
+            
             return CapabilityCheckResult(
                 capability=self.capability_type, passed=False, confidence=0.0,
-                evidence={"exception": str(e)}, escalate=False
+                evidence={
+                    "exception": error_msg,
+                    "healing_hints": {
+                        "query_failed": query,
+                        "error_type": error_type
+                    }
+                }, escalate=False
             )
+        except Exception as e:
+            return self._fail(f"DB execution error: {str(e)}")
+
+    def _fail(self, msg):
+        return CapabilityCheckResult(
+            capability=self.capability_type, passed=False, confidence=1.0,
+            evidence={"error": msg}, escalate=False
+        )

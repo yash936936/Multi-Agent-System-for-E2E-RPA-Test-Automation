@@ -22,6 +22,12 @@ dependencies = [
     "sqlalchemy>=2.0",
     "openpyxl>=3.1",     # Phase 15: Excel Adapter
     "paramiko>=3.4", 
+    "boto3>=1.34",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "cryptography>=42.0",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

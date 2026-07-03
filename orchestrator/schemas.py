@@ -61,7 +61,7 @@ class CapabilityType(str, Enum):
     EXCEL = "excel"  # Phase 15
     CLOUD = "cloud"  # Phase 16
     PDF_OCR = "pdf_ocr"
-
+    WORKFLOW = "workflow"
 
 # --------------------------------------------------------------------------
 # 4.1 Test Spec (Planner output)

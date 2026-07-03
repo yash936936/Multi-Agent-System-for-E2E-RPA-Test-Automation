@@ -1,0 +1,178 @@
+:root {
+  /* Strict Palette from DESIGN-spotify.md */
+  --bg-base: #121212;
+  --bg-surface: #181818;
+  --bg-elevated: #1f1f1f;
+  --bg-card: #181818;
+  --bg-card-hover: #252525; /* Dark Card elevated surface */
+  
+  --text-base: #ffffff;
+  --text-subdued: #b3b3b3;
+  --text-negative: #f3727f;
+  --text-warning: #ffa42b;
+  --accent-green: #1ed760;
+  
+  --font-ui: 'Helvetica Neue', helvetica, arial, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg-base);
+  color: var(--text-base);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 400;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Sidebar Navigation */
+.sidebar {
+  width: 240px;
+  background: var(--bg-base); /* #121212 per MD Section 4 */
+  padding: 24px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.logo {
+  color: var(--accent-green);
+  font-size: 24px;
+  font-weight: 700;
+  padding: 0 12px;
+  letter-spacing: -0.5px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: var(--text-subdued);
+  font-size: 14px;
+  font-weight: 400; /* Inactive nav is 400 per MD */
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.nav-item.active, .nav-item:hover {
+  color: var(--text-base);
+  font-weight: 700; /* Active nav is 700 per MD */
+}
+
+/* Main Content Area */
+.main-content {
+  flex: 1;
+  background: linear-gradient(rgba(29, 215, 96, 0.1) 0%, var(--bg-base) 400px);
+  overflow-y: auto;
+  padding: 32px;
+}
+
+.header {
+  margin-bottom: 32px;
+}
+
+.header h1 {
+  font-size: 24px; /* Section Title size per MD */
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+/* Pill Buttons - Strict MD Compliance */
+.btn {
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.4px; /* Exact MD spec */
+  border-radius: 9999px; /* Full pill */
+  padding: 8px 16px; /* Exact MD spec */
+  transition: transform 0.1s, background 0.2s;
+}
+
+.btn:active { transform: scale(0.95); }
+
+.btn-primary {
+  background: var(--accent-green);
+  color: #000000;
+}
+.btn-primary:hover { background: #1fdf64; transform: scale(1.04); }
+
+.btn-secondary {
+  background: var(--bg-elevated); /* #1f1f1f */
+  color: var(--text-base);
+}
+.btn-secondary:hover { background: #282828; }
+
+/* Cards & Grid */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 24px;
+}
+
+.card {
+  background: var(--bg-card); /* #181818 */
+  border-radius: 8px; /* Standard card radius per MD */
+  padding: 16px;
+  box-shadow: rgba(0,0,0,0.3) 0px 8px 8px; /* Medium shadow per MD */
+  transition: background 0.3s ease, transform 0.2s ease;
+}
+
+.card:hover {
+  background: var(--bg-card-hover); /* #252525 */
+  transform: translateY(-4px);
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.card-meta {
+  font-size: 14px;
+  color: var(--text-subdued);
+  margin-bottom: 16px;
+}
+
+/* Status Badges */
+.badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.badge-passed { background: rgba(30, 215, 96, 0.2); color: var(--accent-green); }
+.badge-failed { background: rgba(243, 114, 127, 0.2); color: var(--text-negative); }
+.badge-running { background: rgba(255, 164, 43, 0.2); color: var(--text-warning); }
+
+/* Inputs - Strict MD Compliance */
+.input-pill {
+  background: var(--bg-elevated); /* #1f1f1f */
+  border: none;
+  border-radius: 500px; /* Exact MD spec */
+  padding: 12px 48px; /* Icon-aware padding per MD */
+  color: var(--text-base);
+  font-size: 14px;
+  width: 100%;
+  max-width: 400px;
+  /* Exact inset border-shadow combo from MD */
+  box-shadow: rgb(18,18,18) 0px 1px 0px, rgb(124,124,124) 0px 0px 0px 1px inset;
+}
+
+.input-pill:focus {
+  outline: none;
+  /* Focus state: visible white outline since #000000 is invisible on #1f1f1f */
+  box-shadow: rgb(18,18,18) 0px 1px 0px, rgb(255,255,255) 0px 0px 0px 1px inset;
+}

@@ -64,6 +64,8 @@ def default_registry() -> CapabilityAdapterRegistry:
     from agents.capability.file_adapter import FileAdapter
     from agents.capability.excel_adapter import ExcelAdapter
     from agents.capability.pdf_adapter import PdfAdapter
+    from agents.capability.cloud_adapter import CloudAdapter
+    from agents.capability.workflow_adapter import WorkflowAdapter
 
     registry = CapabilityAdapterRegistry()
     registry.register(FakeAdapter())
@@ -73,4 +75,6 @@ def default_registry() -> CapabilityAdapterRegistry:
     registry.register(FileAdapter())
     registry.register(ExcelAdapter())
     registry.register(PdfAdapter())
+    registry.register(CloudAdapter())
+    registry.register(WorkflowAdapter())
     return registry

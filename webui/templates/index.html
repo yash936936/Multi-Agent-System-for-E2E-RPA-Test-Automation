@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AURA</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">AURA</div>
+    <nav>
+      <a href="#" class="nav-item active">🏠 Dashboard</a>
+      <a href="#" class="nav-item">🚀 Test Runs</a>
+      <a href="#" class="nav-item">🔌 Adapters</a>
+      <a href="#" class="nav-item">⚙️ Settings</a>
+    </nav>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <header class="header">
+      <h1>Good evening, Engineer</h1>
+      <div style="display: flex; gap: 16px; align-items: center;">
+        <input type="text" class="input-pill" placeholder="Search test runs, specs, or adapters...">
+        <button class="btn btn-primary" onclick="triggerNewRun()">New Run</button>
+      </div>
+    </header>
+
+    <section>
+      <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 16px;">Recent Executions</h2>
+      <div class="grid" id="runs-grid">
+        <!-- Cards injected via JS -->
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
