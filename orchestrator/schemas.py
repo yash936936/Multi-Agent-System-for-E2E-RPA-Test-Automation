@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Dict
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -53,21 +53,14 @@ class FixType(str, Enum):
 
 
 class CapabilityType(str, Enum):
-    """
-    Phase 13 foundation only — lists every adapter the roadmap (Phases
-    14-16) will eventually register. No adapter beyond FAKE exists yet;
-    declaring the full set now means TestStep.capability_type is
-    forward-compatible and later phases don't need a schema migration to
-    add API/DATABASE/EMAIL etc., only a new CapabilityAdapter registration.
-    """
     FAKE = "fake"  # Phase 13 — canned-result adapter proving the routing path
     API = "api"  # Phase 14
     DATABASE = "database"  # Phase 14
     EMAIL = "email"  # Phase 14
-    FILE = "file"  # Phase 15
+    FILE_SYSTEM = "file_system"  # Phase 15
     EXCEL = "excel"  # Phase 15
-    PDF = "pdf"  # Phase 15
     CLOUD = "cloud"  # Phase 16
+    PDF_OCR = "pdf_ocr"
 
 
 # --------------------------------------------------------------------------
@@ -136,27 +129,19 @@ class TestSpec(BaseModel):
 # --------------------------------------------------------------------------
 
 class CapabilityCheckInput(BaseModel):
-    """Input to Capability.check (orchestrator/capability_router.py) and to
-    every CapabilityAdapter.run() implementation."""
-    step: TestStep
-    params: dict[str, Any] = Field(default_factory=dict)
+    """Input payload passed to capability adapters."""
+    capability: CapabilityType
+    target: str
+    params: Dict[str, Any]
+    expected: Optional[Dict[str, Any]] = None
 
-
-class CapabilityResult(BaseModel):
-    """
-    Output of a CapabilityAdapter.run() call. Deliberately shaped like a
-    non-visual sibling of VisionActionResult: `success`/`details` stand in
-    for Vision's coordinate/confidence-based result, since a DB row check
-    or API assertion has no on-screen location to report.
-    """
-    step_id: int
-    capability_type: CapabilityType
-    success: bool
-    details: dict[str, Any] = Field(default_factory=dict)
-    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+class CapabilityCheckResult(BaseModel):
+    """Standardized result returned by all capability adapters."""
+    capability: CapabilityType
+    passed: bool
+    confidence: float
+    evidence: Dict[str, Any]
     escalate: bool = False
-    error: Optional[str] = None
-
 
 # --------------------------------------------------------------------------
 # 4.2 Vision Action Result

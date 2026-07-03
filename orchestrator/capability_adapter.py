@@ -1,21 +1,5 @@
-"""
-Capability adapter contract — orchestrator/capability_adapter.py
-
-Phase 13 foundation. This is the interface every non-visual adapter
-(api_adapter, db_adapter, email_adapter in Phase 14; file/excel/pdf in
-Phase 15; cloud in Phase 16) implements. Defining it once, now, means those
-later phases each write one class instead of each inventing their own
-routing/registration shape.
-
-Deliberately minimal: a CapabilityAdapter is anything with a
-`capability_type` and a `run(CapabilityCheckInput) -> CapabilityResult`
-method. No adapter beyond FakeAdapter (agents/capability/fake_adapter.py)
-exists yet -- that's the point of this phase being schema/protocol-only.
-"""
 from __future__ import annotations
-
 from typing import Protocol, runtime_checkable
-
 from orchestrator.schemas import CapabilityCheckInput, CapabilityResult, CapabilityType
 
 
@@ -70,12 +54,23 @@ class CapabilityAdapterRegistry:
 
 def default_registry() -> CapabilityAdapterRegistry:
     """
-    Builds the registry used by orchestrator/capability_router.py at
-    runtime. Phase 13 registers only FakeAdapter; Phase 14-16 each add one
-    more `registry.register(...)` line here as their adapter modules land.
+    Builds the registry used by orchestrator/capability_router.py at runtime.
+    Phase 15 adds File, Excel, and PDF adapters.
     """
     from agents.capability.fake_adapter import FakeAdapter
+    from agents.capability.api_adapter import ApiAdapter
+    from agents.capability.db_adapter import DbAdapter
+    from agents.capability.email_adapter import EmailAdapter
+    from agents.capability.file_adapter import FileAdapter
+    from agents.capability.excel_adapter import ExcelAdapter
+    from agents.capability.pdf_adapter import PdfAdapter
 
     registry = CapabilityAdapterRegistry()
     registry.register(FakeAdapter())
+    registry.register(ApiAdapter())
+    registry.register(DbAdapter())
+    registry.register(EmailAdapter())
+    registry.register(FileAdapter())
+    registry.register(ExcelAdapter())
+    registry.register(PdfAdapter())
     return registry

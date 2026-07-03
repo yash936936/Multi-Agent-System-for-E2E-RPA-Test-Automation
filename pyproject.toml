@@ -18,6 +18,10 @@ dependencies = [
     "faker>=24.0",
     "apscheduler>=3.10",
     "pypdf>=4.1",
+    "httpx>=0.27",
+    "sqlalchemy>=2.0",
+    "openpyxl>=3.1",     # Phase 15: Excel Adapter
+    "paramiko>=3.4", 
 ]
 
 [project.optional-dependencies]
