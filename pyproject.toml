@@ -1,0 +1,51 @@
+[project]
+name = "aura"
+version = "0.1.0"
+description = "AURA - Autonomous Unified RPA Agent: offline, vision-first, self-healing multi-agent QA test automation"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "typer>=0.12",
+    "rich>=13.7",
+    "pyyaml>=6.0",
+    "jinja2>=3.1",
+    "mss>=9.0.1",
+    "pillow>=10.2",
+    "pyautogui>=0.9.54",
+    "pytesseract>=0.3.10",
+    "opencv-python-headless>=4.9",
+    "faker>=24.0",
+    "apscheduler>=3.10",
+    "pypdf>=4.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+report = [
+    "weasyprint>=61.0",
+]
+llm = [
+    "llama-cpp-python>=0.2.90",
+]
+
+[project.scripts]
+aura = "aura.main:app"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["aura*", "orchestrator*", "agents*", "runtime*", "reports*", "config*"]
+
+[tool.pytest.ini_options]
+# Only collect functions named test_* as tests; prevents pytest from trying
+# (and failing) to collect pydantic models like TestSpec/TestStep just
+# because their names start with "Test".
+python_files = ["test_*.py"]
+python_classes = ["*Tests"]
+python_functions = ["test_*"]

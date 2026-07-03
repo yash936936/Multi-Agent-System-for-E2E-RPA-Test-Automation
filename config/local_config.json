@@ -1,0 +1,6 @@
+{
+  "target_app_type": "desktop",
+  "scheduled_runs_enabled": true,
+  "notification_channel": null,
+  "compression_mode": "off"
+}

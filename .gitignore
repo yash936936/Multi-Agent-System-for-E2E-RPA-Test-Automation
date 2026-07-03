@@ -1,0 +1,37 @@
+# Runtime-generated artifacts (never commit test-run data)
+runtime/screenshots/*
+!runtime/screenshots/.gitkeep
+runtime/data_cache/*
+!runtime/data_cache/.gitkeep
+
+orchestrator/memory/*.db
+orchestrator/skills_store/*.db
+!orchestrator/memory/.gitkeep
+!orchestrator/skills_store/.gitkeep
+
+reports/run_*/
+*.pdf
+!reports/templates/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Env
+.env
+
+# OS
+.DS_Store
+
+models/
+.venv/
+models/

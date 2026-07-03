@@ -1,0 +1,72 @@
+# Static declaration of every tool the Orchestrator kernel may dispatch to.
+# Mirrors TRD.md §5.1 tool-calling protocol:
+#
+#   <tools>[Planner.generate_spec, Planner.diagnose, Vision.execute_step, DataSynth.generate]</tools>
+#   <tool_call>{"name": "...", "arguments": {...}}</tool_call>
+#   <tool_response>{...}</tool_response>
+#
+# Each entry's input_schema / output_schema names refer to classes defined
+# in orchestrator/schemas.py. The kernel (Phase 2) reads this file to build
+# the ToolRegistry at startup rather than hard-coding tool names.
+
+tools:
+  - name: Planner.generate_spec
+    module: agents.planner.tool
+    entrypoint: generate_spec
+    input_schema: RequirementInput
+    output_schema: TestSpec
+    description: >
+      Converts a free-text/PDF/markdown requirement document into a
+      structured, schema-valid Test Spec.
+
+  - name: Planner.diagnose
+    module: agents.planner.tool
+    entrypoint: diagnose
+    input_schema: DiagnosisInput
+    output_schema: SkillRecord
+    description: >
+      Analyzes a failed test step (screenshots, logs) and returns a
+      root-cause diagnosis with a proposed fix.
+
+  - name: Vision.execute_step
+    module: agents.vision.tool
+    entrypoint: execute_step
+    input_schema: VisionStepInput
+    output_schema: VisionActionResult
+    description: >
+      Locates the target UI element from a screenshot, dispatches the
+      interaction (click/type/scroll), and returns a confidence score.
+
+  - name: DataSynth.generate
+    module: agents.data_synth.tool
+    entrypoint: generate
+    input_schema: DataRequirements
+    output_schema: SyntheticDataRecord
+    description: >
+      Generates realistic and boundary/edge-case synthetic data matching
+      the Planner's data_requirements list.
+
+  - name: Capability.check
+    module: orchestrator.capability_router
+    entrypoint: check_capability
+    input_schema: CapabilityCheckInput
+    output_schema: CapabilityResult
+    description: >
+      Phase 13. Routes a CAPABILITY_CHECK TestStep to the CapabilityAdapter
+      registered for its capability_type (api/db/email/file/excel/pdf/cloud
+      in Phases 14-16; only the canned FakeAdapter exists so far) and
+      returns that adapter's result.
+
+# Loop guardrail defaults duplicated here for visibility; the authoritative
+# runtime values live in config/settings.py (GuardrailSettings) so there is
+# exactly one source of truth at execution time.
+tool_loop_guardrails_reference:
+  warnings_enabled: true
+  hard_stop_enabled: true
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
+  hard_stop_after:
+    exact_failure: 5
+    same_tool_failure: 8
