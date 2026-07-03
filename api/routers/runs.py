@@ -1,62 +1,62 @@
 import threading
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
-from api.security import verify_api_key
-from orchestrator.schemas import TestSpec
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Body
+from api.security import TokenPayload, require_role, get_current_user
+from orchestrator.audit_logger import audit_logger
 
-router = APIRouter(prefix="/api/v1/test-runs", dependencies=[Depends(verify_api_key)])
+router = APIRouter(prefix="/api/v1/test-runs")
 
-# Global lock to serialize Vision Core (pyautogui) executions
+# Multi-tenant isolated store
+runs_store: dict[str, dict[str, dict]] = {} 
 run_lock = threading.Lock()
-runs_store = {} # In-memory store for Phase 17
 
-@router.post("/")
-async def create_run(spec: dict, background_tasks: BackgroundTasks):
+@router.post("/", dependencies=[Depends(require_role(["admin", "executor"]))])
+async def create_run(
+    spec: dict = Body(...),  # Debug Fix: Explicitly tell FastAPI to parse the body as JSON
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    user: TokenPayload = Depends(require_role(["admin", "executor"]))
+):
     run_id = str(uuid.uuid4())
-    runs_store[run_id] = {
-        "id": run_id, 
-        "status": "queued", 
-        "created_at": datetime.utcnow().isoformat(), 
-        "spec": spec
+    tenant_id = user.tenant_id
+    
+    if tenant_id not in runs_store:
+        runs_store[tenant_id] = {}
+        
+    runs_store[tenant_id][run_id] = {
+        "id": run_id, "status": "queued", "created_at": datetime.utcnow().isoformat(), "spec": spec
     }
-    background_tasks.add_task(execute_run, run_id, spec)
+    
+    audit_logger.log(tenant_id, user.user_id, "CREATE_RUN", run_id, {"spec_name": spec.get("test_name", "unknown")})
+    background_tasks.add_task(execute_run, tenant_id, run_id, spec)
+    
     return {"run_id": run_id, "status": "queued"}
 
-async def execute_run(run_id: str, spec: dict):
-    # Debug Fix: Strict lock acquisition with guaranteed release
+async def execute_run(tenant_id: str, run_id: str, spec: dict):
     acquired = run_lock.acquire(blocking=False)
     if not acquired:
-        runs_store[run_id]["status"] = "failed"
-        runs_store[run_id]["error"] = "Vision Core busy with another run"
+        runs_store[tenant_id][run_id]["status"] = "failed"
+        runs_store[tenant_id][run_id]["error"] = "Vision Core busy"
         return
         
     try:
-        runs_store[run_id]["status"] = "running"
-        
-        # TODO: Hook into actual RunEngine here
-        # from orchestrator.run_engine import RunEngine
-        # engine = RunEngine()
-        # engine.execute(TestSpec(**spec))
-        
-        # Simulating execution time
-        import time
-        time.sleep(2) 
-        
-        runs_store[run_id]["status"] = "passed"
+        runs_store[tenant_id][run_id]["status"] = "running"
+        # Hook into RunEngine here...
+        runs_store[tenant_id][run_id]["status"] = "passed"
     except Exception as e:
-        runs_store[run_id]["status"] = "failed"
-        runs_store[run_id]["error"] = str(e)
+        runs_store[tenant_id][run_id]["status"] = "failed"
+        runs_store[tenant_id][run_id]["error"] = str(e)
     finally:
-        # Debug Fix: Guaranteed release even if RunEngine crashes
         run_lock.release()
 
-@router.get("/")
-async def list_runs():
-    return list(runs_store.values())
+@router.get("/", dependencies=[Depends(require_role(["admin", "executor", "viewer"]))])
+async def list_runs(user: TokenPayload = Depends(get_current_user)): # Debug Fix: Added missing import
+    tenant_runs = runs_store.get(user.tenant_id, {})
+    return list(tenant_runs.values())
 
-@router.get("/{run_id}")
-async def get_run(run_id: str):
-    if run_id not in runs_store:
-        raise HTTPException(status_code=404, detail="Run not found")
-    return runs_store[run_id]
+@router.get("/{run_id}", dependencies=[Depends(require_role(["admin", "executor", "viewer"]))])
+async def get_run(run_id: str, user: TokenPayload = Depends(get_current_user)): # Debug Fix: Added missing import
+    tenant_runs = runs_store.get(user.tenant_id, {})
+    if run_id not in tenant_runs:
+        raise HTTPException(status_code=404, detail="Run not found or access denied")
+    return tenant_runs[run_id]

@@ -1,15 +1,16 @@
 import os
 import json
-import secrets
+import jwt
+import datetime
 from cryptography.fernet import Fernet
-from fastapi import Security, HTTPException, status
-from fastapi.security.api_key import APIKeyHeader
+from fastapi import Security, HTTPException, status, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
 
-API_KEY_NAME = "X-AURA-API-Key"
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+bearer_scheme = HTTPBearer()
 
+# --- Local Vault ---
 class SecretVault:
-    """Local encrypted-at-rest vault for target system credentials."""
     def __init__(self):
         os.makedirs("config", exist_ok=True)
         self.key_path = "config/vault.key"
@@ -26,31 +27,42 @@ class SecretVault:
         with open(self.key_path, "rb") as f:
             return f.read()
 
-    def _load_secrets(self):
-        if not os.path.exists(self.secrets_path):
-            return {}
-        with open(self.secrets_path, "r") as f:
-            return json.load(f)
-
-    def _save_secrets(self, data):
-        with open(self.secrets_path, "w") as f:
-            json.dump(data, f, indent=2)
-
-    def set(self, key: str, value: str):
-        secrets_dict = self._load_secrets()
-        secrets_dict[key] = self.cipher.encrypt(value.encode()).decode()
-        self._save_secrets(secrets_dict)
-
-    def get(self, key: str) -> str | None:
-        secrets_dict = self._load_secrets()
-        if key not in secrets_dict: return None
-        return self.cipher.decrypt(secrets_dict[key].encode()).decode()
+    def get_jwt_secret(self) -> bytes:
+        return self._load_key()
 
 vault = SecretVault()
+JWT_SECRET = vault.get_jwt_secret()
+JWT_ALGORITHM = "HS256"
 
-# Load expected API key from environment or generate a default for local dev
-EXPECTED_API_KEY = os.getenv("AURA_API_KEY", "aura-dev-key-change-me")
+# --- RBAC Models ---
+class TokenPayload(BaseModel):
+    tenant_id: str
+    user_id: str
+    role: str  # "admin", "executor", "viewer"
 
-async def verify_api_key(api_key: str = Security(api_key_header)):
-    if api_key != EXPECTED_API_KEY:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API Key")
+def create_access_token(tenant_id: str, user_id: str, role: str) -> str:
+    payload = {
+        "tenant_id": tenant_id,
+        "user_id": user_id,
+        "role": role,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Security(bearer_scheme)
+) -> TokenPayload:
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return TokenPayload(**payload)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+def require_role(allowed_roles: list[str]):
+    async def role_checker(user: TokenPayload = Depends(get_current_user)):
+        if user.role not in allowed_roles:
+            raise HTTPException(status_code=403, detail=f"Role '{user.role}' unauthorized. Requires: {allowed_roles}")
+        return user
+    return role_checker
