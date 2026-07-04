@@ -44,9 +44,15 @@ def _verify(password: str, salt_hex: str, hash_hex: str) -> bool:
 class UserStore:
     def __init__(self, path: Optional[Path] = None) -> None:
         self.path = path or (settings.project_root / "config" / "users.json")
+        self._seeded = False
+
+    def _ensure_seeded(self) -> None:
+        if self._seeded:
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():
             self._seed()
+        self._seeded = True
 
     def _seed(self) -> None:
         admin_password = os.environ.get("AURA_ADMIN_PASSWORD")
@@ -72,6 +78,7 @@ class UserStore:
             )
 
     def _load(self) -> dict:
+        self._ensure_seeded()
         return json.loads(self.path.read_text())
 
     def verify(self, username: str, password: str) -> Optional[dict]:
@@ -84,6 +91,7 @@ class UserStore:
         return {"tenant_id": record["tenant_id"], "role": record["role"], "user_id": username}
 
     def create_user(self, username: str, password: str, tenant_id: str, role: str) -> None:
+        self._ensure_seeded()
         users = self._load()
         users[username] = {"tenant_id": tenant_id, "role": role, **_new_hash(password)}
         self.path.write_text(json.dumps(users, indent=2))

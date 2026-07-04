@@ -31,7 +31,7 @@ def _get_engine() -> RunEngine:
     return _engine
 
 
-@router.post("/", dependencies=[Depends(require_role(["admin", "executor"]))])
+@router.post("/")
 async def create_run(
     spec: dict = Body(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),

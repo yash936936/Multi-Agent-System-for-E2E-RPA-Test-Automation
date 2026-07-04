@@ -1,4 +1,3 @@
-import os
 import jwt
 import datetime
 from cryptography.fernet import Fernet
@@ -6,25 +5,25 @@ from fastapi import Security, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
+from config.settings import settings
+
 bearer_scheme = HTTPBearer()
 
 # --- Local Vault ---
 class SecretVault:
     def __init__(self):
-        os.makedirs("config", exist_ok=True)
-        self.key_path = "config/vault.key"
-        self.secrets_path = "config/secrets.json"
+        config_dir = settings.project_root / "config"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        self.key_path = config_dir / "vault.key"
         self._ensure_key()
         self.cipher = Fernet(self._load_key())
 
     def _ensure_key(self):
-        if not os.path.exists(self.key_path):
-            with open(self.key_path, "wb") as f:
-                f.write(Fernet.generate_key())
+        if not self.key_path.exists():
+            self.key_path.write_bytes(Fernet.generate_key())
 
     def _load_key(self):
-        with open(self.key_path, "rb") as f:
-            return f.read()
+        return self.key_path.read_bytes()
 
     def get_jwt_secret(self) -> bytes:
         return self._load_key()
@@ -44,7 +43,7 @@ def create_access_token(tenant_id: str, user_id: str, role: str) -> str:
         "tenant_id": tenant_id,
         "user_id": user_id,
         "role": role,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 

@@ -79,6 +79,14 @@ class Settings(BaseSettings):
     def requirements_input_dir(self) -> Path:
         return self.project_root / "requirements_input"
 
+    @property
+    def triggers_pending_dir(self) -> Path:
+        return self.project_root / "triggers" / "pending"
+
+    @property
+    def triggers_processed_dir(self) -> Path:
+        return self.project_root / "triggers" / "processed"
+
     # --- behavioral defaults (PRD/TRD) ---
     vision_confidence_threshold: float = 0.75  # TRD §5.3
 

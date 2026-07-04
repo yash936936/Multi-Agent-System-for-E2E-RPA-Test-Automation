@@ -3,6 +3,7 @@ import json
 import os
 import glob
 from orchestrator.webhook_listener import start_listener
+from config.settings import settings
 
 trigger_app = typer.Typer(help="Manage CI/CD webhook triggers")
 
@@ -14,7 +15,7 @@ def listen(host: str = "0.0.0.0", port: int = 8099):
 @trigger_app.command("process")
 def process():
     """Process pending webhook triggers and queue them for execution."""
-    trigger_dir = "triggers/pending"
+    trigger_dir = str(settings.triggers_pending_dir)
     if not os.path.exists(trigger_dir):
         print("No pending triggers found.")
         return
@@ -46,6 +47,7 @@ def process():
         # from orchestrator.run_engine import execute_test
         # execute_test(record['payload'])
         
-        os.makedirs("triggers/processed", exist_ok=True)
-        os.replace(file_path, os.path.join("triggers/processed", os.path.basename(file_path)))
+        processed_dir = str(settings.triggers_processed_dir)
+        os.makedirs(processed_dir, exist_ok=True)
+        os.replace(file_path, os.path.join(processed_dir, os.path.basename(file_path)))
         print(f"[AURA] Trigger {record['trigger_id']} processed and archived.")

@@ -1,14 +1,20 @@
-import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
 from api.routers import runs, webhooks, adapters, auth
+from config.settings import settings
+
+# webui/ is a static repo asset (like config/tool_registry.yaml), so it must
+# resolve relative to the project root, not the process's current working
+# directory -- otherwise this breaks when the API is launched from anywhere
+# other than the repo root (e.g. as an installed package or a service).
+_webui_dir = settings.project_root / "webui"
 
 # Debug Fix: Ensure directories exist before FastAPI tries to mount them
-os.makedirs("webui/static/css", exist_ok=True)
-os.makedirs("webui/static/js", exist_ok=True)
-os.makedirs("webui/templates", exist_ok=True)
+(_webui_dir / "static" / "css").mkdir(parents=True, exist_ok=True)
+(_webui_dir / "static" / "js").mkdir(parents=True, exist_ok=True)
+(_webui_dir / "templates").mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="AURA Universal QA Platform", version="0.17.0")
 
@@ -17,8 +23,8 @@ app.include_router(runs.router)
 app.include_router(webhooks.router)
 app.include_router(adapters.router)
 
-app.mount("/static", StaticFiles(directory="webui/static"), name="static")
-templates = Jinja2Templates(directory="webui/templates")
+app.mount("/static", StaticFiles(directory=str(_webui_dir / "static")), name="static")
+templates = Jinja2Templates(directory=str(_webui_dir / "templates"))
 
 @app.get("/")
 async def serve_dashboard(request: Request):

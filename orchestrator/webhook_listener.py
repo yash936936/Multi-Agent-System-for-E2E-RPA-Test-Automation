@@ -2,9 +2,11 @@ import json
 import os
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from datetime import datetime
+from datetime import datetime, timezone
 
-TRIGGER_DIR = "triggers/pending"
+from config.settings import settings
+
+TRIGGER_DIR = str(settings.triggers_pending_dir)
 
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -26,7 +28,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             
             trigger_record = {
                 "trigger_id": trigger_id,
-                "received_at": datetime.utcnow().isoformat(),
+                "received_at": datetime.now(timezone.utc).isoformat(),
                 "payload": payload
             }
             
