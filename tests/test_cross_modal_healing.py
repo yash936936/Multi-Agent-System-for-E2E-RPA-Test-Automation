@@ -1,4 +1,3 @@
-import pytest
 from orchestrator.schemas import (
     ActionType, CapabilityType, TestStep, CapabilityCheckResult
 )

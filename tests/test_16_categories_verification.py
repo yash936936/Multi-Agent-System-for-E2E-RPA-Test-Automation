@@ -48,17 +48,16 @@ def test_16_category_verification(category, capability, params, expected):
     using the unified Capability Router and Adapter architecture.
     """
     step = TestStep(
-        step_id=1, 
-        action=ActionType.CAPABILITY_CHECK, 
+        step_id=1,
+        action=ActionType.CAPABILITY_CHECK,
         capability_type=capability,
-        target=f"mock_target_{category}",
-        params=params,
-        expected=expected
+        capability_params=params,
     )
-    
+    assert step.capability_type == capability
+
     payload = CapabilityCheckInput(
         capability=capability,
-        target=step.target,
+        target=f"mock_target_{category}",
         params=params,
         expected=expected
     )

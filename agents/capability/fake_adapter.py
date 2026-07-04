@@ -16,22 +16,21 @@ follow this exact same shape, just with real logic in run().
 """
 from __future__ import annotations
 
-from orchestrator.schemas import CapabilityCheckInput, CapabilityResult, CapabilityType
+from orchestrator.schemas import CapabilityCheckInput, CapabilityCheckResult, CapabilityType
 
 
 class FakeAdapter:
     capability_type: CapabilityType = CapabilityType.FAKE
 
-    def run(self, payload: CapabilityCheckInput) -> CapabilityResult:
-        # Canned result. `params` is echoed back into `details` so tests
+    def run(self, payload: CapabilityCheckInput) -> CapabilityCheckResult:
+        # Canned result. `params` is echoed back into `evidence` so tests
         # can assert the payload actually made it all the way through the
         # kernel's schema validation round-trip, not just that *some*
         # result came back.
-        return CapabilityResult(
-            step_id=payload.step.step_id,
-            capability_type=self.capability_type,
-            success=True,
-            details={"canned": True, "echoed_params": payload.params},
+        return CapabilityCheckResult(
+            capability=payload.capability,
+            passed=True,
             confidence=1.0,
+            evidence={"canned": True, "echoed_params": payload.params},
             escalate=False,
         )

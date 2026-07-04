@@ -2,7 +2,7 @@
 Phase 13 tests — capability schema foundation.
 
 Covers:
-  1. Schema-level contract (TestStep.capability_type validator, CapabilityResult shape)
+  1. Schema-level contract (TestStep.capability_type validator, CapabilityCheckResult shape)
   2. CapabilityAdapterRegistry (register/get/not-found)
   3. FakeAdapter satisfies the CapabilityAdapter protocol
   4. The kernel can dispatch "Capability.check" end to end with a real trace record
@@ -28,7 +28,7 @@ from orchestrator.run_engine import RunEngine
 from orchestrator.schemas import (
     ActionType,
     CapabilityCheckInput,
-    CapabilityResult,
+    CapabilityCheckResult,
     CapabilityType,
     TestStep,
     ToolCall,
@@ -81,13 +81,15 @@ def test_fake_adapter_satisfies_protocol():
 
 def test_fake_adapter_returns_canned_result_and_echoes_params():
     adapter = FakeAdapter()
-    step = TestStep(step_id=7, action=ActionType.CAPABILITY_CHECK, capability_type=CapabilityType.FAKE)
-    result = adapter.run(CapabilityCheckInput(step=step, params={"foo": "bar"}))
-    assert isinstance(result, CapabilityResult)
-    assert result.success is True
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.FAKE, target="mock_target", params={"foo": "bar"}
+    )
+    result = adapter.run(payload)
+    assert isinstance(result, CapabilityCheckResult)
+    assert result.passed is True
     assert result.escalate is False
-    assert result.step_id == 7
-    assert result.details["echoed_params"] == {"foo": "bar"}
+    assert result.capability == CapabilityType.FAKE
+    assert result.evidence["echoed_params"] == {"foo": "bar"}
 
 
 # --------------------------------------------------------------------------
@@ -95,16 +97,15 @@ def test_fake_adapter_returns_canned_result_and_echoes_params():
 # --------------------------------------------------------------------------
 
 def test_check_capability_router_dispatches_to_fake_adapter():
-    step = TestStep(step_id=3, action=ActionType.CAPABILITY_CHECK, capability_type=CapabilityType.FAKE)
-    result = check_capability(CapabilityCheckInput(step=step, params={}))
-    assert result.capability_type == CapabilityType.FAKE
-    assert result.success is True
+    payload = CapabilityCheckInput(capability=CapabilityType.FAKE, target="mock_target", params={})
+    result = check_capability(payload)
+    assert result.capability == CapabilityType.FAKE
+    assert result.passed is True
 
 
 def test_check_capability_router_raises_without_capability_type():
-    step = TestStep(step_id=3, action=ActionType.VISUAL_CLICK)
     with pytest.raises(ValueError):
-        check_capability(CapabilityCheckInput(step=step, params={}))
+        CapabilityCheckInput(capability=None, target="mock_target", params={})
 
 
 def test_kernel_routes_capability_check_tool_with_audit_trace(tmp_path, monkeypatch):
@@ -114,16 +115,17 @@ def test_kernel_routes_capability_check_tool_with_audit_trace(tmp_path, monkeypa
     registry = ToolRegistry().load()
     kernel = OrchestratorKernel(registry=registry, run_id="capabilitytest")
 
-    step = TestStep(step_id=1, action=ActionType.CAPABILITY_CHECK, capability_type=CapabilityType.FAKE)
     call = ToolCall(
         name="Capability.check",
-        arguments=CapabilityCheckInput(step=step, params={"k": "v"}).model_dump(mode="json"),
+        arguments=CapabilityCheckInput(
+            capability=CapabilityType.FAKE, target="mock_target", params={"k": "v"}
+        ).model_dump(mode="json"),
     )
     response = kernel.call_tool(call)
 
     assert response.ok is True
-    assert response.result["success"] is True
-    assert response.result["capability_type"] == "fake"
+    assert response.result["passed"] is True
+    assert response.result["capability"] == "fake"
 
     trace = kernel.read_trace()
     assert len(trace) == 1

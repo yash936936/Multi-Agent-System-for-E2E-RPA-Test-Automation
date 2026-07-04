@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Protocol, runtime_checkable
-from orchestrator.schemas import CapabilityCheckInput, CapabilityResult, CapabilityType
+from orchestrator.schemas import CapabilityCheckInput, CapabilityCheckResult, CapabilityType
 
 
 @runtime_checkable
@@ -14,7 +14,7 @@ class CapabilityAdapter(Protocol):
 
     capability_type: CapabilityType
 
-    def run(self, payload: CapabilityCheckInput) -> CapabilityResult:
+    def run(self, payload: CapabilityCheckInput) -> CapabilityCheckResult:
         ...
 
 

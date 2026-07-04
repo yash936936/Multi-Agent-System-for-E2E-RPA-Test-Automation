@@ -50,7 +50,7 @@ tools:
     module: orchestrator.capability_router
     entrypoint: check_capability
     input_schema: CapabilityCheckInput
-    output_schema: CapabilityResult
+    output_schema: CapabilityCheckResult
     description: >
       Phase 13. Routes a CAPABILITY_CHECK TestStep to the CapabilityAdapter
       registered for its capability_type (api/db/email/file/excel/pdf/cloud

@@ -330,6 +330,45 @@ Every report opens with a plain-English "What this test does" summary at the top
 
 ---
 
+## Backend capability adapters (beyond the browser/desktop UI)
+
+Beyond vision-based UI testing, AURA can validate non-UI systems directly as part of a test spec, via a `capability_check` step type instead of a `visual_click`/`type_text` step. This is useful for the "click a button in the UI, then confirm the row actually landed in the database" style of test.
+
+| Adapter | Backs | Module |
+|---|---|---|
+| API | REST/GraphQL calls, status/schema/payload assertions | `agents/capability/api_adapter.py` (`httpx`) |
+| Database | Read-only SQL queries, row/type/constraint checks | `agents/capability/db_adapter.py` (`sqlalchemy`) — read-only by design |
+| Email | Send-and-poll verification over IMAP/SMTP | `agents/capability/email_adapter.py` |
+| File | Local filesystem or SFTP checks (existence, hash, stat) | `agents/capability/file_adapter.py` (`paramiko` for SFTP) |
+| Excel | Cell values, formulas, formatting | `agents/capability/excel_adapter.py` (`openpyxl`) |
+| PDF | Text/page-count extraction | `agents/capability/pdf_adapter.py` (`pypdf`) |
+| Cloud | S3 object existence (detect-only) | `agents/capability/cloud_adapter.py` (`boto3`) — currently only implements the `s3_object_exists` action; other `action` values are accepted but silently fall through to the same check, so don't rely on anything else yet |
+| Workflow | Generic webhook/CI trigger (fire-and-forget) | `agents/capability/workflow_adapter.py` (`httpx`) |
+
+A `TestStep` with `action: capability_check` carries `capability_type`, `target`, `capability_params`, and `expected`; the orchestrator routes it through `orchestrator/capability_router.py` to the matching adapter and, on failure, attempts a cross-modal self-heal (`agents/planner/cross_modal_diagnoser.py`) before escalating — the same self-healing philosophy as the UI path, applied to API/DB schema drift.
+
+This surface is fully unit-tested (`tests/test_capabilities.py`, `tests/test_16_categories_verification.py`, per-adapter test files) but is exercised through the CLI/`RunEngine` path, not yet through the REST API below.
+
+---
+
+## Web dashboard & REST API (preview — not production-ready)
+
+`api/main.py` is a FastAPI service (`AURA Universal QA Platform`) with a small web dashboard (`webui/`) and REST endpoints for triggering and inspecting runs, separate from the CLI. **This exists in the codebase but has real gaps you should know about before relying on it:**
+
+- **Run execution is currently a stub.** `POST /api/v1/test-runs` accepts a spec and always reports `"passed"` — it does not yet call the real `RunEngine`. Don't use this endpoint to actually validate anything yet; use the CLI (`aura execute`) for real runs.
+- **There's no way to log in yet.** Every endpoint requires a JWT (role-gated: `admin`/`executor`/`viewer`), but no endpoint issues one — token creation (`api/security.py::create_access_token`) has to be called manually (e.g. from a Python shell) until a login route is added.
+- **No `aura serve` command yet.** Start it manually:
+  ```powershell
+  pip install -e ".[dev]"
+  uvicorn api.main:app --reload
+  ```
+  Then visit `http://127.0.0.1:8000/` for the dashboard shell, or `http://127.0.0.1:8000/docs` for the interactive API docs.
+- Run state is **in-memory only** — restarting the process loses all run history.
+
+Treat this as an early preview of the direction (see `Roadmap.md` Phase 17), not a supported feature, until the run-execution wiring and a login endpoint land.
+
+---
+
 ## Option 2 — Standalone Windows .exe (PyInstaller)
 
 Best for: distributing AURA to QA staff who shouldn't have to set up Python/pip/venv themselves — they just run an `.exe`. Same execution model as Option 1 underneath (still needs the target app visible on an unlocked screen); this only changes *how it's installed*, not how it runs.
@@ -420,7 +459,7 @@ The target application must be visible and the screen unlocked while AURA runs �
 ## Running the test suite
 
 ```powershell
-python -m pytest -q      # full test suite
+python -m pytest -q      # full test suite (199 tests as of this doc revision)
 ruff check .              # lint
 ```
 
@@ -433,11 +472,13 @@ aura_build/
 ├── install.bat           # One-click Windows setup (wraps scripts/setup_windows.ps1)
 ├── run.bat               # Launches aura without manually activating .venv
 ├── models/               # Drop a .gguf file here for the local LLM backend -- auto-detected, no .env editing
-├── agents/            # Planner, Vision, DataSynth sub-agents
-├── orchestrator/       # Kernel (tool dispatch + audit trail), run engine, healing loop, skill store, scheduler, autoscan
+├── agents/            # Planner, Vision, DataSynth sub-agents, plus agents/capability/ (API/DB/Email/File/Excel/PDF/Cloud/Workflow adapters, see "Backend capability adapters" above)
+├── orchestrator/       # Kernel (tool dispatch + audit trail), run engine, healing loop, skill store, scheduler, autoscan, capability router
 ├── runtime/hooks/       # Real screenshot capture (mss), interaction (pyautogui), and browser navigation
 ├── reports/            # HTML/PDF report rendering + Jinja2 templates
 ├── aura/cli/            # CLI command implementations
+├── api/                 # FastAPI service layer -- preview only, see "Web dashboard & REST API" above before relying on it
+├── webui/               # Static web dashboard served by api/main.py
 ├── config/              # Settings, tool registry
 ├── scripts/              # setup_windows.ps1 (Option 1), build_exe.ps1 (Option 2), install_llm_backend.ps1 (optional local LLM planner)
 ├── requirements_input/  # Your requirement docs (Markdown) live here
@@ -458,3 +499,7 @@ Design/architecture documents (product requirements, technical architecture, age
 - [APPFLOW](./docs/APPFLOW.md) — end-user experience flow
 - [decisions.md](./decisions.md) — running log of every architectural decision and why it was made
 - [STATUS.md](./STATUS.md) — current build status, known gaps, closed items
+- [Roadmap.md](./Roadmap.md) — capability-adapter/service-layer phases (13–19), including known gaps in the API/service layer
+- [progress.md](./progress.md) — dated build log, newest entry first
+
+---

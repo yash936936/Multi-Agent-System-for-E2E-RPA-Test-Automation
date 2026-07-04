@@ -1,9 +1,8 @@
 import os
-import json
 import jwt
 import datetime
 from cryptography.fernet import Fernet
-from fastapi import Security, HTTPException, status, Depends
+from fastapi import Security, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 

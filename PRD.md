@@ -1,9 +1,10 @@
 # Product Requirements Document (PRD)
 ## AURA — Autonomous Unified RPA Agent for Offline QA Test Automation
 
-**Version:** 2.1 (Hermes Agent API Revision)
+**Version:** 2.1
 **Date:** June 2026
-**Owner:** Prakhar Doneria
+
+> **2026-07-04 note:** this document still describes AURA's original vision-first, CLI-only scope, which remains accurate for that surface. Since v2.1 was written, `Roadmap.md` Phases 13–19 added non-UI capability adapters (API/DB/Email/File/Excel/PDF/Cloud/Workflow) and an in-progress REST/web service layer that this PRD does not cover — see `Roadmap.md` and `STATUS.md` for that surface's requirements and, importantly, its current gaps (the service layer's run-execution path is not yet wired to `RunEngine`). This PRD has not been formally revised to a v2.2 scope for that work; treat FR1–FR13 below as describing the CLI product only.
 
 ---
 

@@ -1,5 +1,3 @@
-import pytest
-import os
 from unittest.mock import patch, MagicMock
 from orchestrator.schemas import CapabilityCheckInput, CapabilityType
 from agents.capability.file_adapter import FileAdapter
@@ -25,7 +23,7 @@ def test_file_adapter_local_stat_success(tmp_path):
 def test_file_adapter_local_hash_success(tmp_path):
     test_file = tmp_path / "data.bin"
     test_file.write_bytes(b"test_data")
-    expected_hash = "916f0027a575074ce72a331777c3478d6513f786a59c654797b25765264c2247" # sha256 of test_data
+    expected_hash = "e7d87b738825c33824cf3fd32b7314161fc8c425129163ff5e7260fc7288da36"  # sha256 of test_data
     
     adapter = FileAdapter()
     payload = CapabilityCheckInput(

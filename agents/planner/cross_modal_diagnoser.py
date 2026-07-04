@@ -1,5 +1,4 @@
 import re
-import json
 from orchestrator.schemas import TestStep, CapabilityCheckResult, CapabilityType
 
 class CrossModalDiagnoser:

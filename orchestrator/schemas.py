@@ -89,6 +89,11 @@ class TestStep(BaseModel):
     # adapter -- each adapter validates its own params internally.
     capability_type: Optional[CapabilityType] = None
     capability_params: dict[str, Any] = Field(default_factory=dict)
+    # Populated for ActionType.CAPABILITY_CHECK steps -- the adapter target
+    # (e.g. a table name, API endpoint, or file path) and the expected
+    # result used to validate CapabilityCheckResult.evidence against.
+    target: str = ""
+    expected: Optional[dict[str, Any]] = None
 
     @field_validator("capability_type")
     @classmethod
@@ -156,10 +161,10 @@ class VisionActionResult(BaseModel):
     screenshot_ref: Optional[str] = None
     assertion_passed: Optional[bool] = None
     # Phase 13 — populated only when action_taken == "capability_check", so
-    # the raw CapabilityResult (adapter type, details dict) survives into
+    # the raw CapabilityCheckResult (adapter type, details dict) survives into
     # ReportAggregator's raw_results.json without ReportAggregator itself
     # needing to know about adapters yet.
-    capability_result: Optional[CapabilityResult] = None
+    capability_result: Optional[CapabilityCheckResult] = None
 
 
 # --------------------------------------------------------------------------

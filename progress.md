@@ -9,6 +9,47 @@ project: AURA
 
 ---
 
+## 2026-07-04 — Full debug-QA-finalize pass on the capability-adapter/service-layer code, then doc reconciliation
+
+**What happened:**
+- Ran a complete debug-qa-finalize pass over the whole repo (99 `.py` files). All files compiled; the real gap was cross-file schema drift left over from the Roadmap.md Phases 13–19 work (capability adapters + FastAPI service layer), which had never been run as a full suite together before, and had never been written up in `STATUS.md`/this file/`Roadmap.md`/`README.md` at all despite being fully present in the tree.
+- `pyproject.toml` had a syntax error (`PyJWT>=2.8"` missing its opening quote) that broke `pip install -e .` outright — fixed.
+- `orchestrator/schemas.py`'s `CapabilityResult` had been renamed to `CapabilityCheckResult` at some point, but `orchestrator/capability_adapter.py`, `orchestrator/capability_router.py`, `agents/capability/fake_adapter.py`, and `config/tool_registry.yaml` all still referenced the old name — `ImportError`/`AttributeError` on collection. Renamed consistently everywhere.
+- `orchestrator/capability_router.py`'s dispatch function read `payload.step.capability_type`, but `CapabilityCheckInput` has no `step` field (it's `capability`/`target`/`params`/`expected`) — rewrote to use `payload.capability` directly, and kept both `route_capability` and the older `check_capability` name as an alias since both are referenced from different call sites.
+- `orchestrator/schemas.py`'s `TestStep` was missing `target`/`expected` fields that `orchestrator/run_engine.py` already read for capability-check steps (`current_step.target`, `current_step.expected`) — this would have thrown `AttributeError` the first time a real `CAPABILITY_CHECK` step ran end to end. Added both fields (`target: str = ""`, `expected: Optional[dict] = None`).
+- `agents/capability/fake_adapter.py` constructed `CapabilityCheckResult` with an entirely different, older field set (`step_id`, `capability_type`, `success`, `details`) that doesn't exist on the current schema — would have crashed at runtime the moment the fake adapter actually ran. Rewrote to the current fields (`capability`, `passed`, `confidence`, `evidence`, `escalate`).
+- `tests/test_capabilities.py` (3 tests) and `tests/test_16_categories_verification.py` built `CapabilityCheckInput`/`TestStep` against the same stale field names — updated to match the current schema.
+- `tests/test_file_doc_adapters.py` had a hand-typed SHA-256 expected value that was simply wrong (`916f00...` vs. the real `e7d87b...`) — corrected.
+- `tests/test_cloud_workflow_adapters.py` mocked `httpx.Client(...).post(...)`, but `agents/capability/workflow_adapter.py` actually calls the more general `.request(method, ...)` (to support configurable HTTP methods) — updated the mock.
+- Removed a handful of unused imports (`json` in `api/security.py` and `cross_modal_diagnoser.py`, `fastapi.status`, stray `pytest`/`os` imports in three test files).
+- Result: **199/199 tests passing** (up from the 156 last recorded here), `pyflakes` clean except two pre-existing dead-branch smells left alone deliberately (see below).
+- **Flagged but not silently fixed** (product decisions, not bugs): `agents/capability/cloud_adapter.py` parses `params["action"]` but never branches on it — only `s3_object_exists` is actually implemented, so other actions would silently run the same S3-head-object logic regardless of what was requested. `agents/planner/cross_modal_diagnoser.py` has a few parsed-but-unused locals (`error_type`, `query`, `missing_col`) suggesting an incomplete diagnosis branch.
+- **Separately, did a full read-through of all `.md` docs against the actual repo state** (this had not been done since the Phase 13–19 code was written) and found the docs badly out of sync with the code — see the doc-reconciliation pass below.
+
+**Doc reconciliation pass (same session):**
+- `Roadmap.md`'s baseline table said "Web UI / REST service / webhooks — Not started" and "Backend/API/DB/Email/Excel/PDF/Cloud adapters — Not started." Both are false — all of it exists in `agents/capability/`, `api/`, and `webui/`. Updated the table and added a "Phase 13–19 status" section reflecting what's actually implemented vs. genuinely still incomplete.
+- Discovered, while verifying the service layer for the doc update, that `api/routers/runs.py::execute_run()` is a stub that always reports `"passed"` without calling `RunEngine`, and that there's no endpoint anywhere that calls `api/security.py::create_access_token()` — meaning the API can't actually execute a real run or issue itself a token. Neither gap was documented before. Logged in `STATUS.md` as the top-priority next action rather than fixed silently, since "wire the stub to RunEngine" and "add a login endpoint" are implementation decisions someone should sign off on, not something to guess at during a docs pass.
+- `README.md` had no mention of the capability adapters, the FastAPI service, or the web dashboard at all. Added a new section documenting what exists, how to start it (`uvicorn api.main:app`, since there's no `aura serve` command yet — noted as a gap), and an explicit "not production ready" caveat pointing at the `execute_run` stub.
+- `STATUS.md` was frozen at 2026-07-03, pre-adapters. Rewritten (see this file's companion update) rather than patched, since most of "Where things stand" needed to change.
+- `PHASES.md` and Roadmap.md both referred to the adapter output schema as `CapabilityResult` in prose — updated to `CapabilityCheckResult` to match the code, now that that name is consistent everywhere in the code itself.
+- `TRD.md` and `WORKFLOW.md` described only the vision-only execution loop; added a short section to each covering the `CAPABILITY_CHECK` step type and cross-modal healing path, since that's now a real, tested part of the architecture, not a roadmap item.
+- `PRD.md` and `APPFLOW.md` reviewed; added brief pointers to the new capability/service surface without rewriting their original vision-first CLI scope, since that scope is still accurate for the primary product.
+
+**What changed:**
+- Code: `pyproject.toml`, `orchestrator/schemas.py`, `orchestrator/capability_router.py`, `orchestrator/capability_adapter.py` (rename only), `agents/capability/fake_adapter.py`, `config/tool_registry.yaml`, `api/security.py`, `agents/planner/cross_modal_diagnoser.py`, and five test files.
+- Docs: `STATUS.md` (rewritten), `Roadmap.md`, `README.md`, `PHASES.md`, `TRD.md`, `WORKFLOW.md`, `PRD.md`, `APPFLOW.md` (all updated), this file (new entry).
+- Test count: 156 → 199, all passing.
+
+**Known limitations, disclosed rather than hidden:**
+- The FastAPI service layer is real code but not a working feature yet — see `STATUS.md`'s "service layer" section for the specific gaps (run-execution stub, no token issuance, no `aura serve`, in-memory-only run store, vault/JWT key reuse).
+- `cloud_adapter.py`'s unused `action` variable and `cross_modal_diagnoser.py`'s unused locals were deliberately left as flags for a follow-up decision rather than guessed at.
+
+**What should happen next:**
+1. Wire `api/routers/runs.py::execute_run()` to the real `RunEngine` — the single highest-value fix now that the docs correctly describe this as a stub.
+2. Add a token-issuance endpoint and an `aura serve` CLI command so the API is reachable without out-of-band knowledge.
+3. Carry-over from 2026-07-03: run `--ui-audit` for real against a live external site with a display available.
+
+
 ## 2026-07-03 — Comprehensive UI audit + code bug detection ("professional QA tester" feature request)
 **What happened:**
 - Started with a full debug-qa-finalize pass on the uploaded phase-12 codebase: 119/119 tests passing, `ruff check` clean going in. Found and fixed a repeat instance of the D-011 bug class (unclosed `Image.open()` in `agents/vision/page_health.py`) during the review — same root cause as before, different file. Two tests mocking `Image.open` needed updating to support the context-manager protocol as a result.

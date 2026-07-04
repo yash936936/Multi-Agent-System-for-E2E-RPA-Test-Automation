@@ -11,18 +11,18 @@ AURA is a **hub-and-spoke multi-agent system** coordinated entirely through the 
 
 ```
                      ┌─────────────────────────┐
-                     │      Orchestrator          │
-                     │   (Hermes Agent API)        │
-                     │  - tool routing               │
-                     │  - skill memory (RAG)          │
-                     │  - loop guardrails                │
-                     │  - report aggregation                │
-                     └───────────┬─────────────────┘
+                     │      Orchestrator       │
+                     │   (Hermes Agent API)    │
+                     │  - tool routing         │
+                     │  - skill memory (RAG)   │
+                     │  - loop guardrails      │
+                     │  - report aggrega       │
+                     └───────────┬─────────────┘
                  tool_call ▲     │ tool_response      ▲
-        ┌────────────────────┤     │                          │
-        │                    ▼     ▼                          │
-┌───────────────┐   ┌─────────────────┐   ┌────────────────────┐
-│ Planner/Auditor │   │ Vision Execution  │   │ Data Synthesizer     │
+        ┌────────────────────┤     │                  │
+        │                    ▼     ▼                  │
+┌───────────────┐    ┌─────────────────┐   ┌────────────────────┐
+│ Planner/Auditor│   │ Vision Execution│   │ Data Synthesizer   │
 └───────┬────────┘   └────────┬────────┘   └─────────┬──────────┘
         │                     │                        │
         ▼                     ▼                        ▼
@@ -192,3 +192,18 @@ The Hermes Agent API's built-in scheduling enables nightly regression sweeps, wi
 - **Portability:** each sub-agent's implementation abstracted so it can be swapped via tool registration only (no orchestration code changes).
 - **Recoverability:** Orchestrator persists in-flight run state so an interruption mid-run can resume from the last completed step.
 - **Minimal footprint:** resource use for every component compressed as far as technically feasible, with no assumption of any particular hardware tier.
+
+---
+
+## 8. Capability Adapters & Cross-Modal Healing (Roadmap Phases 13–18, delivered)
+
+Beyond the vision-only flow above, a `TestStep` may carry `action: "capability_check"` instead of a Vision action. These steps bypass the Vision Execution Core entirely and route through `orchestrator/capability_router.py` to a registered `CapabilityAdapter` (`orchestrator/capability_adapter.py`), keyed on `TestStep.capability_type` (`CapabilityType`: `api`, `database`, `email`, `file_system`, `excel`, `pdf_ocr`, `cloud`, `workflow`, plus `fake` for tests).
+
+- **Input/output contract:** `CapabilityCheckInput` (`capability`, `target`, `params`, `expected`) in, `CapabilityCheckResult` (`capability`, `passed`, `confidence`, `evidence`, `escalate`) out — mirrors the Vision Action Result contract in §4.2 but for non-UI systems.
+- **Self-healing:** on failure, `run_engine.py` invokes `agents/planner/cross_modal_diagnoser.py` (up to 2 attempts) before escalating — the same skill-persistence pattern as §5.2, applied to schema/payload drift instead of UI drift.
+- **Adapters implemented:** `api_adapter` (httpx), `db_adapter` (SQLAlchemy, read-only by design), `email_adapter` (IMAP/SMTP), `file_adapter` (local + SFTP via paramiko), `excel_adapter` (openpyxl), `pdf_adapter` (pypdf), `cloud_adapter` (boto3, S3 `s3_object_exists` only — other actions are accepted but not yet distinguished), `workflow_adapter` (generic webhook trigger via httpx).
+- **Not yet part of this contract:** the REST service layer described informally in Roadmap.md Phase 17 does not yet invoke this path — `api/routers/runs.py::execute_run()` is a stub that doesn't call `RunEngine` at all. This section describes the CLI/`RunEngine`-driven path only, which is the one with real test coverage (`tests/test_capabilities.py`, `tests/test_16_categories_verification.py`).
+
+## 9. Non-Functional Requirements Addendum
+
+The offline-first posture in §7 applies to the original Vision/Planner/DataSynth path. The capability adapters above are, by design, network- or filesystem-facing (that's their purpose) — each one is explicit about what it connects to via `params`, and none defaults to acting without a configured target. `db_adapter` and `cloud_adapter` default to read/detect-only operations rather than mutating the systems they check.

@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import patch, MagicMock
 from orchestrator.schemas import CapabilityCheckInput, CapabilityType
 from agents.capability.cloud_adapter import CloudAdapter
@@ -65,7 +64,7 @@ def test_workflow_adapter_trigger_success():
         mock_response = MagicMock()
         mock_response.status_code = 201
         mock_response.elapsed.total_seconds.return_value = 0.5
-        mock_client.return_value.__enter__.return_value.post.return_value = mock_response
+        mock_client.return_value.__enter__.return_value.request.return_value = mock_response
         
         result = adapter.run(payload)
         assert result.passed is True
@@ -83,7 +82,7 @@ def test_workflow_adapter_trigger_rejected():
         mock_response = MagicMock()
         mock_response.status_code = 403 # Forbidden
         mock_response.elapsed.total_seconds.return_value = 0.1
-        mock_client.return_value.__enter__.return_value.post.return_value = mock_response
+        mock_client.return_value.__enter__.return_value.request.return_value = mock_response
         
         result = adapter.run(payload)
         assert result.passed is False

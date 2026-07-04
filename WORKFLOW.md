@@ -12,30 +12,30 @@ This document describes the runtime sequence of agent interactions, coordinated 
       │
       ▼
 ┌──────────────────────┐
-│ 1. Orchestrator boots     │  ← ingest doc, check skill memory for known patterns
-│    & routes (Hermes Agent) │
+│ 1. Orchestrator boots │  ← ingest doc, check skill memory for known patterns
+│& routes (Hermes Agent)│
 └──────────┬────────────┘
            ▼
 ┌──────────────────────┐
-│ 2. Planner Agent          │  → Structured Test Spec
-└──────────┬────────────┘
+│ 2. Planner Agent     │  → Structured Test Spec
+└──────────┬───────────┘
            ▼
 ┌──────────────────────┐
-│ 3. Data Synth Agent       │  → Synthetic + edge-case test data
-└──────────┬────────────┘
+│ 3. Data Synth Agent  │  → Synthetic + edge-case test data
+└──────────┬───────────┘
            ▼
 ┌──────────────────────┐
-│ 4. Vision Execution Loop  │  → per-step screenshot, interact, assert
+│ 4.Vision Execution Loop│  → per-step screenshot, interact, assert
 └──────────┬────────────┘
            │  step fails?
            ▼ yes
 ┌──────────────────────┐
 │ 5. Self-Healing Sub-loop  │
-│    (Planner + Orchestrator)│
+│(Planner + Orchestrator)│
 └──────────┬────────────┘
            ▼
 ┌──────────────────────┐
-│ 6. Report Aggregation      │  → HTML/PDF + skill library update
+│ 6. Report Aggregation│  → HTML/PDF + skill library update
 └──────────────────────┘
 ```
 
@@ -71,6 +71,8 @@ For each step in the test spec:
 4. Post-action screenshot captured; assertion checked against `expected_state`.
 5. On assertion pass → proceed to next step.
 6. On assertion fail → trigger Step 5.
+
+> **Step type branch (Roadmap Phase 13, delivered):** a step whose `action` is `capability_check` instead of a Vision action type skips 1–4 above entirely and routes through `orchestrator/capability_router.py` to the matching `CapabilityAdapter` (API/DB/Email/File/Excel/PDF/Cloud/Workflow — see TRD §8). On failure, it retries via `agents/planner/cross_modal_diagnoser.py` up to 2 heal attempts before falling into the same Step 5 escalation path described below, rather than the Vision-specific retry.
 
 ### Step 5 — Self-Healing Sub-Loop
 1. Orchestrator issues a tool call to `Planner.diagnose` with: failed step, screenshots (before/after), execution logs, and any network trace data.

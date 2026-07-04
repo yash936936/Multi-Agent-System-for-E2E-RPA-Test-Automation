@@ -18,7 +18,7 @@ across runs" treatment of ToolRegistry.
 from __future__ import annotations
 
 from orchestrator.capability_adapter import CapabilityAdapterRegistry, default_registry
-from orchestrator.schemas import CapabilityCheckInput, CapabilityResult
+from orchestrator.schemas import CapabilityCheckInput, CapabilityCheckResult
 
 _registry: CapabilityAdapterRegistry | None = None
 
@@ -30,18 +30,22 @@ def _get_registry() -> CapabilityAdapterRegistry:
     return _registry
 
 
-def check_capability(payload: CapabilityCheckInput) -> CapabilityResult:
-    step = payload.step
-    if step.capability_type is None:
+def route_capability(payload: CapabilityCheckInput) -> CapabilityCheckResult:
+    if payload.capability is None:
         # A genuine spec-authoring error, not a runtime adapter failure --
         # let the kernel's existing "tool execution error" handling in
         # OrchestratorKernel.call_tool surface it (it already wraps
         # entrypoint exceptions into a failed ToolResponse + trace record),
-        # rather than inventing a CapabilityResult with no real
-        # capability_type to report.
+        # rather than inventing a CapabilityCheckResult with no real
+        # capability to report.
         raise ValueError(
-            f"step {step.step_id}: TestStep.capability_type is required for CAPABILITY_CHECK steps"
+            "CapabilityCheckInput.capability is required to route a CAPABILITY_CHECK step"
         )
 
-    adapter = _get_registry().get(step.capability_type)
+    adapter = _get_registry().get(payload.capability)
     return adapter.run(payload)
+
+
+# Backward-compatible alias: earlier code/tests referred to this function
+# as `check_capability` before it was renamed to `route_capability`.
+check_capability = route_capability
