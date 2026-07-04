@@ -81,6 +81,16 @@ class Settings(BaseSettings):
 
     # --- behavioral defaults (PRD/TRD) ---
     vision_confidence_threshold: float = 0.75  # TRD §5.3
+
+    # Interactive / human-in-the-loop mode (WAIT_FOR_HUMAN_ACTION step type).
+    # Polling, not a single check: the loop re-screenshots every
+    # `human_action_poll_interval_seconds` and compares against the
+    # baseline, so it reacts as soon as you act instead of on a fixed
+    # timer. `human_action_timeout_seconds = 0` means wait indefinitely
+    # (the default -- a human-in-the-loop step should not silently give up
+    # just because someone stepped away from the keyboard for a minute).
+    human_action_poll_interval_seconds: float = 2.0
+    human_action_timeout_seconds: int = 0
     guardrails: GuardrailSettings = Field(default_factory=GuardrailSettings)
 
     # --- resource philosophy (TRD §3 / decisions D-005) ---

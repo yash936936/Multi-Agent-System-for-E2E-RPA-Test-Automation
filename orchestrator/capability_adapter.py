@@ -66,6 +66,10 @@ def default_registry() -> CapabilityAdapterRegistry:
     from agents.capability.pdf_adapter import PdfAdapter
     from agents.capability.cloud_adapter import CloudAdapter
     from agents.capability.workflow_adapter import WorkflowAdapter
+    from agents.capability.azure_adapter import AzureBlobAdapter
+    from agents.capability.gcp_adapter import GcpStorageAdapter
+    from agents.capability.sharepoint_adapter import SharePointAdapter
+    from agents.capability.chatops_adapter import ChatOpsAdapter
 
     registry = CapabilityAdapterRegistry()
     registry.register(FakeAdapter())
@@ -77,4 +81,8 @@ def default_registry() -> CapabilityAdapterRegistry:
     registry.register(PdfAdapter())
     registry.register(CloudAdapter())
     registry.register(WorkflowAdapter())
+    registry.register(AzureBlobAdapter())
+    registry.register(GcpStorageAdapter())
+    registry.register(SharePointAdapter())
+    registry.register(ChatOpsAdapter())
     return registry

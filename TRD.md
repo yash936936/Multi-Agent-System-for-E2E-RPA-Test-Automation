@@ -11,18 +11,18 @@ AURA is a **hub-and-spoke multi-agent system** coordinated entirely through the 
 
 ```
                      ┌─────────────────────────┐
-                     │      Orchestrator       │
-                     │   (Hermes Agent API)    │
-                     │  - tool routing         │
-                     │  - skill memory (RAG)   │
-                     │  - loop guardrails      │
-                     │  - report aggrega       │
-                     └───────────┬─────────────┘
+                     │      Orchestrator          │
+                     │   (Hermes Agent API)        │
+                     │  - tool routing               │
+                     │  - skill memory (RAG)          │
+                     │  - loop guardrails                │
+                     │  - report aggregation                │
+                     └───────────┬─────────────────┘
                  tool_call ▲     │ tool_response      ▲
-        ┌────────────────────┤     │                  │
-        │                    ▼     ▼                  │
-┌───────────────┐    ┌─────────────────┐   ┌────────────────────┐
-│ Planner/Auditor│   │ Vision Execution│   │ Data Synthesizer   │
+        ┌────────────────────┤     │                          │
+        │                    ▼     ▼                          │
+┌───────────────┐   ┌─────────────────┐   ┌────────────────────┐
+│ Planner/Auditor │   │ Vision Execution  │   │ Data Synthesizer     │
 └───────┬────────┘   └────────┬────────┘   └─────────┬──────────┘
         │                     │                        │
         ▼                     ▼                        ▼

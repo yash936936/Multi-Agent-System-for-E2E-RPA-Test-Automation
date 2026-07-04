@@ -33,6 +33,12 @@ class ActionType(str, Enum):
     # dispatched to a CapabilityAdapter (see orchestrator/capability_adapter.py)
     # keyed on TestStep.capability_type instead.
     CAPABILITY_CHECK = "capability_check"
+    # Human-in-the-loop mode: no autonomous action is dispatched. run_engine
+    # polls the live screen (via the same screenshot_provider used for
+    # everything else) until it detects a state change, or the configured
+    # timeout elapses -- see WORKFLOW.md's "Interactive / human-in-the-loop
+    # mode" section and Settings.human_action_* below.
+    WAIT_FOR_HUMAN_ACTION = "wait_for_human_action"
 
 
 class AssertionType(str, Enum):
@@ -62,6 +68,10 @@ class CapabilityType(str, Enum):
     CLOUD = "cloud"  # Phase 16
     PDF_OCR = "pdf_ocr"
     WORKFLOW = "workflow"
+    AZURE_BLOB = "azure_blob"  # Phase 16b
+    GCP_STORAGE = "gcp_storage"  # Phase 16b
+    SHAREPOINT = "sharepoint"  # Phase 16b
+    CHAT_OPS = "chat_ops"  # Phase 16b — Teams/Slack rich messages
 
 # --------------------------------------------------------------------------
 # 4.1 Test Spec (Planner output)
@@ -94,6 +104,11 @@ class TestStep(BaseModel):
     # result used to validate CapabilityCheckResult.evidence against.
     target: str = ""
     expected: Optional[dict[str, Any]] = None
+    # Populated (optionally) for ActionType.WAIT_FOR_HUMAN_ACTION steps --
+    # overrides Settings.human_action_timeout_seconds for this step only.
+    # None means "use the configured default" (which itself may be 0,
+    # meaning wait indefinitely).
+    human_action_timeout_seconds: Optional[int] = None
 
     @field_validator("capability_type")
     @classmethod
@@ -154,7 +169,7 @@ class CapabilityCheckResult(BaseModel):
 
 class VisionActionResult(BaseModel):
     step_id: int
-    action_taken: Literal["navigate", "click", "type", "scroll", "assert", "capability_check", "none"]
+    action_taken: Literal["navigate", "click", "type", "scroll", "assert", "capability_check", "wait_for_human", "none"]
     target_coords: Optional[tuple[int, int]] = None
     confidence: float = Field(ge=0.0, le=1.0)
     escalate: bool = False

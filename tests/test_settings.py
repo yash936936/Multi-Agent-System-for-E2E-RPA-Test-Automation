@@ -33,7 +33,7 @@ def test_explicit_local_llm_path_not_overridden_by_bundled_model(tmp_path):
     (tmp_path / "models" / "bundled.gguf").write_bytes(b"stub")
     other_path = str(tmp_path / "elsewhere.gguf")
 
-    s = Settings(project_root=tmp_path, planner_backend="local_llm", local_llm_model_path=other_path, _env_file=None)
+    s = Settings(project_root=tmp_path, planner_backend="local_llm", local_llm_model_path=other_path)
     assert s.local_llm_model_path == other_path
 
 

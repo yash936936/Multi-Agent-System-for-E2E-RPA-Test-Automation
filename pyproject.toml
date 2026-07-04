@@ -23,10 +23,12 @@ dependencies = [
     "openpyxl>=3.1",     # Phase 15: Excel Adapter
     "paramiko>=3.4", 
     "boto3>=1.34",
+    "azure-storage-blob>=12.19",   # Phase 16: Azure adapter
+    "google-cloud-storage>=2.16",  # Phase 16: GCP adapter
+    "pymupdf>=1.24",               # Phase 16: PDF page rasterization for OCR fallback
     "fastapi>=0.110",
     "uvicorn>=0.29",
     "cryptography>=42.0",
-    "jinja2>=3.1",
     "python-multipart>=0.0.9",
     "PyJWT>=2.8",
 ]
@@ -51,7 +53,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["aura*", "orchestrator*", "agents*", "runtime*", "reports*", "config*"]
+include = ["aura*", "orchestrator*", "agents*", "runtime*", "reports*", "config*", "api*"]
 
 [tool.pytest.ini_options]
 # Only collect functions named test_* as tests; prevents pytest from trying

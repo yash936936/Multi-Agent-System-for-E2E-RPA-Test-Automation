@@ -1,13 +1,30 @@
 from fastapi import APIRouter, Depends
-from api.security import verify_api_key
 
-router = APIRouter(prefix="/api/v1/adapters", dependencies=[Depends(verify_api_key)])
+from api.security import require_role
+from orchestrator.capability_adapter import default_registry
+
+router = APIRouter(prefix="/api/v1/adapters", dependencies=[Depends(require_role(["admin", "executor", "viewer"]))])
+
+# Built once per process -- mirrors capability_router.py's own lazy /
+# cached registry, so this endpoint reports the adapters that are
+# actually registered and importable rather than a hardcoded list that
+# silently drifts from orchestrator/capability_adapter.py.
+_registry = None
+
+
+def _get_registry():
+    global _registry
+    if _registry is None:
+        _registry = default_registry()
+    return _registry
+
 
 @router.get("/status")
 async def adapter_status():
-    # In a real implementation, this would ping DBs, S3, etc.
+    registry = _get_registry()
     return {
-        "api": "healthy", "database": "healthy", "email": "healthy",
-        "file_system": "healthy", "excel": "healthy", "pdf_ocr": "healthy",
-        "cloud": "healthy", "workflow": "healthy"
+        "adapters": [
+            {"capability_type": t.value, "status": "registered"}
+            for t in registry.registered_types()
+        ]
     }

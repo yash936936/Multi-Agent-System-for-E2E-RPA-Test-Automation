@@ -120,14 +120,15 @@ def test_diagnose_low_confidence_fallback_for_unclassified_logs():
 # --------------------------------------------------------------------------
 
 def test_local_llm_backend_raises_clear_error_when_no_model_path_configured(monkeypatch):
+    from agents.planner import spec_generator
     from agents.planner.spec_generator import LocalLLMBackend, LocalLLMModelNotFoundError
-    from config.settings import settings
 
-    # LocalLLMBackend(model_path=None) falls back to the global `settings`
-    # singleton, which was already built from the real .env/env vars at
-    # import time -- monkeypatching os.environ here is too late to affect
-    # it. Patch the singleton's attribute directly for this test instead.
-    monkeypatch.setattr(settings, "local_llm_model_path", None)
+    # LocalLLMBackend(model_path=None) falls back to the global settings
+    # singleton -- force it clear here so this test doesn't depend on
+    # whether the machine running it happens to have a real bundled model
+    # (settings.local_llm_model_path is populated from .env/models/*.gguf
+    # at import time, independent of this test's tmp_path).
+    monkeypatch.setattr(spec_generator.settings, "local_llm_model_path", None)
 
     backend = LocalLLMBackend(model_path=None)
     with pytest.raises(LocalLLMModelNotFoundError, match="local_llm_model_path"):

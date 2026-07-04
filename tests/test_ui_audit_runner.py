@@ -166,3 +166,77 @@ def test_run_ui_audit_includes_baseline_page_issues(tmp_path, monkeypatch):
     report = run_ui_audit(provider, run_id="test-run")
 
     assert "404" in report.page_issues
+
+
+# --------------------------------------------------------------------------
+# run_exploration() -- the `aura explore` zero-instruction engine. Same
+# click-and-diff machinery as run_ui_audit() above, generalized to every
+# band (nav/hero/footer/body) instead of just nav/footer.
+# --------------------------------------------------------------------------
+
+def test_run_exploration_clicks_elements_from_every_band(tmp_path, monkeypatch):
+    from orchestrator.ui_audit_runner import run_exploration
+
+    def provider(run_id, index):
+        return _make_screenshot(tmp_path, f"shot_{index}.png", str(index).encode())
+
+    nav = [FakeLandmarkElement(text="Home", band="nav", looks_interactive=True)]
+    hero = [FakeLandmarkElement(text="Get Started", band="hero", looks_interactive=True)]
+    footer = [FakeLandmarkElement(text="Privacy", band="footer", looks_interactive=True)]
+    body = [FakeLandmarkElement(text="Learn More", band="body", looks_interactive=True)]
+    fake_landmarks = FakeLandmarks(nav_elements=nav, footer_elements=footer, hero_elements=hero, body_elements=body)
+
+    monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr("agents.vision.locator.locate_text", lambda path, text, **kw: FakeLocateResult(found=True))
+
+    import runtime.hooks.interact as real_interact
+
+    monkeypatch.setattr(real_interact, "click", lambda x, y: None)
+    monkeypatch.setattr(real_interact, "browser_back", lambda: None)
+
+    report = run_exploration(provider, run_id="explore-run")
+
+    # Unlike run_ui_audit (nav+footer only), all 4 bands should be checked.
+    checked_bands = {c.band for c in report.checked}
+    assert checked_bands == {"nav", "hero", "footer", "body"}
+
+
+def test_run_exploration_requirement_prompt_matches_relevant_text(tmp_path, monkeypatch):
+    from orchestrator.ui_audit_runner import run_exploration
+
+    def provider(run_id, index):
+        return _make_screenshot(tmp_path, f"shot_{index}.png", str(index).encode())
+
+    submit = [FakeLandmarkElement(text="Submit Order", band="body", looks_interactive=True)]
+    fake_landmarks = FakeLandmarks(nav_elements=[], footer_elements=[], body_elements=submit)
+
+    monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr("agents.vision.locator.locate_text", lambda path, text, **kw: FakeLocateResult(found=True))
+
+    import runtime.hooks.interact as real_interact
+
+    monkeypatch.setattr(real_interact, "click", lambda x, y: None)
+    monkeypatch.setattr(real_interact, "browser_back", lambda: None)
+
+    report = run_exploration(provider, run_id="explore-run", requirement_prompt="check the submit order button works")
+
+    assert report.requirement_match is True
+    assert report.requirement_notes
+
+
+def test_run_exploration_requirement_prompt_no_match_when_unrelated(tmp_path, monkeypatch):
+    from orchestrator.ui_audit_runner import run_exploration
+
+    def provider(run_id, index):
+        return _make_screenshot(tmp_path, f"shot_{index}.png", str(index).encode())
+
+    fake_landmarks = FakeLandmarks(nav_elements=[], footer_elements=[])
+    monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+
+    report = run_exploration(provider, run_id="explore-run", requirement_prompt="check the checkout flow works")
+
+    assert report.requirement_match is False
+    assert report.requirement_notes

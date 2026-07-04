@@ -19,7 +19,6 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from PIL import Image
-import re
 
 
 @dataclass
@@ -128,30 +127,13 @@ def locate_text(
     ocr = _ocr_data(image)
     lines = _group_lines(ocr)
 
-    def _normalize(s: str) -> str:
-        # Strip punctuation/extra whitespace so minor OCR noise (a stray
-        # period, an extra space, a misread trailing character) doesn't
-        # silently break the containment check below.
-        return re.sub(r"[^a-z0-9 ]", "", s.lower()).strip()
-
     target_norm = target_description.strip().lower()
-    target_clean = _normalize(target_description)
     best: tuple[dict, float] | None = None
     for line in lines:
-        ocr_text = line["text"].strip().lower()
-        ratio = SequenceMatcher(None, target_norm, ocr_text).ratio()
-        # Also credit partial containment (e.g. target "Login button,
-        # top-right" vs OCR "Login Button"). Boosted well above (not
-        # exactly equal to) config/settings.py's vision_confidence_threshold
-        # (0.75) -- previously this was hardcoded to precisely 0.75, which
-        # meant it sat exactly on the pass/fail gate with zero margin: any
-        # tiny OCR misread (different Tesseract build/version, font
-        # hinting/antialiasing differences) that broke the exact-substring
-        # match would silently fall back to the raw, much lower
-        # SequenceMatcher ratio and escalate for no real reason.
-        ocr_clean = _normalize(line["text"])
-        if ocr_clean and (ocr_clean in target_clean or target_clean in ocr_clean):
-            ratio = max(ratio, 0.9)
+        ratio = SequenceMatcher(None, target_norm, line["text"].strip().lower()).ratio()
+        # Also credit partial containment (e.g. target "Login button" vs OCR "Login")
+        if line["text"].strip().lower() in target_norm or target_norm in line["text"].strip().lower():
+            ratio = max(ratio, 0.75)
         if best is None or ratio > best[1]:
             best = (line, ratio)
 

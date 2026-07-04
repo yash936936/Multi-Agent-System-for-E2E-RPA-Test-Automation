@@ -12,30 +12,30 @@ This document describes the runtime sequence of agent interactions, coordinated 
       │
       ▼
 ┌──────────────────────┐
-│ 1. Orchestrator boots │  ← ingest doc, check skill memory for known patterns
-│& routes (Hermes Agent)│
+│ 1. Orchestrator boots     │  ← ingest doc, check skill memory for known patterns
+│    & routes (Hermes Agent) │
 └──────────┬────────────┘
            ▼
 ┌──────────────────────┐
-│ 2. Planner Agent     │  → Structured Test Spec
-└──────────┬───────────┘
+│ 2. Planner Agent          │  → Structured Test Spec
+└──────────┬────────────┘
            ▼
 ┌──────────────────────┐
-│ 3. Data Synth Agent  │  → Synthetic + edge-case test data
-└──────────┬───────────┘
+│ 3. Data Synth Agent       │  → Synthetic + edge-case test data
+└──────────┬────────────┘
            ▼
 ┌──────────────────────┐
-│ 4.Vision Execution Loop│  → per-step screenshot, interact, assert
+│ 4. Vision Execution Loop  │  → per-step screenshot, interact, assert
 └──────────┬────────────┘
            │  step fails?
            ▼ yes
 ┌──────────────────────┐
 │ 5. Self-Healing Sub-loop  │
-│(Planner + Orchestrator)│
+│    (Planner + Orchestrator)│
 └──────────┬────────────┘
            ▼
 ┌──────────────────────┐
-│ 6. Report Aggregation│  → HTML/PDF + skill library update
+│ 6. Report Aggregation      │  → HTML/PDF + skill library update
 └──────────────────────┘
 ```
 

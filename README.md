@@ -126,6 +126,52 @@ start reports\run_<run_id>\report.html
 
 ---
 
+## Autonomy modes: fully autonomous vs. human-in-the-loop
+
+AURA has two genuinely different modes now, not just "pauses more or less."
+
+### Mode A — fully autonomous, zero human input
+
+**`aura explore <url>`** is the purest form: point it at a URL with no spec and no instructions at all, and it behaves like a QA tester who's never seen the page before — navigates, scrolls the whole thing checking for broken/error content, finds every clickable-looking element via OCR (nav, hero, footer, *and* body — not just nav/footer like `--ui-audit`), clicks each one, checks whether anything visibly changed, comes back, and moves to the next one. No approval checkpoints, ever.
+
+```powershell
+# Zero instructions -- just explore and report back
+aura explore https://example.com
+
+# Same, but also flag whether a specific thing looks covered
+aura explore https://example.com --prompt "check the submit button works"
+
+# Cap how many elements it test-clicks (default 25)
+aura explore https://example.com --max-elements 40
+
+# Skip the full-page scroll/error scan, just do the click sweep
+aura explore https://example.com --no-scroll-scan
+```
+
+The `--prompt` check is a **keyword heuristic, not language understanding** — it looks for on-screen text overlapping words from your prompt among everything it saw while exploring, and says so explicitly in the output either way. Treat it as "here's what I noticed that might be relevant," not a verdict.
+
+`aura execute --yes` / `--autonomous` (the two flags do the same thing) is the other flavor of Mode A: fully unattended execution of a **written spec or `--prompt`-described flow**, as before — no spec-approval prompt, no low-confidence pause, no heal accept/reject. Use `explore` when you have no spec at all; use `execute --autonomous` when you do.
+
+### Mode B — human-in-the-loop, `aura execute --interactive`
+
+This is a different thing from "pauses to ask permission." In interactive mode, **AURA never acts on the target at all** — it opens `--url` (if given), then polls the live screen in a loop until it detects that *you* performed the described action, then verifies and reports. It does not time out by default (`--timeout 0`, the default, means wait indefinitely — matching "the execution should not stop until the human clicks").
+
+```powershell
+# Opens example.com, then waits (no timeout) for you to click Submit yourself
+aura execute --interactive --url https://example.com --prompt "click the submit button"
+
+# Same, but give up after 2 minutes if nothing happens
+aura execute --interactive --url https://example.com --prompt "click the submit button" --timeout 120
+```
+
+Under the hood this is a new step type, `WAIT_FOR_HUMAN_ACTION` (`orchestrator/schemas.py`), executed by `RunEngine.run_spec()`'s polling branch (`orchestrator/run_engine.py`) — it re-screenshots every `human_action_poll_interval_seconds` (default 2s, `config/settings.py`) and compares against the baseline, so it reacts as soon as you act rather than on a fixed timer.
+
+### The gap this closes (and what's still `--yes`-shaped elsewhere)
+
+Previously, `execute_prompt()` hardcoded `auto_approve=True` and `--yes` set it for every other path too — tracing the flow, `confirm_spec_approval`, `low_confidence_prompt`, and `confirm_heal_accept` were only ever called `if not auto_approve`, so a `--prompt` or `--yes` run genuinely never paused, start to finish. That's still true and is the *correct* behavior for Mode A — the actual gap wasn't "it doesn't wait for a human," it was that **AURA had no way to act like a professional QA tester with no explicit instructions at all** (give it one step, it does one step) and no way to **deliberately hand control to a human mid-run and wait for them**, rather than just skip a confirmation prompt. `aura explore` and `aura execute --interactive` are exactly those two missing pieces. A plain `aura execute <spec>` (no `--yes`/`--autonomous`/`--interactive`) still uses the original spec-approval / low-confidence / heal-accept checkpoints exactly as before — nothing about that path changed.
+
+---
+
 ## Full command reference
 
 ### `aura init`
@@ -151,6 +197,9 @@ aura execute --url https://example.com/login                     # no spec neede
 aura execute <test_id_or_path> --url https://example.com/login   # navigate there first, then run the spec's steps
 aura execute --prompt "Check the pricing page and verify the Sign Up button works"   # plain-English test, fully unattended
 aura execute --url https://example.com --scroll-test             # after the main run, scroll the full page checking for broken/error content
+aura execute <test_id_or_path> --autonomous                      # same as --yes -- explicit name for "no human input at all"
+aura execute --interactive --url https://example.com --prompt "click the submit button"              # human-in-the-loop: waits for you, no timeout
+aura execute --interactive --url https://example.com --prompt "click the submit button" --timeout 120 # same, but gives up after 2 minutes
 ```
 
 `<test_id_or_path>` can be:
@@ -158,9 +207,23 @@ aura execute --url https://example.com --scroll-test             # after the mai
 - A test ID that fuzzy-matches a filename or file contents under `requirements_input\`: `aura execute TC-LOGIN-FLOW-001`
 
 **Modes:**
-- **Interactive (default)** — prompts you to approve the generated spec before it runs, asks for confirmation on low-confidence vision actions, and asks you to accept/reject self-healed steps as they happen.
-- **`--yes` (unattended)** — auto-approves all of the above. Use this for scheduled/CI runs where no one is watching.
+- **Interactive-by-default (no flags)** — prompts you to approve the generated spec before it runs, asks for confirmation on low-confidence vision actions, and asks you to accept/reject self-healed steps as they happen. (Not to be confused with the `--interactive` *flag* below, which is a different, stronger mode — see "Autonomy modes" above.)
+- **`--yes` / `--autonomous` (unattended)** — auto-approves all of the above. Use this for scheduled/CI runs where no one is watching. Both flags do the same thing; `--autonomous` exists as an explicit, self-documenting name.
 - **`--prompt` (unattended by design)** — describe what to test in plain English instead of writing a spec file. No approval checkpoint, since there's no step list to review ahead of time.
+- **`--interactive` (human-in-the-loop)** — AURA doesn't act at all; it opens `--url` and waits, polling the screen, until you perform the `--prompt`-described action yourself, then verifies. No timeout by default. See "Autonomy modes" above for the full explanation and the `WAIT_FOR_HUMAN_ACTION` step type behind it.
+
+### `aura explore` (new)
+
+Fully autonomous, zero-instruction exploration — the other half of "Autonomy modes" above. No spec, no `--prompt` required:
+
+```powershell
+aura explore https://example.com                                        # navigate, scroll-scan, click everything, report
+aura explore https://example.com --prompt "check the submit button works"  # same, plus a best-effort check for something specific
+aura explore https://example.com --max-elements 40                      # raise the click cap (default 25)
+aura explore https://example.com --no-scroll-scan                       # skip the full-page error scan, just click things
+```
+
+Generalizes the same click-and-diff engine `--ui-audit` uses (`orchestrator/ui_audit_runner.py`) from "nav + footer only" to every interactive-looking element on the page (nav, hero, footer, body). Output is a terminal summary plus a JSON report under `reports\explore_<run_id>\report.json` — this mode doesn't (yet) produce an HTML report, since `render_html()` expects a full spec-driven run on disk and `explore` deliberately has neither a spec nor a `RunEngine` pass.
 
 ### Testing a live website
 
@@ -459,7 +522,7 @@ The target application must be visible and the screen unlocked while AURA runs �
 ## Running the test suite
 
 ```powershell
-python -m pytest -q      # full test suite (199 tests as of this doc revision)
+python -m pytest -q      # full test suite (205 tests as of this doc revision)
 ruff check .              # lint
 ```
 
@@ -501,5 +564,3 @@ Design/architecture documents (product requirements, technical architecture, age
 - [STATUS.md](./STATUS.md) — current build status, known gaps, closed items
 - [Roadmap.md](./Roadmap.md) — capability-adapter/service-layer phases (13–19), including known gaps in the API/service layer
 - [progress.md](./progress.md) — dated build log, newest entry first
-
----

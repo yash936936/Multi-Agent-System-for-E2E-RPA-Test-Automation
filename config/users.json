@@ -1,0 +1,8 @@
+{
+  "admin": {
+    "tenant_id": "default",
+    "role": "admin",
+    "salt": "1070f83142c190a22a01148480ae3045",
+    "hash": "afcdeb00f5c6c711f4ed4f56944db1db9865997f9b6a48f524d2ecf7879017f5"
+  }
+}

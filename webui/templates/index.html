@@ -2,40 +2,165 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>AURA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AURA — Universal QA Platform</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
 
-  <!-- Sidebar -->
-  <aside class="sidebar">
-    <div class="logo">AURA</div>
-    <nav>
-      <a href="#" class="nav-item active">Dashboard</a>
-      <a href="#" class="nav-item">Test Runs</a>
-      <a href="#" class="nav-item">Adapters</a>
-      <a href="#" class="nav-item">Settings</a>
-    </nav>
-  </aside>
+  <!-- Login Screen -->
+  <div id="login-screen" class="login-screen">
+    <div class="login-card">
+      <div class="login-logo">AURA</div>
+      <div class="login-sub">Universal QA Platform</div>
+      <form id="login-form">
+        <label class="field-label">Username</label>
+        <input type="text" id="login-username" class="input-pill" placeholder="admin" autocomplete="username" required>
+        <label class="field-label">Password</label>
+        <input type="password" id="login-password" class="input-pill" placeholder="********" autocomplete="current-password" required>
+        <div id="login-error" class="login-error"></div>
+        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+      </form>
+    </div>
+  </div>
 
-  <!-- Main Content -->
-  <main class="main-content">
-    <header class="header">
-      <h1>Good evening, Engineer</h1>
-      <div style="display: flex; gap: 16px; align-items: center;">
-        <input type="text" class="input-pill" placeholder="Search test runs, specs, or adapters...">
-        <button class="btn btn-primary" onclick="triggerNewRun()">New Run</button>
+  <!-- App Shell -->
+  <div id="app-shell" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="logo">AURA</div>
+      <nav>
+        <a href="#" class="nav-item active" data-view="dashboard"></a>
+        <a href="#" class="nav-item" data-view="runs"></a>
+        <a href="#" class="nav-item" data-view="adapters"></a>
+        <a href="#" class="nav-item" data-view="settings"></a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-chip">
+          <span class="icon-inline" id="user-icon"></span>
+          <span id="current-user">-</span>
+        </div>
+        <button class="nav-item logout-btn" id="logout-btn"></button>
       </div>
-    </header>
+    </aside>
 
-    <section>
-      <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 16px;">Recent Executions</h2>
-      <div class="grid" id="runs-grid">
-        <!-- Cards injected via JS -->
+    <main class="main-content">
+      <header class="header">
+        <div>
+          <h1 id="view-title">Dashboard</h1>
+          <div class="subtitle" id="view-subtitle">Real-time visibility into every run, adapter, and capability check.</div>
+        </div>
+        <div class="header-actions">
+          <div class="input-pill search-wrap">
+            <span class="icon-inline"></span>
+            <input type="text" id="search-input" placeholder="Search test runs, specs, or adapters...">
+          </div>
+          <button class="btn btn-secondary" id="refresh-btn"></button>
+          <button class="btn btn-primary" id="new-run-btn"></button>
+        </div>
+      </header>
+
+      <!-- Dashboard view -->
+      <section id="view-dashboard" class="view">
+        <div class="stat-grid" id="stat-grid"></div>
+
+        <div class="section-row">
+          <h2 class="section-title">Recent Executions</h2>
+        </div>
+        <div class="grid" id="runs-grid"></div>
+      </section>
+
+      <!-- Test Runs view -->
+      <section id="view-runs" class="view hidden">
+        <div class="section-row">
+          <h2 class="section-title">All Test Runs</h2>
+        </div>
+        <div class="grid" id="all-runs-grid"></div>
+      </section>
+
+      <!-- Adapters view -->
+      <section id="view-adapters" class="view hidden">
+        <div class="section-row">
+          <h2 class="section-title">Capability Adapters</h2>
+          <div class="section-meta">Live from the orchestrator's adapter registry -- not a hardcoded list.</div>
+        </div>
+        <div class="grid" id="adapters-grid"></div>
+      </section>
+
+      <!-- Settings view -->
+      <section id="view-settings" class="view hidden">
+        <div class="section-row">
+          <h2 class="section-title">Settings</h2>
+        </div>
+        <div class="settings-card">
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">Signed in as</div>
+              <div class="settings-value" id="settings-user">-</div>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">Tenant</div>
+              <div class="settings-value" id="settings-tenant">-</div>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">Role</div>
+              <div class="settings-value" id="settings-role">-</div>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">API base</div>
+              <div class="settings-value">/api/v1</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- New Run Modal -->
+  <div id="new-run-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>New Test Run</h3>
+        <button class="icon-btn" id="close-modal-btn"></button>
       </div>
-    </section>
-  </main>
+      <div class="modal-body">
+        <label class="field-label">Test name</label>
+        <input type="text" id="run-name-input" class="input-pill modal-input" placeholder="e.g. SAP PO Creation - Happy Path">
 
+        <div class="steps-header">
+          <span class="field-label" style="margin:0;">Steps</span>
+          <button class="btn btn-secondary btn-small" id="add-step-btn"></button>
+        </div>
+        <div id="steps-list"></div>
+
+        <div id="run-error" class="login-error"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-run-btn">Cancel</button>
+        <button class="btn btn-primary" id="submit-run-btn">Queue Run</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Run Detail Modal -->
+  <div id="run-detail-modal" class="modal-backdrop hidden">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h3 id="run-detail-title">Run Detail</h3>
+        <button class="icon-btn" id="close-detail-btn"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="run-detail-body" class="detail-pre"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/icons.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

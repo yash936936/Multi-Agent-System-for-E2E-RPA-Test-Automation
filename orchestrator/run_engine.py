@@ -19,11 +19,13 @@ Phase 18 Update:
 """
 from __future__ import annotations
 
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from agents.vision.assertions import check_assertion
+from config.settings import settings
 from orchestrator.guardrails import LoopGuardrail
 from orchestrator.healing_loop import HealingLoop
 from orchestrator.kernel import OrchestratorKernel, ToolRegistry
@@ -45,6 +47,7 @@ from orchestrator.schemas import (
     VisionStepInput,
 )
 from orchestrator.skill_store import SkillStore
+from runtime.hooks.capture import file_hash
 
 ScreenshotProvider = Callable[[str, int], str]  # (run_id, step_id) -> screenshot_path
 
@@ -65,6 +68,8 @@ class RunEngine:
         on_step_start: Optional[Callable[[int, TestStep], None]] = None,
         on_step_result: Optional[Callable[[int, TestStep, VisionActionResult], None]] = None,
         on_skill_learned: Optional[Callable[[int, SkillRecord], None]] = None,
+        on_waiting_for_human: Optional[Callable[[int, TestStep, float], None]] = None,
+        sleep_fn: Callable[[float], None] = time.sleep,
     ) -> None:
         self.screenshot_provider = screenshot_provider
         self.skill_store = skill_store or SkillStore()
@@ -72,11 +77,16 @@ class RunEngine:
         self.on_step_start = on_step_start
         self.on_step_result = on_step_result
         self.on_skill_learned = on_skill_learned
+        # Interactive mode: called on every poll tick of a
+        # WAIT_FOR_HUMAN_ACTION step (step_id, step, seconds_elapsed) so a
+        # CLI can render "waiting for you to click X... (12s)" without the
+        # engine itself knowing anything about terminals.
+        self.on_waiting_for_human = on_waiting_for_human
+        self._sleep = sleep_fn
         self.registry = ToolRegistry().load()
 
     def run(self, requirement_text: str, run_id: str | None = None) -> RunEngineResult:
         run_id = run_id or str(uuid.uuid4())[:8]
-        guardrail = LoopGuardrail()
         kernel = OrchestratorKernel(registry=self.registry, run_id=run_id)
 
         def call_tool(name: str, payload) -> Any:
@@ -91,7 +101,6 @@ class RunEngine:
 
         # --- Step 1: spec generation ---
         spec: TestSpec = call_tool("Planner.generate_spec", RequirementInput(requirement_text=requirement_text))
-        self.memory.start_run(run_id, spec.test_id)
 
         # --- Step 2: synthetic data ---
         data_record: SyntheticDataRecord | None = None
@@ -99,6 +108,36 @@ class RunEngine:
             data_record = call_tool(
                 "DataSynth.generate", DataRequirements(fields=spec.data_requirements, test_id=spec.test_id)
             )
+
+        return self.run_spec(spec, run_id=run_id, data_record=data_record, kernel=kernel, call_tool=call_tool)
+
+    def run_spec(
+        self,
+        spec: TestSpec,
+        run_id: str | None = None,
+        data_record: Optional[SyntheticDataRecord] = None,
+        kernel: Optional[OrchestratorKernel] = None,
+        call_tool: Optional[Callable[[str, Any], Any]] = None,
+    ) -> RunEngineResult:
+        """
+        Executes an already-built TestSpec directly, skipping Planner
+        entirely. This is `run()`'s actual execution loop, split out so
+        `aura explore` and `--interactive` mode can hand-assemble a spec
+        (e.g. a single WAIT_FOR_HUMAN_ACTION step from a typed instruction)
+        without needing the heuristic/LLM planner to understand it first.
+        """
+        run_id = run_id or str(uuid.uuid4())[:8]
+        guardrail = LoopGuardrail()
+        if kernel is None:
+            kernel = OrchestratorKernel(registry=self.registry, run_id=run_id)
+        if call_tool is None:
+            def call_tool(name: str, payload) -> Any:
+                response = kernel.call_tool(ToolCall(name=name, arguments=payload.model_dump(mode="json")))
+                if not response.ok:
+                    raise RuntimeError(f"tool call '{name}' failed: {response.error}")
+                return self.registry.get(name).output_schema.model_validate(response.result)
+
+        self.memory.start_run(run_id, spec.test_id)
 
         aggregator = ReportAggregator(run_id=run_id, total_steps=len(spec.steps))
         healing_loop = HealingLoop(
@@ -188,6 +227,68 @@ class RunEngine:
                 if self.on_step_result:
                     self.on_step_result(step.step_id, step, result)
                     
+                if not result.escalate:
+                    self.memory.mark_step_complete(run_id, step.step_id)
+                continue
+
+            if step.action == ActionType.WAIT_FOR_HUMAN_ACTION:
+                # Human-in-the-loop: no autonomous action here. Poll the
+                # live screen (same screenshot_provider as everything else
+                # -- it's a real capture in a live run, a fixture in tests)
+                # until it changes, then verify. This does NOT time out by
+                # default (human_action_timeout_seconds = 0) because the
+                # whole point of this mode is "wait for a person," not
+                # "wait up to N seconds and give up."
+                timeout = (
+                    step.human_action_timeout_seconds
+                    if step.human_action_timeout_seconds is not None
+                    else settings.human_action_timeout_seconds
+                )
+                poll_interval = settings.human_action_poll_interval_seconds
+
+                baseline_path = self.screenshot_provider(run_id, step.step_id)
+                baseline_hash = file_hash(baseline_path)
+
+                elapsed = 0.0
+                changed = False
+                latest_path = baseline_path
+                while True:
+                    if self.on_waiting_for_human:
+                        self.on_waiting_for_human(step.step_id, step, elapsed)
+                    self._sleep(poll_interval)
+                    elapsed += poll_interval
+
+                    latest_path = self.screenshot_provider(run_id, step.step_id)
+                    if file_hash(latest_path) != baseline_hash:
+                        changed = True
+                        break
+                    if timeout and elapsed >= timeout:
+                        break
+
+                if changed and step.expected_state:
+                    passed = check_assertion(latest_path, step.expected_state)
+                elif changed:
+                    # No specific expected_state given -- the instruction
+                    # was just "do the thing," and something visibly did
+                    # happen, so treat that as success rather than
+                    # guessing at an assertion that was never specified.
+                    passed = True
+                else:
+                    passed = False
+
+                result = VisionActionResult(
+                    step_id=step.step_id,
+                    action_taken="wait_for_human",
+                    confidence=1.0 if changed else 0.0,
+                    escalate=not passed,
+                    screenshot_ref=latest_path,
+                    assertion_passed=passed if changed else None,
+                )
+
+                aggregator.record_step_result(result)
+                if self.on_step_result:
+                    self.on_step_result(step.step_id, step, result)
+
                 if not result.escalate:
                     self.memory.mark_step_complete(run_id, step.step_id)
                 continue

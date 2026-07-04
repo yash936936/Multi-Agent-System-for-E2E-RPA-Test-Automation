@@ -11,6 +11,7 @@ path is exercised only when actually running against a target app.
 """
 from __future__ import annotations
 
+import hashlib
 import time
 from pathlib import Path
 
@@ -21,6 +22,12 @@ from config.settings import settings
 
 class NoDisplayError(RuntimeError):
     """Raised when a screenshot is requested but no display is available."""
+
+
+def file_hash(path: str | Path) -> str:
+    """SHA-256 of a file's bytes -- used to detect "did the screen change" without pixel-diffing."""
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
 
 
 def capture_screenshot(run_id: str, step_id: int, monitor: int = 1) -> Path:

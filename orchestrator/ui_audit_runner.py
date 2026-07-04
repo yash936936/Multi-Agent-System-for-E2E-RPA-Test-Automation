@@ -3,14 +3,21 @@ Comprehensive UI audit runner — orchestrator/ui_audit_runner.py
 
 The "check everything a professional QA tester would check by default"
 mode: classifies the page into nav/hero/footer (agents/vision/ui_audit.py),
-then test-clicks every interactive-looking element found in those bands
-(skipping the noisy body-text band, where "interactive-looking" heuristics
-produce too many false positives), checking whether the click produced any
-visible change. An element that produces zero visible change after being
-clicked is flagged as "possibly non-functional" -- not a hard failure
-(vision-only, no DOM access, so AURA can't be certain something is truly
-broken vs. just slow/animated), but exactly the kind of thing a human
-tester would flag for a second look.
+then test-clicks interactive-looking elements, checking whether the click
+produced any visible change. An element that produces zero visible change
+after being clicked is flagged as "possibly non-functional" -- not a hard
+failure (vision-only, no DOM access, so AURA can't be certain something is
+truly broken vs. just slow/animated), but exactly the kind of thing a
+human tester would flag for a second look.
+
+Two entry points, sharing one engine (`_run_click_audit`):
+  - run_ui_audit(): the existing `aura execute --ui-audit` behavior --
+    nav + footer bands only, folded into a regular spec-driven run's
+    HTML report.
+  - run_exploration(): `aura explore <url>` -- every interactive-looking
+    element on the page (nav + hero + footer + body), zero spec required.
+    This is the literal "give it a URL and it behaves like a QA tester
+    with no instructions" mode.
 
 Same guardrail philosophy as orchestrator/autoscan.py and
 orchestrator/guardrails.py: a hard cap on how many elements get clicked,
@@ -19,9 +26,10 @@ page."
 """
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass, field
 from typing import Callable
+
+from runtime.hooks.capture import file_hash
 
 ScreenshotProvider = Callable[[str, int], str]  # (run_id, index) -> screenshot_path
 
@@ -41,6 +49,14 @@ class UIAuditReport:
     has_footer: bool
     checked: list[ClickCheckResult] = field(default_factory=list)
     page_issues: list[str] = field(default_factory=list)
+    # Populated only by run_exploration() when a --prompt requirement was
+    # given -- a best-effort, disclosed-as-heuristic note on whether any
+    # checked element/page text appears to satisfy it. This is a keyword
+    # match, not real language understanding; see run_exploration()'s
+    # docstring for exactly what it can and can't tell you.
+    requirement_prompt: str | None = None
+    requirement_match: bool | None = None
+    requirement_notes: list[str] = field(default_factory=list)
 
     @property
     def possibly_broken(self) -> list[ClickCheckResult]:
@@ -51,15 +67,12 @@ class UIAuditReport:
         return [c for c in self.checked if not c.clicked]
 
 
-def _hash_file(path: str) -> str:
-    with open(path, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()
-
-
-def run_ui_audit(
+def _run_click_audit(
     screenshot_provider: ScreenshotProvider,
     run_id: str,
-    max_elements: int = 12,
+    max_elements: int,
+    band_filter: Callable[["object"], bool],
+    requirement_prompt: str | None = None,
 ) -> UIAuditReport:
     from agents.vision.locator import locate_text
     from agents.vision.page_health import detect_page_issues
@@ -67,26 +80,23 @@ def run_ui_audit(
 
     baseline_path = screenshot_provider(run_id, 8000)
     landmarks = audit_screenshot(baseline_path)
-    baseline_hash = _hash_file(baseline_path)
+    baseline_hash = file_hash(baseline_path)
 
     report = UIAuditReport(
         has_nav=landmarks.has_nav,
         has_hero=landmarks.has_hero,
         has_footer=landmarks.has_footer,
         page_issues=detect_page_issues(baseline_path),
+        requirement_prompt=requirement_prompt,
     )
 
-    # Only test nav + footer elements live-clicking -- hero CTAs are
-    # frequently the same as a nav item (e.g. "Sign Up" appears in both),
-    # and clicking body-band "interactive-looking" text is where the
-    # heuristic false-positive rate is highest. This keeps the audit
-    # focused on the landmarks explicitly called out in the feature
-    # request (nav, footer) rather than clicking everything indiscriminately.
-    candidates = (landmarks.nav_elements + landmarks.footer_elements)
-    candidates = [e for e in candidates if e.looks_interactive][:max_elements]
+    all_elements = landmarks.nav_elements + landmarks.hero_elements + landmarks.footer_elements + landmarks.body_elements
+    candidates = [e for e in all_elements if e.looks_interactive and band_filter(e)][:max_elements]
 
     from runtime.hooks import interact
     from runtime.hooks.interact import NoDisplayError
+
+    all_seen_text: list[str] = [e.text for e in all_elements]
 
     for i, element in enumerate(candidates):
         result = locate_text(baseline_path, element.text)
@@ -101,10 +111,15 @@ def run_ui_audit(
             continue
 
         after_path = screenshot_provider(run_id, 8100 + i)
-        after_hash = _hash_file(after_path)
+        after_hash = file_hash(after_path)
         state_changed = after_hash != baseline_hash
         report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=True, state_changed=state_changed))
         report.page_issues.extend(issue for issue in detect_page_issues(after_path) if issue not in report.page_issues)
+
+        after_landmarks = audit_screenshot(after_path)
+        all_seen_text.extend(
+            e.text for e in (after_landmarks.nav_elements + after_landmarks.hero_elements + after_landmarks.footer_elements + after_landmarks.body_elements)
+        )
 
         # Best-effort return to the original page before testing the next
         # element -- if this fails (no display, or the shortcut doesn't
@@ -116,4 +131,76 @@ def run_ui_audit(
         except NoDisplayError:
             pass
 
+    if requirement_prompt:
+        report.requirement_match, report.requirement_notes = _check_requirement_prompt(
+            requirement_prompt, all_seen_text, report
+        )
+
     return report
+
+
+def _check_requirement_prompt(prompt: str, seen_text: list[str], report: UIAuditReport) -> tuple[bool, list[str]]:
+    """
+    Heuristic, keyword-level check of whether the exploration run appears
+    to have covered a specific requirement (e.g. "check that clicking
+    Sign Up opens a form"). This is deliberately conservative and
+    disclosed as a heuristic in every place it's surfaced (CLI output,
+    HTML report) -- it is NOT semantic understanding of the prompt, just
+    a signal for "did anything relevant get touched."
+    """
+    prompt_words = {w.strip(".,!?").lower() for w in prompt.split() if len(w) > 3}
+    seen_lower = " ".join(seen_text).lower()
+    matched_words = sorted(w for w in prompt_words if w in seen_lower)
+
+    notes: list[str] = []
+    if matched_words:
+        notes.append(
+            f"Found on-screen text overlapping the request ({', '.join(matched_words[:6])}) -- "
+            "review the click log above to confirm the relevant element was actually exercised."
+        )
+    else:
+        notes.append(
+            "No on-screen text overlapping the request was found during exploration -- "
+            "the described element/flow may not exist on this page, or may use different wording."
+        )
+
+    matched = bool(matched_words) and not report.possibly_broken
+    return matched, notes
+
+
+def run_ui_audit(
+    screenshot_provider: ScreenshotProvider,
+    run_id: str,
+    max_elements: int = 12,
+) -> UIAuditReport:
+    """Existing `--ui-audit` behavior: nav + footer bands only."""
+    return _run_click_audit(
+        screenshot_provider,
+        run_id,
+        max_elements,
+        band_filter=lambda e: e.band in ("nav", "footer"),
+    )
+
+
+def run_exploration(
+    screenshot_provider: ScreenshotProvider,
+    run_id: str,
+    max_elements: int = 25,
+    requirement_prompt: str | None = None,
+) -> UIAuditReport:
+    """
+    `aura explore <url>` -- the zero-instruction mode. Every
+    interactive-looking element on the page (nav, hero, footer, and body)
+    is a candidate, up to `max_elements`, instead of just nav/footer.
+    This is the same click-and-diff engine as run_ui_audit(), generalized
+    per the "explore" feature request: no spec, no target description,
+    just a URL and (optionally) a plain-English requirement to keep an
+    eye out for while exploring.
+    """
+    return _run_click_audit(
+        screenshot_provider,
+        run_id,
+        max_elements,
+        band_filter=lambda e: True,
+        requirement_prompt=requirement_prompt,
+    )

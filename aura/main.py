@@ -18,7 +18,7 @@ from __future__ import annotations
 import typer
 from rich.console import Console
 
-from aura.cli import debug_cmd, execute_cmd, init_cmd, preflight, schedule_cmd, skills_cmd
+from aura.cli import debug_cmd, execute_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd
 from config.settings import settings
 
 console = Console()
@@ -41,16 +41,27 @@ def init(
 def execute(
     test_id: str = typer.Argument(None, help="Test spec ID or requirement file to execute, e.g. TC-LOGIN-FLOW-001"),
     all: bool = typer.Option(False, "--all", help="Execute every requirement doc in requirements_input/"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Auto-approve spec, low-confidence actions, and healed steps (unattended mode)."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Auto-approve spec, low-confidence actions, and healed steps (unattended mode). Alias: --autonomous."),
+    autonomous: bool = typer.Option(False, "--autonomous", help="Same as --yes -- explicit name for Mode A (no human input at all). See README 'Autonomy modes'."),
     refresh_data: bool = typer.Option(False, "--refresh-data", help="Force-regenerate synthetic data instead of reusing the cache."),
     pdf: bool = typer.Option(False, "--pdf", help="Also export the report as PDF (requires the 'report' extra)."),
     url: str = typer.Option(None, "--url", help="Live website URL to test."),
-    prompt: str = typer.Option(None, "--prompt", help='Plain-English instruction for what to test, e.g. --prompt "Check the pricing page and verify the Sign Up button works". Runs fully unattended.'),
+    prompt: str = typer.Option(None, "--prompt", help='Plain-English instruction for what to test, e.g. --prompt "Check the pricing page and verify the Sign Up button works". Runs fully unattended unless combined with --interactive.'),
     scroll_test: bool = typer.Option(False, "--scroll-test", help="After the main steps, scroll the full page top-to-bottom checking for broken/error content, unattended."),
     ui_audit: bool = typer.Option(False, "--ui-audit", help="Comprehensive UI audit: checks nav, hero section, and footer are present, and test-clicks nav/footer links to flag anything that produces no visible change."),
+    interactive: bool = typer.Option(False, "--interactive", help='Mode B (human-in-the-loop): AURA does not act. It opens --url (if given) and waits, polling the screen, until you perform the action described by --prompt yourself -- no timeout by default. See README "Autonomy modes".'),
+    timeout: int = typer.Option(0, "--timeout", help="Only used with --interactive: give up after this many seconds if nothing changes. 0 (default) means wait indefinitely."),
 ) -> None:
     """Execute a test: approval checkpoint -> live vision-execution loop -> report."""
     preflight.run_preflight_or_exit()
+    auto_approve = yes or autonomous
+
+    if interactive:
+        if not prompt:
+            console.print('[red]--interactive requires --prompt "<what to wait for>".[/red]')
+            raise typer.Exit(code=1)
+        execute_cmd.execute_interactive(prompt, url=url, timeout=timeout)
+        return
 
     if prompt:
         # --prompt is inherently unattended: the person described intent in
@@ -66,17 +77,34 @@ def execute(
             raise typer.Exit(code=1)
         for path in targets:
             console.print(f"\n=== {path.name} ===")
-            execute_cmd.execute_test(str(path), auto_approve=yes, refresh_data=refresh_data, export_pdf=pdf, url=url, scroll_test=scroll_test, ui_audit=ui_audit)
+            execute_cmd.execute_test(str(path), auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf, url=url, scroll_test=scroll_test, ui_audit=ui_audit)
         return
 
     if not test_id:
         if url:
-            execute_cmd.execute_url(url, auto_approve=yes, refresh_data=refresh_data, export_pdf=pdf, scroll_test=scroll_test, ui_audit=ui_audit)
+            execute_cmd.execute_url(url, auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf, scroll_test=scroll_test, ui_audit=ui_audit)
             return
         console.print("[red]Provide a test_id/requirement file, or pass --all, --url, or --prompt.[/red]")
         raise typer.Exit(code=1)
 
-    execute_cmd.execute_test(test_id, auto_approve=yes, refresh_data=refresh_data, export_pdf=pdf, url=url, scroll_test=scroll_test, ui_audit=ui_audit)
+    execute_cmd.execute_test(test_id, auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf, url=url, scroll_test=scroll_test, ui_audit=ui_audit)
+
+
+@app.command()
+def explore(
+    url: str = typer.Argument(..., help="URL to explore with zero instructions -- Mode A's purest form: no spec, no --prompt required."),
+    max_elements: int = typer.Option(25, "--max-elements", help="Cap on how many detected clickable elements to test-click."),
+    prompt: str = typer.Option(None, "--prompt", help='Optional plain-English thing to keep an eye out for while exploring, e.g. --prompt "check the submit button works". Best-effort keyword match, not a guarantee -- see README.'),
+    no_scroll_scan: bool = typer.Option(False, "--no-scroll-scan", help="Skip the full-page scroll/error scan before clicking elements."),
+) -> None:
+    """
+    Fully autonomous exploration: give it a URL, nothing else. AURA
+    navigates, scrolls the whole page, finds every clickable-looking
+    element via OCR, clicks each one, checks nothing broke, and reports
+    back -- no spec file, no --prompt required, zero human input.
+    """
+    preflight.run_preflight_or_exit()
+    explore_cmd.explore(url, max_elements=max_elements, prompt=prompt, scroll_scan=not no_scroll_scan)
 
 
 @app.command()

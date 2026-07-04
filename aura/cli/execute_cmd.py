@@ -147,6 +147,77 @@ def execute_url(
     )
 
 
+def execute_interactive(
+    prompt: str,
+    url: str | None = None,
+    timeout: int = 0,
+) -> None:
+    """
+    `aura execute --interactive --prompt "<instruction>"` -- Mode 2,
+    human-in-the-loop. Unlike every other execute_* path in this file,
+    AURA does not act here: it opens the target (if --url given), then
+    polls the live screen in a loop (RunEngine.run_spec's
+    WAIT_FOR_HUMAN_ACTION branch) until it detects that *you* performed
+    the described action, then verifies and reports. This does not stop
+    early just because nothing happened for a while -- `timeout=0` (the
+    default) means it waits indefinitely, matching the actual feature
+    request ("the execution should not stop until the human clicks").
+    """
+    import uuid
+
+    from orchestrator.run_engine import RunEngine
+    from orchestrator.schemas import ActionType, TestSpec, TestStep
+
+    console = live_view.console
+    run_id = f"interactive_{uuid.uuid4().hex[:8]}"
+
+    steps: list[TestStep] = []
+    if url:
+        from runtime.hooks.browser import normalize_url
+
+        normalized = normalize_url(url)
+        steps.append(TestStep(step_id=1, action=ActionType.NAVIGATE_URL, url=normalized))
+
+    steps.append(
+        TestStep(
+            step_id=len(steps) + 1,
+            action=ActionType.WAIT_FOR_HUMAN_ACTION,
+            target_description=prompt,
+            human_action_timeout_seconds=timeout or None,
+        )
+    )
+
+    spec = TestSpec(test_id=f"TC-INTERACTIVE-{run_id.upper()}", requirement_ref="human-in-the-loop", steps=steps)
+
+    console.print(f"[bold]Waiting for you: {prompt}[/bold]")
+    if url:
+        console.print(f"Target: {url}")
+    console.print(
+        "AURA will not act on its own -- perform the action yourself; it's watching the screen and will "
+        "verify as soon as it detects a change." + ("" if timeout == 0 else f" Giving up after {timeout}s if nothing changes.")
+    )
+    console.print("[dim]Press Ctrl+C to cancel.[/dim]\n")
+
+    def on_waiting(step_id: int, step: TestStep, elapsed: float) -> None:
+        console.print(f"[dim]  still waiting... ({elapsed:.0f}s)[/dim]")
+
+    engine = RunEngine(
+        screenshot_provider=_make_screenshot_provider(live=True),
+        on_waiting_for_human=on_waiting,
+    )
+
+    result = engine.run_spec(spec, run_id=run_id)
+    final = result.report
+
+    if final.escalated_steps == 0:
+        console.print("\n[green]Detected the change and it checks out — verified.[/green]")
+    else:
+        reason = "nothing changed before the timeout" if timeout else "the assertion didn't pass after the change"
+        console.print(f"\n[yellow]Not verified — {reason}.[/yellow]")
+
+    console.print(f"Screenshots saved under runtime/screenshots/run_{run_id}/ for manual review.")
+
+
 def execute_test(
     test_id: str,
     auto_approve: bool = False,

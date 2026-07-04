@@ -1,0 +1,8 @@
+{"timestamp": "2026-07-04T14:41:03.050693+00:00", "tenant_id": "t1", "user_id": "u1", "action": "CREATE_RUN", "resource": "06ddbc4d-c65a-4e2e-9edb-44b20a06fc77", "details": {"spec_name": "unknown"}}
+{"timestamp": "2026-07-04T16:19:06.318592+00:00", "tenant_id": "default", "user_id": "admin", "action": "CREATE_RUN", "resource": "59e4cfef-90ec-47d9-9923-1dbbeda51702", "details": {"spec_name": "Fake capability smoke test"}}
+{"timestamp": "2026-07-04T16:19:11.291730+00:00", "tenant_id": "default", "user_id": "admin", "action": "CREATE_RUN", "resource": "0a608230-a4d0-4b01-9caa-6d23b96ebaaa", "details": {"spec_name": "Fake capability smoke test"}}
+{"timestamp": "2026-07-04T16:22:22.685244+00:00", "tenant_id": "default", "user_id": "admin", "action": "CREATE_RUN", "resource": "9aa6d511-67e9-47e9-b6d8-274ab42d84b0", "details": {"spec_name": "Fake capability smoke test"}}
+{"timestamp": "2026-07-04T16:23:22.827723+00:00", "tenant_id": "default", "user_id": "admin", "action": "CREATE_RUN", "resource": "80f35323-4e72-4262-adb0-54ebc41a51b9", "details": {"spec_name": "Fake capability smoke test"}}
+{"timestamp": "2026-07-04T21:11:39.258715+00:00", "tenant_id": "default", "user_id": "admin", "action": "CREATE_RUN", "resource": "276a3d49-ea87-4cc5-84b0-c02711ac2776", "details": {"spec_name": "Smoke test"}}
+{"timestamp": "2026-07-04T21:12:00.133962+00:00", "tenant_id": "default", "user_id": "admin", "action": "CREATE_RUN", "resource": "7b12d5c9-01ec-4c73-b961-71c47a5342a1", "details": {"spec_name": "Smoke test 2"}}
+{"timestamp": "2026-07-04T21:12:14.196503+00:00", "tenant_id": "default", "user_id": "admin", "action": "CREATE_RUN", "resource": "4f2c1126-5dac-4c9d-83b1-24dd4fe2c2d2", "details": {"spec_name": "Fake capability smoke test"}}

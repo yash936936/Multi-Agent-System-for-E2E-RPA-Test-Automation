@@ -9,6 +9,32 @@ project: AURA
 
 ---
 
+## 2026-07-04 (later same day) — Two new autonomy modes: `aura explore` and `--interactive`
+
+**What happened:**
+- Built the two genuinely-missing autonomy modes identified in review, rather than the much larger "27-adapter enterprise platform" ask that would need real external systems to test against responsibly:
+  1. **`aura explore <url>`** (new command) — give it a URL and nothing else; it navigates, runs the existing full-page scroll/error scan (`orchestrator/autoscan.py`), then clicks every interactive-looking element it can find via OCR across *all* landmark bands (nav/hero/footer/body), not just nav/footer like `--ui-audit`. Generalized `orchestrator/ui_audit_runner.py`'s click-and-diff engine into a shared `_run_click_audit()` used by both the existing `run_ui_audit()` (nav+footer, unchanged behavior) and the new `run_exploration()` (all bands). Added an optional `--prompt` on `explore` for a best-effort keyword-heuristic check against everything seen during exploration — explicitly disclosed as a heuristic in its own output (`_check_requirement_prompt()`), not sold as understanding.
+  2. **`aura execute --interactive`** (new flag) — human-in-the-loop mode. New `ActionType.WAIT_FOR_HUMAN_ACTION` step type; `RunEngine.run()` was split into `run()` (Planner + DataSynth) and a new public `run_spec(spec, ...)` (the execution loop alone), so interactive mode can hand-build a two-step spec (optional navigate + one wait-for-human step) and skip the planner entirely. The new branch in `run_spec()` polls the live screen every `settings.human_action_poll_interval_seconds` (default 2s) via the same `screenshot_provider` callback everything else uses, comparing a SHA-256 hash against the baseline, until it changes or an optional `--timeout` elapses (`0`, the default, means wait indefinitely — matches the actual request that execution "should not stop until the human clicks"). Added a `runtime/hooks/capture.py::file_hash()` helper shared by both this and `ui_audit_runner.py` (previously duplicated as a private `_hash_file()`).
+  3. **`--autonomous`** added as an explicit, self-documenting alias for `--yes`, so the two modes have clearly distinct names (`--autonomous` vs `--interactive`) instead of one obvious flag and one implicit default.
+- **Investigated, then explicitly did not silently "fix," the `auto_approve=True` hardcoding** flagged in review (`execute_prompt()` always unattended, `confirm_spec_approval`/`low_confidence_prompt`/`confirm_heal_accept` only ever called `if not auto_approve`). Confirmed by tracing the code that this is correct behavior for a `--prompt`/`--yes` run, not a bug — there's no per-step list to approve when the person described intent in plain English. The real, previously-missing capability was "act with no instructions at all" (now `explore`) and "deliberately wait for a human mid-run" (now `--interactive`), which is what got built. Documented this reasoning explicitly in README.md's new "Autonomy modes" section rather than leaving it implicit, per the explicit ask to call this out separately.
+- Added 8 new tests: `tests/test_human_in_the_loop.py` (3 tests covering the WAIT_FOR_HUMAN_ACTION polling branch — pass-on-change, escalate-on-timeout, on_waiting_for_human callback ticks) and 3 additions to `tests/test_ui_audit_runner.py` covering `run_exploration()` (all-bands clicking, prompt match, prompt no-match). `run_engine.py`'s refactor (`run()`/`run_spec()` split) required no test changes since `run()`'s public signature/behavior is unchanged.
+- Full suite: **205/205 passing** (up from 199 before this session's feature work), `pyflakes` clean on all new/changed files.
+
+**What changed:**
+- New files: `aura/cli/explore_cmd.py`, `tests/test_human_in_the_loop.py`.
+- Modified: `orchestrator/schemas.py` (`ActionType.WAIT_FOR_HUMAN_ACTION`, `TestStep.human_action_timeout_seconds`, `VisionActionResult.action_taken` literal), `config/settings.py` (`human_action_poll_interval_seconds`, `human_action_timeout_seconds`), `orchestrator/run_engine.py` (`run()`/`run_spec()` split, new polling branch, `on_waiting_for_human` callback, `sleep_fn` for testability), `orchestrator/ui_audit_runner.py` (generalized into `_run_click_audit()` + `run_ui_audit()`/`run_exploration()`), `runtime/hooks/capture.py` (`file_hash()` helper), `aura/cli/execute_cmd.py` (`execute_interactive()`), `aura/main.py` (`explore` command, `--interactive`/`--autonomous`/`--timeout` flags on `execute`), `tests/test_ui_audit_runner.py`.
+- Docs: `README.md` (new "Autonomy modes" section + command-reference updates), `STATUS.md` (new section for this pass).
+
+**Known limitations, disclosed rather than hidden:**
+- `aura explore` doesn't produce an HTML report — `reports/render.py::render_html()` expects a full spec-driven `RunReport` persisted on disk, and `explore` deliberately has neither a spec nor a `RunEngine` pass. Output is terminal + a JSON file under `reports/explore_<run_id>/report.json`. Folding this into the HTML pipeline is a reasonable follow-up, not done here to avoid reshaping `report.html`'s schema as a side effect.
+- The `--prompt` requirement check on `explore` is a keyword-overlap heuristic (shared words between the prompt and everything seen on screen), not semantic understanding — it says so in its own output every time, including on a match, not just a miss.
+- `--interactive` mode's spec is hand-built (navigate + one wait step) rather than routed through the Planner, so it doesn't support multi-step interactive flows in this pass — one instruction, one wait, one verification per invocation. Chaining multiple `--interactive` steps in one spec is a natural extension, not built here.
+
+**What should happen next:**
+- Consider folding `explore`'s findings into the same HTML report template `--ui-audit` already uses, now that both share the same underlying `UIAuditReport` shape.
+- Consider allowing `--interactive` to appear as a step type inside a written spec file (not just the CLI's synthesized two-step version), for specs that mix autonomous and human-in-the-loop steps.
+
+
 ## 2026-07-04 — Full debug-QA-finalize pass on the capability-adapter/service-layer code, then doc reconciliation
 
 **What happened:**
