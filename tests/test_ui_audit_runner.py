@@ -240,3 +240,95 @@ def test_run_exploration_requirement_prompt_no_match_when_unrelated(tmp_path, mo
 
     assert report.requirement_match is False
     assert report.requirement_notes
+
+
+def test_run_exploration_runs_real_link_check_when_page_url_given(tmp_path, monkeypatch):
+    """
+    Regression test: previously `aura explore <url>` had no way to
+    actually verify footer links, since the click-and-diff engine can't
+    tell a broken link (that still renders some page) from a working one.
+    When page_url is passed, run_exploration must additionally call the
+    real HTTP-based LinkCheckAdapter and surface its result.
+    """
+    from orchestrator.ui_audit_runner import run_exploration
+    from orchestrator.schemas import CapabilityCheckResult, CapabilityType
+
+    def provider(run_id, index):
+        return _make_screenshot(tmp_path, f"shot_{index}.png", str(index).encode())
+
+    fake_landmarks = FakeLandmarks(nav_elements=[], footer_elements=[])
+    monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+
+    captured = {}
+
+    class FakeLinkCheckAdapter:
+        capability_type = CapabilityType.LINK_CHECK
+
+        def run(self, payload):
+            captured["target"] = payload.target
+            captured["scope"] = payload.params.get("scope")
+            return CapabilityCheckResult(
+                capability=CapabilityType.LINK_CHECK,
+                passed=False,
+                confidence=1.0,
+                evidence={
+                    "checked": 3,
+                    "broken_count": 1,
+                    "broken_links": [{"url": "https://example.com/services/x", "status_code": 404, "ok": False}],
+                    "message": "1 of 3 link(s) in scope='footer' are broken.",
+                },
+                escalate=False,
+            )
+
+    monkeypatch.setattr("agents.capability.link_checker.LinkCheckAdapter", FakeLinkCheckAdapter)
+
+    report = run_exploration(
+        provider,
+        run_id="explore-run",
+        page_url="https://example.com",
+        link_check_scope="footer",
+    )
+
+    assert captured["target"] == "https://example.com"
+    assert captured["scope"] == "footer"
+    assert report.link_check_result is not None
+    assert report.link_check_result["broken_count"] == 1
+
+
+def test_run_exploration_defaults_link_check_scope_to_all(tmp_path, monkeypatch):
+    """
+    Regression test: `link_check_scope` was previously hardcoded to
+    "footer" both here (as a default) and at the `aura explore` CLI call
+    site, so nav/body links were silently never HTTP-checked even though
+    the click-and-diff loop above already covers every band. Omitting
+    `link_check_scope` entirely must now check every link on the page.
+    """
+    from orchestrator.ui_audit_runner import run_exploration
+    from orchestrator.schemas import CapabilityCheckResult, CapabilityType
+
+    def provider(run_id, index):
+        return _make_screenshot(tmp_path, f"shot_{index}.png", str(index).encode())
+
+    fake_landmarks = FakeLandmarks(nav_elements=[], footer_elements=[])
+    monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+
+    captured = {}
+
+    class FakeLinkCheckAdapter:
+        capability_type = CapabilityType.LINK_CHECK
+
+        def run(self, payload):
+            captured["scope"] = payload.params.get("scope")
+            return CapabilityCheckResult(
+                capability=CapabilityType.LINK_CHECK, passed=True, confidence=1.0,
+                evidence={"checked": 0, "broken_count": 0, "message": ""}, escalate=False,
+            )
+
+    monkeypatch.setattr("agents.capability.link_checker.LinkCheckAdapter", FakeLinkCheckAdapter)
+
+    # No link_check_scope passed at all.
+    run_exploration(provider, run_id="explore-run", page_url="https://example.com")
+
+    assert captured["scope"] == "all"

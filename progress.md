@@ -9,6 +9,33 @@ project: AURA
 
 ---
 
+## 2026-07-05 — Link-check fix: default scope, redirect visibility, client-rendered-page detection
+
+**What happened:**
+- User ran `aura explore` against a real deployed site (`personal-portfolio-yashmalik.vercel.app`) and got "No navigable `<a href>` links found in scope='footer'" even though the page clearly has content. Root-caused to two separate, real bugs rather than one:
+  1. **Scope hardcoded to `"footer"` at two call sites** — `orchestrator/ui_audit_runner.py::run_exploration()`'s default (`link_check_scope or "footer"`) and `aura/cli/explore_cmd.py`'s explicit `link_check_scope="footer"` — even though `LinkCheckAdapter` itself already defaulted to `"all"` internally. This meant `aura explore` (which is supposed to check *everything*, per its own design) was silently only ever HTTP-checking footer links, regardless of how many nav/body links existed. Fixed both defaults to `"all"`, and exposed it as a new `--link-scope` CLI flag (default `"all"`) instead of a bare hardcode, so `footer`/`nav`-only checks are still available on request.
+  2. **Client-rendered (SPA) pages have a real, previously-undisclosed coverage gap.** AURA's link checker fetches raw HTML over plain HTTP with no JS execution (by the same "no DOM automation" design as the rest of the vision pipeline) — if a page's links are injected by React/Next.js/Angular after the initial load, they're not in the HTML AURA sees, and "no links found" looked identical to "nothing to check here," which is misleading. Added `_looks_client_rendered()` (`agents/capability/link_checker.py`), a marker-based heuristic (`id="root"`, `id="__next"`, `ng-version`, etc.) that fires specifically on the zero-links case and adds an explicit, disclosed explanation to the result instead of a bare miss.
+- Also addressed the related ask ("check internal transfer redirects too"): `_check_one()` now captures httpx's `resp.history` and reports the full redirect chain (each hop's status code and target, plus the final URL) for every redirected link, rather than silently following redirects and reporting only the end state.
+- Did **not** add a headless-browser rendering step (e.g. Playwright) to actually execute JS and see SPA-injected links — that's a real architecture decision (new heavy dependency, changes AURA's "screenshot + OCR, no DOM/browser automation" posture) that deserves an explicit call, not something to silently bundle into a bug-fix pass. Flagged as the natural next step if JS-rendered link coverage is wanted.
+- Live-verified against the actual reported URL where possible; the sandbox's network egress allowlist blocked `personal-portfolio-yashmalik.vercel.app` directly, so verification instead used a synthetic Next.js-shell HTML fixture (`id="__next"`, zero anchors) in `tests/test_link_checker.py`, which exercises the identical code path.
+- 4 new tests added (`tests/test_link_checker.py`: default-scope-is-all, redirect-chain reporting, client-rendered detection; `tests/test_ui_audit_runner.py`: `run_exploration()` defaults to `"all"` when `link_check_scope` isn't passed). Full suite: **244/244 passing** (up from 240 before this fix), `pyflakes` clean.
+
+**What changed:**
+- `agents/capability/link_checker.py` — redirect-chain capture in `_check_one()`, `_looks_client_rendered()` heuristic + honest message on the zero-links path, `redirected_count`/`redirected_links` added to top-level evidence.
+- `orchestrator/ui_audit_runner.py` — default `link_check_scope` fixed from `"footer"` to `"all"`, docstring updated.
+- `aura/cli/explore_cmd.py` — `link_scope` parameter (was a hardcoded `"footer"` literal), output now labels the check with its actual scope instead of a hardcoded "Footer link check" header, surfaces redirect chains and the client-rendered notice.
+- `aura/main.py` — new `--link-scope` flag on `aura explore` (default `"all"`).
+- `tests/test_link_checker.py`, `tests/test_ui_audit_runner.py` — new regression tests (above).
+- `README.md` — new paragraph under `aura explore` documenting `--link-scope`, redirect visibility, and the disclosed client-rendered-page limitation.
+
+**Known limitations, disclosed rather than hidden:**
+- JS-rendered links on client-rendered pages are still not checkable without a headless-browser render step — the fix here is *detecting and honestly reporting* that gap, not closing it.
+- The client-rendered heuristic is marker-based (a small set of common root-element IDs/attributes) and will miss frameworks that don't use one of those markers, or false-negative on hybrid SSR/CSR pages that do have some server-rendered anchors alongside JS-injected ones.
+
+**What should happen next:**
+- Decide whether headless-browser rendering (Playwright) is worth adding as an opt-in, heavier-dependency mode for sites where JS-injected link coverage actually matters — a real product decision, not bundled into this fix.
+
+
 ## 2026-07-04 (later same day) — Two new autonomy modes: `aura explore` and `--interactive`
 
 **What happened:**

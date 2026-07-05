@@ -182,7 +182,9 @@ def test_create_run_autonomous_full_exploration_uses_ui_audit_engine(client, mon
     import api.routers.runs as runs_module
     from orchestrator.ui_audit_runner import ClickCheckResult, UIAuditReport
 
-    def fake_run_exploration(provider, run_id, max_elements=25, requirement_prompt=None):
+    def fake_run_exploration(
+        provider, run_id, max_elements=25, requirement_prompt=None, page_url=None, link_check_scope=None
+    ):
         return UIAuditReport(
             has_nav=True,
             has_hero=False,

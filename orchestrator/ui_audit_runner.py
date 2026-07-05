@@ -57,6 +57,14 @@ class UIAuditReport:
     requirement_prompt: str | None = None
     requirement_match: bool | None = None
     requirement_notes: list[str] = field(default_factory=list)
+    # Real, HTTP-level link verification (agents/capability/link_checker.py),
+    # populated only when run_exploration() is given a `link_check_scope`.
+    # Deliberately separate from `checked` (the OCR click-and-diff list):
+    # a click-and-diff check on a broken link that still renders SOME page
+    # (e.g. a custom 404 template) looks identical to a working navigation,
+    # so it can't reliably answer "does this link's target actually
+    # resolve" the way a real HTTP status check can.
+    link_check_result: dict | None = None
 
     @property
     def possibly_broken(self) -> list[ClickCheckResult]:
@@ -187,6 +195,8 @@ def run_exploration(
     run_id: str,
     max_elements: int = 25,
     requirement_prompt: str | None = None,
+    page_url: str | None = None,
+    link_check_scope: str | None = None,
 ) -> UIAuditReport:
     """
     `aura explore <url>` -- the zero-instruction mode. Every
@@ -196,11 +206,38 @@ def run_exploration(
     per the "explore" feature request: no spec, no target description,
     just a URL and (optionally) a plain-English requirement to keep an
     eye out for while exploring.
+
+    page_url / link_check_scope: when page_url is provided, this also runs
+    a real HTTP-level link check (agents/capability/link_checker.py) --
+    not just the OCR click-and-diff heuristic above -- scoped to
+    link_check_scope ("footer" | "nav" | "all", default "all" whenever
+    page_url is given, so every navigable link on the page gets a real
+    status check, not just the footer). This is the decisive, real-status
+    -code answer to "are the links actually working," which click-and-diff
+    alone can't reliably give (see UIAuditReport.link_check_result's
+    docstring).
     """
-    return _run_click_audit(
+    report = _run_click_audit(
         screenshot_provider,
         run_id,
         max_elements,
         band_filter=lambda e: True,
         requirement_prompt=requirement_prompt,
     )
+
+    if page_url:
+        from agents.capability.link_checker import LinkCheckAdapter
+        from orchestrator.schemas import CapabilityCheckInput
+
+        adapter = LinkCheckAdapter()
+        result = adapter.run(
+            CapabilityCheckInput(
+                capability=adapter.capability_type,
+                target=page_url,
+                params={"scope": link_check_scope or "all"},
+                expected={},
+            )
+        )
+        report.link_check_result = result.evidence
+
+    return report

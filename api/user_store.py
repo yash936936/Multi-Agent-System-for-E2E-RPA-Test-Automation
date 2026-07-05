@@ -119,19 +119,33 @@ class UserStore:
     ) -> dict:
         """
         Looks up a user previously linked to `provider`, or creates one on
-        first login via that provider. OAuth-linked accounts have no local
-        password (oauth_provider is set, salt/hash are absent) so `verify()`
-        deliberately refuses to authenticate them via the password path.
+        first login via that provider.
+
+        SECURITY: OAuth identities are namespaced as "{provider}:{username}"
+        (e.g. "github:yash"), never the bare username. Previously this used
+        the bare username as the lookup/storage key, which meant an OAuth
+        identity could collide with an unrelated local password-based
+        account of the same name -- e.g. a local admin account "yash" would
+        be silently handed over (tenant_id, role, and all) to anyone who
+        controls a GitHub account also named "yash", with no password
+        check at all. Namespacing makes that collision structurally
+        impossible: "github:yash" can never equal the local key "yash".
         """
         self._ensure_seeded()
+        key = f"{provider}:{username}"
         with self._lock:
             users = self._load()
-            record = users.get(username)
+            record = users.get(key)
             if record is None:
-                record = {"tenant_id": tenant_id, "role": role, "oauth_provider": provider}
-                users[username] = record
+                record = {"tenant_id": tenant_id, "role": role, "oauth_provider": provider, "oauth_username": username}
+                users[key] = record
                 self._save(users)
-        return {"tenant_id": record["tenant_id"], "role": record["role"], "user_id": username}
+            elif record.get("oauth_provider") != provider:
+                # Defense in depth: even under the namespaced scheme this
+                # should be unreachable, but never hand back a record that
+                # wasn't actually created for this provider.
+                raise ValueError(f"Account key '{key}' exists but is not a {provider} OAuth account")
+        return {"tenant_id": record["tenant_id"], "role": record["role"], "user_id": key}
 
 
 user_store = UserStore()

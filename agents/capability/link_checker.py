@@ -98,6 +98,19 @@ def _extract_links(html: str, base_url: str, scope: str) -> list[dict]:
     return links
 
 
+# Telltale root-element markers left behind by client-side frameworks even
+# after JS has rendered content into them -- present in the raw (JS-free)
+# HTML AURA actually fetches, which is exactly the case where "no <a href>
+# found" doesn't mean "no links," it means "this page's links don't exist
+# until a browser runs JavaScript that AURA's plain HTTP fetch never runs."
+_SPA_ROOT_MARKERS = ('id="root"', "id='root'", 'id="__next"', "id='__next'", "id=\"app\"", "id='app'", "ng-version")
+
+
+def _looks_client_rendered(html: str) -> bool:
+    lowered = html.lower()
+    return any(marker.lower() in lowered for marker in _SPA_ROOT_MARKERS)
+
+
 def _check_one(client: httpx.Client, url: str) -> dict:
     try:
         resp = client.head(url, follow_redirects=True, timeout=10.0)
@@ -106,9 +119,26 @@ def _check_one(client: httpx.Client, url: str) -> dict:
         # Retry with GET before concluding the link is actually broken.
         if resp.status_code == 405:
             resp = client.get(url, follow_redirects=True, timeout=10.0)
-        return {"url": url, "status_code": resp.status_code, "ok": 200 <= resp.status_code < 400, "error": None}
+        # httpx populates resp.history with every intermediate redirect
+        # response when follow_redirects=True -- surface that chain
+        # explicitly rather than silently landing on the final URL, so a
+        # link that "works" only because it got 301'd somewhere else
+        # entirely is visible, not indistinguishable from a direct hit.
+        redirect_chain = [
+            {"status_code": r.status_code, "from_url": str(r.url), "to_url": r.headers.get("location", "")}
+            for r in resp.history
+        ]
+        return {
+            "url": url,
+            "status_code": resp.status_code,
+            "ok": 200 <= resp.status_code < 400,
+            "error": None,
+            "redirected": bool(redirect_chain),
+            "final_url": str(resp.url) if redirect_chain else None,
+            "redirect_chain": redirect_chain,
+        }
     except httpx.RequestError as e:
-        return {"url": url, "status_code": None, "ok": False, "error": str(e)}
+        return {"url": url, "status_code": None, "ok": False, "error": str(e), "redirected": False, "final_url": None, "redirect_chain": []}
 
 
 class LinkCheckAdapter:
@@ -141,6 +171,17 @@ class LinkCheckAdapter:
                     # meaningful, reportable finding (e.g. "footer" scope
                     # but the page has no <footer> element at all), not a
                     # silent pass.
+                    client_rendered = _looks_client_rendered(page_resp.text)
+                    message = f"No navigable <a href> links found in scope='{scope}' on this page."
+                    if client_rendered:
+                        message += (
+                            " This page looks client-rendered (React/Next.js/Angular-style root element detected) "
+                            "-- if its links/footer are injected by JavaScript after load, a plain HTTP fetch "
+                            "genuinely can't see them; AURA's link checker reads only the server-delivered HTML, "
+                            "by the same no-DOM-automation design as the rest of the vision pipeline. This is a "
+                            "real coverage limit, not a false pass -- a headless-browser render step would be "
+                            "needed to check JS-injected links, which AURA does not currently do."
+                        )
                     return CapabilityCheckResult(
                         capability=self.capability_type,
                         passed=False,
@@ -149,7 +190,8 @@ class LinkCheckAdapter:
                             "url": url,
                             "scope": scope,
                             "checked": 0,
-                            "message": f"No navigable <a href> links found in scope='{scope}' on this page.",
+                            "client_rendered_suspected": client_rendered,
+                            "message": message,
                         },
                         escalate=False,
                     )
@@ -162,6 +204,7 @@ class LinkCheckAdapter:
             return self._fail(f"Could not reach {url}: {e}")
 
         broken = [r for r in results if not r["ok"]]
+        redirected = [r for r in results if r["redirected"]]
         passed = len(broken) == 0
 
         evidence = {
@@ -170,6 +213,8 @@ class LinkCheckAdapter:
             "checked": len(results),
             "broken_count": len(broken),
             "broken_links": broken,
+            "redirected_count": len(redirected),
+            "redirected_links": redirected,
             "all_results": results,
             "message": (
                 f"All {len(results)} link(s) in scope='{scope}' resolved successfully."

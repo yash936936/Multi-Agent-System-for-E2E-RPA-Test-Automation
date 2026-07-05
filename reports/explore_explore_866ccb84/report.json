@@ -1,0 +1,104 @@
+{
+  "run_id": "explore_866ccb84",
+  "url": "https://personal-portfolio-yashmalik.vercel.app/",
+  "prompt": null,
+  "has_nav": true,
+  "has_hero": true,
+  "has_footer": true,
+  "checked": [
+    {
+      "label": "Creative minds",
+      "band": "hero",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "Legal notice",
+      "band": "footer",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "Mostly cloudy",
+      "band": "footer",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "BE Q Search",
+      "band": "footer",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "SmenannmaerGse",
+      "band": "footer",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "SERVICES STUDIO",
+      "band": "body",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "Full-Stack Web Apps About",
+      "band": "body",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "Deployment & Infrastructure Contact",
+      "band": "body",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "ELSEWHERE",
+      "band": "body",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "GitHub",
+      "band": "body",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "LinkedIn",
+      "band": "body",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "Xx",
+      "band": "body",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "GET IN TOUCH",
+      "band": "body",
+      "clicked": true,
+      "state_changed": true
+    },
+    {
+      "label": "Delhi NCR, India",
+      "band": "body",
+      "clicked": true,
+      "state_changed": true
+    }
+  ],
+  "page_issues": [],
+  "requirement_match": null,
+  "requirement_notes": [],
+  "link_check_result": {
+    "url": "https://personal-portfolio-yashmalik.vercel.app/",
+    "scope": "all",
+    "checked": 0,
+    "client_rendered_suspected": true,
+    "message": "No navigable <a href> links found in scope='all' on this page. This page looks client-rendered (React/Next.js/Angular-style root element detected) -- if its links/footer are injected by JavaScript after load, a plain HTTP fetch genuinely can't see them; AURA's link checker reads only the server-delivered HTML, by the same no-DOM-automation design as the rest of the vision pipeline. This is a real coverage limit, not a false pass -- a headless-browser render step would be needed to check JS-injected links, which AURA does not currently do."
+  }
+}

@@ -42,6 +42,7 @@ def explore(
     max_elements: int = 25,
     prompt: str | None = None,
     scroll_scan: bool = True,
+    link_scope: str = "all",
 ) -> None:
     """
     Autonomous exploration: navigate to `url`, then click every
@@ -87,7 +88,14 @@ def explore(
 
     from orchestrator.ui_audit_runner import run_exploration
 
-    report = run_exploration(provider, run_id=run_id, max_elements=max_elements, requirement_prompt=prompt)
+    report = run_exploration(
+        provider,
+        run_id=run_id,
+        max_elements=max_elements,
+        requirement_prompt=prompt,
+        page_url=normalized,
+        link_check_scope=link_scope,
+    )
 
     landmarks_found = [label for label, present in (("nav", report.has_nav), ("hero section", report.has_hero), ("footer", report.has_footer)) if present]
     if landmarks_found:
@@ -105,6 +113,23 @@ def explore(
     if report.page_issues:
         console.print(f"\n[yellow]Page scan flagged: {', '.join(report.page_issues)}[/yellow]")
 
+    if report.link_check_result:
+        lc = report.link_check_result
+        scope_label = lc.get("scope", link_scope)
+        console.print(f"\n[bold]Link check[/bold] (scope='{scope_label}', real HTTP status, not just click-and-diff):")
+        if lc.get("error"):
+            console.print(f"  [yellow]{lc['error']}[/yellow]")
+        else:
+            console.print(f"  {lc.get('message', '')}")
+            if lc.get("client_rendered_suspected"):
+                console.print("  [yellow]This page appears to be client-rendered -- see the message above for what that means for link coverage.[/yellow]")
+            for broken in lc.get("broken_links", []):
+                status = broken.get("status_code") or broken.get("error") or "unreachable"
+                console.print(f"  [red]✗ {broken['url']} — {status}[/red]")
+            for redirect in lc.get("redirected_links", []):
+                chain = " -> ".join(hop["to_url"] or "?" for hop in redirect.get("redirect_chain", []))
+                console.print(f"  [dim]↪ {redirect['url']} redirected ({redirect.get('status_code')}) via {chain or 'unknown chain'} -> {redirect.get('final_url')}[/dim]")
+
     if prompt:
         console.print(f"\n[bold]Requested check:[/bold] \"{prompt}\"")
         for note in report.requirement_notes:
@@ -114,7 +139,8 @@ def explore(
         else:
             console.print("[yellow]Doesn't look covered — see notes above.[/yellow]")
 
-    if not report.possibly_broken and not report.page_issues:
+    link_check_clean = not report.link_check_result or not report.link_check_result.get("broken_links")
+    if not report.possibly_broken and not report.page_issues and link_check_clean:
         console.print("\n[green]Exploration clean — no non-functional elements or error indicators found.[/green]")
 
     out_dir = settings.reports_dir / f"explore_{run_id}"
@@ -133,6 +159,7 @@ def explore(
                 "page_issues": report.page_issues,
                 "requirement_match": report.requirement_match,
                 "requirement_notes": report.requirement_notes,
+                "link_check_result": report.link_check_result,
             },
             indent=2,
         ),

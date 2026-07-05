@@ -172,11 +172,19 @@ def execute_full_exploration_run(tenant_id: str, run_id: str, target: str, promp
         def provider(rid: str, index: int) -> str:
             return str(capture_screenshot(rid, index))
 
-        audit = run_exploration(provider, run_id=run_id, max_elements=max_elements, requirement_prompt=prompt or None)
+        audit = run_exploration(
+            provider,
+            run_id=run_id,
+            max_elements=max_elements,
+            requirement_prompt=prompt or None,
+            page_url=target,
+            link_check_scope="footer",
+        )
 
         broken = [c.__dict__ for c in audit.possibly_broken]
         unreachable = [c.__dict__ for c in audit.unreachable]
-        status = "failed" if (broken or audit.page_issues) else "passed"
+        link_check_broken = bool(audit.link_check_result and audit.link_check_result.get("broken_links"))
+        status = "failed" if (broken or audit.page_issues or link_check_broken) else "passed"
 
         report = {
             "run_id": run_id,
@@ -193,6 +201,7 @@ def execute_full_exploration_run(tenant_id: str, run_id: str, target: str, promp
             "requirement_prompt": audit.requirement_prompt,
             "requirement_match": audit.requirement_match,
             "requirement_notes": audit.requirement_notes,
+            "link_check_result": audit.link_check_result,
             "duration_seconds": round(time.time() - started, 2),
         }
         run_store.update(run_id, status=status, report=report)

@@ -21,6 +21,19 @@ class SecretVault:
     def _ensure_key(self):
         if not self.key_path.exists():
             self.key_path.write_bytes(Fernet.generate_key())
+        self._restrict_permissions()
+
+    def _restrict_permissions(self):
+        # This file is the JWT signing secret -- anyone who can read it can
+        # forge an admin token. Default file creation permissions (subject
+        # to umask, commonly 0644) leave it group/world-readable on POSIX
+        # systems. Restrict to owner read/write only. No-op on platforms
+        # without POSIX chmod semantics (e.g. Windows), where NTFS ACLs
+        # already default to the owning user.
+        try:
+            self.key_path.chmod(0o600)
+        except (NotImplementedError, OSError):
+            pass
 
     def _load_key(self):
         return self.key_path.read_bytes()

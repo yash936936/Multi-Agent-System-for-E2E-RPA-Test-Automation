@@ -221,9 +221,14 @@ aura explore https://example.com                                        # naviga
 aura explore https://example.com --prompt "check the submit button works"  # same, plus a best-effort check for something specific
 aura explore https://example.com --max-elements 40                      # raise the click cap (default 25)
 aura explore https://example.com --no-scroll-scan                       # skip the full-page error scan, just click things
+aura explore https://example.com --link-scope footer                    # restrict the real HTTP link check to just <footer> links
 ```
 
 Generalizes the same click-and-diff engine `--ui-audit` uses (`orchestrator/ui_audit_runner.py`) from "nav + footer only" to every interactive-looking element on the page (nav, hero, footer, body). Output is a terminal summary plus a JSON report under `reports\explore_<run_id>\report.json` — this mode doesn't (yet) produce an HTML report, since `render_html()` expects a full spec-driven run on disk and `explore` deliberately has neither a spec nor a `RunEngine` pass.
+
+**Real HTTP link check (`agents/capability/link_checker.py`):** alongside the OCR click-and-diff loop, `explore` also fetches the page's raw HTML and issues a real HTTP status check against every navigable `<a href>` link — `--link-scope` controls which ones (`all` by default, or `footer`/`nav`). Two things worth knowing about how this works:
+- **Redirects are shown, not hidden.** A link that 301/302-redirects somewhere else still counts as "working" (its final destination is what matters), but the redirect chain — every hop's status code and target — is reported explicitly rather than silently landing on the final URL and looking identical to a direct hit.
+- **Client-rendered (React/Next.js/Angular) pages have a real, disclosed coverage limit.** AURA's link check reads the raw HTML returned by a plain HTTP request — the same "no DOM automation" posture as the rest of the vision pipeline — so if a page's links are injected by JavaScript after load rather than present in the server-delivered HTML, they genuinely won't be found. When this happens, the report says so explicitly (`client_rendered_suspected: true` in the JSON output, plus a plain-English explanation in the terminal) instead of looking like a clean pass with nothing to check. Actually checking JS-injected links would require a headless-browser render step (e.g. Playwright), which AURA does not currently do — this is flagged as a known limitation, not silently worked around.
 
 ### Testing a live website
 
