@@ -168,3 +168,55 @@ def test_create_run_autonomous_mode_no_longer_crashes_on_spec_generation(client)
     if body["status"] == "failed":
         assert "TestSpec must contain at least one step" not in (body.get("error") or "")
         assert "Planner.generate_spec" not in (body.get("error") or "")
+
+
+def test_create_run_autonomous_full_exploration_uses_ui_audit_engine(client, monkeypatch):
+    # Regression test: previously `mode: "autonomous"` on the web API
+    # *always* went through Planner.generate_spec, and the real
+    # click-every-nav/hero/footer/body-element engine
+    # (orchestrator/ui_audit_runner.run_exploration) was only reachable
+    # from `aura explore` on the CLI. `full_exploration: true` should
+    # route to that engine instead, and the resulting report should
+    # reflect a UI-audit shape (checked element counts / broken list),
+    # not a spec/step-based RunReport.
+    import api.routers.runs as runs_module
+    from orchestrator.ui_audit_runner import ClickCheckResult, UIAuditReport
+
+    def fake_run_exploration(provider, run_id, max_elements=25, requirement_prompt=None):
+        return UIAuditReport(
+            has_nav=True,
+            has_hero=False,
+            has_footer=True,
+            checked=[
+                ClickCheckResult(label="Home", band="nav", clicked=True, state_changed=True),
+                ClickCheckResult(label="Contact", band="footer", clicked=True, state_changed=False),
+            ],
+            page_issues=[],
+        )
+
+    monkeypatch.setattr(runs_module, "execute_full_exploration_run", runs_module.execute_full_exploration_run)
+    monkeypatch.setattr("orchestrator.ui_audit_runner.run_exploration", fake_run_exploration)
+    monkeypatch.setattr("runtime.hooks.browser.open_url", lambda *a, **k: None)
+    monkeypatch.setattr("runtime.hooks.capture.capture_screenshot", lambda rid, idx: "unused.png")
+
+    token = _login(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    spec = {
+        "mode": "autonomous",
+        "test_name": "Full explore",
+        "target": "https://example.com",
+        "full_exploration": True,
+    }
+    resp = client.post("/api/v1/test-runs/", json=spec, headers=headers)
+    assert resp.status_code == 200, resp.text
+    run_id = resp.json()["run_id"]
+
+    get_resp = client.get(f"/api/v1/test-runs/{run_id}", headers=headers)
+    body = get_resp.json()
+    assert body["status"] == "failed"  # one element had no visible change after click
+    report = body["report"]
+    assert report["mode"] == "full_exploration"
+    assert report["total_elements_checked"] == 2
+    assert len(report["possibly_broken"]) == 1
+    assert report["possibly_broken"][0]["label"] == "Contact"

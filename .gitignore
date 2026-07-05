@@ -4,9 +4,9 @@ runtime/screenshots/*
 runtime/data_cache/*
 !runtime/data_cache/.gitkeep
 
-orchestrator/memory/*.db
+orchestrator/memory_store/*.db
 orchestrator/skills_store/*.db
-!orchestrator/memory/.gitkeep
+!orchestrator/memory_store/.gitkeep
 !orchestrator/skills_store/.gitkeep
 
 reports/run_*/

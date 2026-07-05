@@ -73,7 +73,16 @@ class Settings(BaseSettings):
 
     @property
     def memory_dir(self) -> Path:
-        return self.project_root / "orchestrator" / "memory"
+        # NOTE: intentionally NOT named "memory" -- orchestrator/memory.py is a
+        # module in this same package, and a directory literally named
+        # "memory" sitting next to it creates a module/package name collision
+        # (orchestrator/memory.py vs orchestrator/memory/). Which one Python's
+        # FileFinder picks depends on filesystem directory-entry order, which
+        # differs between OSes -- this is why `from orchestrator.memory
+        # import RunMemoryStore` worked on some machines and raised
+        # ImportError on others (e.g. Windows). Keep this directory name
+        # distinct from any sibling module name.
+        return self.project_root / "orchestrator" / "memory_store"
 
     @property
     def requirements_input_dir(self) -> Path:
