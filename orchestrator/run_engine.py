@@ -213,12 +213,19 @@ class RunEngine:
                     else:
                         break  # Diagnoser couldn't find a fix
 
-                # Construct the final VisionActionResult for the aggregator
+                # Construct the final VisionActionResult for the aggregator.
+                # escalate reflects the adapter's own uncertainty signal
+                # (cap_result.escalate), not just "did it fail" -- a
+                # capability like LINK_CHECK is fully deterministic (a real
+                # HTTP status code, not a fuzzy vision confidence score), so
+                # a broken link is a clean, decisive assertion_passed=False
+                # ("flag it, show it in the report") rather than an
+                # ambiguous "escalated, needs human review."
                 result = VisionActionResult(
                     step_id=step.step_id,
                     action_taken="capability_check",
                     confidence=cap_result.confidence if cap_result else 0.0,
-                    escalate=not (cap_result.passed if cap_result else False),
+                    escalate=cap_result.escalate if cap_result else True,
                     assertion_passed=cap_result.passed if cap_result else False,
                     capability_result=cap_result,
                 )

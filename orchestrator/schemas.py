@@ -72,6 +72,7 @@ class CapabilityType(str, Enum):
     GCP_STORAGE = "gcp_storage"  # Phase 16b
     SHAREPOINT = "sharepoint"  # Phase 16b
     CHAT_OPS = "chat_ops"  # Phase 16b — Teams/Slack rich messages
+    LINK_CHECK = "link_check"  # Real HTTP-status link validation (footer/nav/all <a href> targets)
 
 # --------------------------------------------------------------------------
 # 4.1 Test Spec (Planner output)

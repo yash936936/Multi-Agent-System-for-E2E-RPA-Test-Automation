@@ -75,6 +75,7 @@ def default_registry() -> CapabilityAdapterRegistry:
     from agents.capability.gcp_adapter import GcpStorageAdapter
     from agents.capability.sharepoint_adapter import SharePointAdapter
     from agents.capability.chatops_adapter import ChatOpsAdapter
+    from agents.capability.link_checker import LinkCheckAdapter
 
     registry = CapabilityAdapterRegistry()
     registry.register(FakeAdapter())
@@ -88,6 +89,7 @@ def default_registry() -> CapabilityAdapterRegistry:
     registry.register(WorkflowAdapter())
     registry.register(AzureBlobAdapter())
     registry.register(GcpStorageAdapter())
+    registry.register(LinkCheckAdapter())
     registry.register(SharePointAdapter())
     registry.register(ChatOpsAdapter())
     return registry

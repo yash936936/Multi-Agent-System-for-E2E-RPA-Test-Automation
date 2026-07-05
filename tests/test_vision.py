@@ -148,7 +148,7 @@ def test_execute_step_navigate_url_missing_url_escalates(tmp_dir: Path):
     assert result.escalate is True
 
 
-def test_execute_step_navigate_url_no_display_does_not_escalate(tmp_dir: Path, monkeypatch):
+def test_execute_step_navigate_url_no_display_escalates(tmp_dir: Path, monkeypatch):
     import runtime.hooks.browser as browser_hook
 
     def raise_no_display(url, wait_seconds=2.5, new_window=False):
@@ -161,5 +161,10 @@ def test_execute_step_navigate_url_no_display_does_not_escalate(tmp_dir: Path, m
     payload = VisionStepInput(step=step, screenshot_path=str(path))
 
     result = execute_step(payload)
-    assert result.action_taken == "navigate"
-    assert result.escalate is False
+    # Previously this asserted action_taken == "navigate" / escalate is
+    # False -- i.e. it encoded the bug (a browser that never actually
+    # opened was reported as a successful navigation) as correct
+    # behavior. Fixed: no display means navigation could not be
+    # confirmed, so the step must escalate rather than lie about success.
+    assert result.action_taken == "none"
+    assert result.escalate is True

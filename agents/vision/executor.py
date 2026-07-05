@@ -52,10 +52,21 @@ def execute_step(payload: VisionStepInput) -> VisionActionResult:
                 screenshot_ref=payload.screenshot_path,
             )
         except BrowserNoDisplayError:
-            # No live display/browser (headless/test environment) -- same
-            # posture as the click/type NoDisplayError handling below: the
-            # step itself is well-formed, dispatch just can't happen here.
-            pass
+            # No live display/browser (e.g. running headless on a server).
+            # Previously this was silently swallowed and the step was
+            # unconditionally reported as a successful navigation
+            # (confidence=1.0, escalate=False) -- meaning a run could
+            # report "passed" with zero actual navigation ever having
+            # happened, and nothing downstream could tell the difference.
+            # Report it honestly as escalated/unconfirmed instead so the
+            # report reflects reality rather than a guaranteed false pass.
+            return VisionActionResult(
+                step_id=step.step_id,
+                action_taken="none",
+                confidence=0.0,
+                escalate=True,
+                screenshot_ref=payload.screenshot_path,
+            )
 
         return VisionActionResult(
             step_id=step.step_id,

@@ -9,6 +9,7 @@ from agents.planner.parser import parse_requirement_file
 from agents.planner.spec_generator import generate_spec
 from orchestrator.schemas import (
     ActionType,
+    CapabilityType,
     DiagnosisInput,
     FixType,
     RequirementInput,
@@ -320,3 +321,43 @@ def test_generate_spec_bare_domain_without_scheme_falls_back_instead_of_crashing
     assert len(spec.steps) == 1
     assert spec.steps[0].action == ActionType.ASSERT
     assert spec.steps[0].expected_state == "page_loaded"
+
+
+def test_generate_spec_footer_link_check_request_produces_real_link_check_step():
+    # Regression test for the exact bug reported against the API: an
+    # autonomous run with prompt "check if the footer sections service
+    # links are working properly or not" against a real target URL
+    # previously matched none of the click/type/assert patterns and
+    # silently degraded to a single implicit "assert page_loaded" step --
+    # meaning the run never checked a single link and reported "passed"
+    # regardless of whether anything was actually broken. It must now
+    # produce a real CAPABILITY_CHECK(LINK_CHECK) step scoped to the
+    # footer, in addition to the navigate step.
+    text = (
+        "Target: https://example.com/\n\n"
+        "I want you to check if the footer sections service links are working properly or not"
+    )
+    spec = generate_spec(RequirementInput(requirement_text=text))
+
+    assert spec.steps[0].action == ActionType.NAVIGATE_URL
+    link_steps = [s for s in spec.steps if s.action == ActionType.CAPABILITY_CHECK]
+    assert len(link_steps) == 1
+    assert link_steps[0].capability_type == CapabilityType.LINK_CHECK
+    assert link_steps[0].capability_params["url"] == "https://example.com/"
+    assert link_steps[0].capability_params["scope"] == "footer"
+
+
+def test_generate_spec_nav_link_check_scope_detected():
+    text = "Target: https://example.com/\n\nPlease verify the nav bar links are not broken."
+    spec = generate_spec(RequirementInput(requirement_text=text))
+    link_steps = [s for s in spec.steps if s.action == ActionType.CAPABILITY_CHECK]
+    assert len(link_steps) == 1
+    assert link_steps[0].capability_params["scope"] == "nav"
+
+
+def test_generate_spec_generic_link_check_defaults_to_all_scope():
+    text = "Target: https://example.com/\n\nCheck that all links on the page are working."
+    spec = generate_spec(RequirementInput(requirement_text=text))
+    link_steps = [s for s in spec.steps if s.action == ActionType.CAPABILITY_CHECK]
+    assert len(link_steps) == 1
+    assert link_steps[0].capability_params["scope"] == "all"

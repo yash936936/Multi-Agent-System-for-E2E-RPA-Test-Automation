@@ -31,6 +31,7 @@ from config.settings import settings
 from orchestrator.schemas import (
     ActionType,
     AssertionType,
+    CapabilityType,
     RequirementInput,
     TestSpec,
     TestStep,
@@ -71,6 +72,13 @@ _NAVIGATE_PATTERNS = [
     # so no NAVIGATE_URL step was ever produced.
     re.compile(r"^\s*target\s*:\s*(https?://\S+)", re.IGNORECASE | re.MULTILINE),
 ]
+_LINK_CHECK_PATTERN = re.compile(
+    r"\b(links?|buttons?)\b.{0,40}\b(working|functional|broken|valid|active|clickable|not\s+working)\b"
+    r"|\b(broken|dead)\s+links?\b"
+    r"|\bcheck\b.{0,40}\blinks?\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_LINK_SCOPE_PATTERN = re.compile(r"\b(footer|nav(?:igation)?|header)\b", re.IGNORECASE)
 _PRECONDITION_MARKERS = re.compile(r"^\s*(?:given|precondition|assumes?)\s*:?\s*(.+)$", re.IGNORECASE)
 _DATA_FIELD_HINTS = re.compile(r"\b(username|password|email|phone|name|address|date of birth|dob|zip|postal code|credit card)\b", re.IGNORECASE)
 _EDGE_CASE_HINTS = re.compile(r"\b(unicode|max(?:imum)? length|boundary|edge case|malformed|special character)\b", re.IGNORECASE)
@@ -94,10 +102,41 @@ class LocalHeuristicBackend:
         preconditions = self._extract_preconditions(lines)
         steps = self._extract_steps(lines)
         nav_url = self._extract_navigate_url(requirement_text)
+
+        # A request like "check if the footer service links are working"
+        # matches none of the click/type patterns above (there's no literal
+        # "click X" phrasing) -- previously that meant it silently fell
+        # through to the generic "assert page_loaded" fallback further
+        # down, which never looks at a single link and reports "passed"
+        # regardless of what's actually on the page. Recognize this intent
+        # explicitly and emit a real CAPABILITY_CHECK(LINK_CHECK) step
+        # instead, which makes actual HTTP requests against every link in
+        # scope (agents/capability/link_checker.py).
+        link_check_step = None
+        if nav_url and _LINK_CHECK_PATTERN.search(requirement_text):
+            scope_match = _LINK_SCOPE_PATTERN.search(requirement_text)
+            scope = "footer" if scope_match and scope_match.group(1).lower() == "footer" else (
+                "nav" if scope_match and scope_match.group(1).lower().startswith("nav") else "all"
+            )
+            link_check_step = TestStep(
+                step_id=1,
+                action=ActionType.CAPABILITY_CHECK,
+                target_description=f"link check ({scope}) on {nav_url}",
+                capability_type=CapabilityType.LINK_CHECK,
+                capability_params={"url": nav_url, "scope": scope},
+            )
+
         if nav_url:
             steps = self._prepend_navigate_step(steps, nav_url)
         assertions = self._extract_assertions(lines)
         data_requirements = self._extract_data_requirements(requirement_text)
+
+        if link_check_step is not None:
+            # Insert right after the navigate step (or at the front if
+            # there wasn't one) and renumber everything sequentially.
+            insert_at = 1 if steps else 0
+            combined = [*steps[:insert_at], link_check_step, *steps[insert_at:]]
+            steps = [s.model_copy(update={"step_id": i}) for i, s in enumerate(combined, start=1)]
 
         # Fallback: free-text prompts (most commonly autonomous-mode runs,
         # e.g. "check homepage loads" with no explicit "click"/"type"/
