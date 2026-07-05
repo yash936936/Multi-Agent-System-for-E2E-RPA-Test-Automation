@@ -1,6 +1,23 @@
+import re
+
 import sqlalchemy
 from sqlalchemy.exc import SQLAlchemyError
 from orchestrator.schemas import CapabilityCheckInput, CapabilityCheckResult, CapabilityType
+
+# This adapter's entire purpose (per its own docstring, and per the "assert
+# things are true about a system" role every other capability adapter
+# plays) is read-only validation. Previously nothing enforced that: a
+# `query` param was executed verbatim via sqlalchemy.text(), so any
+# authenticated user able to submit a guided-mode spec (role=executor is
+# enough -- not just admin) could run DROP/DELETE/UPDATE/INSERT against
+# whatever connection_string they supplied, using AURA's own server-side
+# network access as the vector. This is a statement-type allowlist, not a
+# perfect SQL sandbox (a SELECT can still invoke a mutating stored
+# function in some engines) -- but it closes the obvious, direct
+# arbitrary-write path while allowing every real read-only assertion this
+# adapter is meant to support.
+_READ_ONLY_PREFIX = re.compile(r"^\s*(?:\()*\s*(SELECT|WITH|EXPLAIN|SHOW|PRAGMA|DESC|DESCRIBE)\b", re.IGNORECASE)
+
 
 class DbAdapter:
     """
@@ -19,6 +36,13 @@ class DbAdapter:
         
         if not connection_string or not query:
             return self._fail("Missing 'connection_string' or 'query'")
+
+        if not _READ_ONLY_PREFIX.match(query):
+            return self._fail(
+                "Refusing to run a non-read-only query. DbAdapter only validates "
+                "state (SELECT/WITH/EXPLAIN/SHOW/PRAGMA/DESCRIBE) -- it does not "
+                "execute DDL/DML (INSERT/UPDATE/DELETE/DROP/etc.)."
+            )
             
         try:
             engine = sqlalchemy.create_engine(connection_string)

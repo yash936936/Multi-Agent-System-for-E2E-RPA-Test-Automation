@@ -270,6 +270,8 @@ const CLI_COMMANDS = [
       '--max-elements <n>  Cap on detected clickable elements to test-click (default 25)',
       '--prompt <text>  Optional thing to keep an eye out for while exploring',
       '--no-scroll-scan  Skip the full-page scroll/error scan before clicking elements',
+      '--check-links  Also run a real HTTP-level link check (actual status codes, not just click-and-diff) — off by default, opt in explicitly',
+      '--link-scope <all|footer|nav>  Only used with --check-links — which links get checked (default "all")',
     ],
   },
   {

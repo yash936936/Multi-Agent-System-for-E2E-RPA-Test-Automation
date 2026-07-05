@@ -42,6 +42,7 @@ def explore(
     max_elements: int = 25,
     prompt: str | None = None,
     scroll_scan: bool = True,
+    check_links: bool = False,
     link_scope: str = "all",
 ) -> None:
     """
@@ -49,6 +50,15 @@ def explore(
     interactive-looking element found (nav, hero, footer, and body bands)
     and report anything that looks broken. No spec, no approval
     checkpoints -- this mode is autonomous by definition.
+
+    check_links / link_scope: the real HTTP-level link check
+    (agents/capability/link_checker.py) only runs when check_links is
+    True. It previously ran unconditionally on every explore call
+    (link_check_scope defaulted to "all" and was always wired up), which
+    meant a plain `aura explore <url>` did a live HTTP fetch and status
+    check against every link on the page whether or not that was actually
+    asked for. It's opt-in now; link_scope only has any effect when
+    check_links is set.
     """
     from runtime.hooks import browser
 
@@ -93,7 +103,7 @@ def explore(
         run_id=run_id,
         max_elements=max_elements,
         requirement_prompt=prompt,
-        page_url=normalized,
+        page_url=normalized if check_links else None,
         link_check_scope=link_scope,
     )
 
@@ -129,6 +139,8 @@ def explore(
             for redirect in lc.get("redirected_links", []):
                 chain = " -> ".join(hop["to_url"] or "?" for hop in redirect.get("redirect_chain", []))
                 console.print(f"  [dim]↪ {redirect['url']} redirected ({redirect.get('status_code')}) via {chain or 'unknown chain'} -> {redirect.get('final_url')}[/dim]")
+    elif not check_links:
+        console.print("\n[dim]Link check skipped (pass --check-links to verify every link's real HTTP status, not just click-and-diff).[/dim]")
 
     if prompt:
         console.print(f"\n[bold]Requested check:[/bold] \"{prompt}\"")
@@ -159,6 +171,8 @@ def explore(
                 "page_issues": report.page_issues,
                 "requirement_match": report.requirement_match,
                 "requirement_notes": report.requirement_notes,
+                "link_check_requested": check_links,
+                "link_check_scope": link_scope if check_links else None,
                 "link_check_result": report.link_check_result,
             },
             indent=2,

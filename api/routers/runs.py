@@ -65,8 +65,10 @@ async def create_run(
         # existing prompt-driven autonomous runs.
         if bool(spec.get("full_exploration")):
             max_elements = int(spec.get("max_elements", 25))
+            check_links = bool(spec.get("check_links"))
+            link_scope = (spec.get("link_scope") or "all").strip()
             background_tasks.add_task(
-                execute_full_exploration_run, user.tenant_id, run_id, target, prompt, max_elements
+                execute_full_exploration_run, user.tenant_id, run_id, target, prompt, max_elements, check_links, link_scope
             )
             return {"run_id": run_id, "status": "queued"}
 
@@ -132,13 +134,27 @@ def execute_autonomous_run(tenant_id: str, run_id: str, requirement_text: str) -
         _run_lock.release()
 
 
-def execute_full_exploration_run(tenant_id: str, run_id: str, target: str, prompt: str, max_elements: int) -> None:
+def execute_full_exploration_run(
+    tenant_id: str,
+    run_id: str,
+    target: str,
+    prompt: str,
+    max_elements: int,
+    check_links: bool = False,
+    link_scope: str = "all",
+) -> None:
     """
     API-surface entry point for the same click-every-nav/hero/footer/body
     -element engine `aura explore <url>` already uses
     (orchestrator/ui_audit_runner.run_exploration). This was previously
     only reachable via the CLI; `create_run` routes here when an
     autonomous request sets `"full_exploration": true`.
+
+    check_links / link_scope: the real HTTP-level link check only runs
+    when check_links is True (spec: {"check_links": true, "link_scope":
+    "footer"|"nav"|"all"}). Previously this ran unconditionally on every
+    full_exploration request with scope hardcoded to "footer" -- it's
+    opt-in now, mirroring the CLI's --check-links flag.
 
     Produces a report dict (stored as-is via run_store, which accepts any
     JSON-serializable report) rather than a spec-driven RunReport --
@@ -177,8 +193,8 @@ def execute_full_exploration_run(tenant_id: str, run_id: str, target: str, promp
             run_id=run_id,
             max_elements=max_elements,
             requirement_prompt=prompt or None,
-            page_url=target,
-            link_check_scope="footer",
+            page_url=target if check_links else None,
+            link_check_scope=link_scope,
         )
 
         broken = [c.__dict__ for c in audit.possibly_broken]
@@ -201,6 +217,8 @@ def execute_full_exploration_run(tenant_id: str, run_id: str, target: str, promp
             "requirement_prompt": audit.requirement_prompt,
             "requirement_match": audit.requirement_match,
             "requirement_notes": audit.requirement_notes,
+            "link_check_requested": check_links,
+            "link_check_scope": link_scope if check_links else None,
             "link_check_result": audit.link_check_result,
             "duration_seconds": round(time.time() - started, 2),
         }

@@ -97,7 +97,8 @@ def explore(
     max_elements: int = typer.Option(25, "--max-elements", help="Cap on how many detected clickable elements to test-click."),
     prompt: str = typer.Option(None, "--prompt", help='Optional plain-English thing to keep an eye out for while exploring, e.g. --prompt "check the submit button works". Best-effort keyword match, not a guarantee -- see README.'),
     no_scroll_scan: bool = typer.Option(False, "--no-scroll-scan", help="Skip the full-page scroll/error scan before clicking elements."),
-    link_scope: str = typer.Option("all", "--link-scope", help='Which links get a real HTTP status check: "all" (default -- every navigable link on the page), "footer", or "nav".'),
+    check_links: bool = typer.Option(False, "--check-links", help="Also run a real HTTP-level link check (actual status codes, not just click-and-diff). Off by default -- opt in explicitly."),
+    link_scope: str = typer.Option("all", "--link-scope", help='Only used with --check-links. Which links get checked: "all" (default -- every navigable link on the page), "footer", or "nav".'),
 ) -> None:
     """
     Fully autonomous exploration: give it a URL, nothing else. AURA
@@ -106,7 +107,7 @@ def explore(
     back -- no spec file, no --prompt required, zero human input.
     """
     preflight.run_preflight_or_exit()
-    explore_cmd.explore(url, max_elements=max_elements, prompt=prompt, scroll_scan=not no_scroll_scan, link_scope=link_scope)
+    explore_cmd.explore(url, max_elements=max_elements, prompt=prompt, scroll_scan=not no_scroll_scan, check_links=check_links, link_scope=link_scope)
 
 
 @app.command()

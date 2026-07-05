@@ -146,6 +146,12 @@ aura explore https://example.com --max-elements 40
 
 # Skip the full-page scroll/error scan, just do the click sweep
 aura explore https://example.com --no-scroll-scan
+
+# Also run a real HTTP-level link check (off by default -- opt in explicitly)
+aura explore https://example.com --check-links
+
+# Same, but restrict the link check to just the footer
+aura explore https://example.com --check-links --link-scope footer
 ```
 
 The `--prompt` check is a **keyword heuristic, not language understanding** — it looks for on-screen text overlapping words from your prompt among everything it saw while exploring, and says so explicitly in the output either way. Treat it as "here's what I noticed that might be relevant," not a verdict.
@@ -221,12 +227,14 @@ aura explore https://example.com                                        # naviga
 aura explore https://example.com --prompt "check the submit button works"  # same, plus a best-effort check for something specific
 aura explore https://example.com --max-elements 40                      # raise the click cap (default 25)
 aura explore https://example.com --no-scroll-scan                       # skip the full-page error scan, just click things
-aura explore https://example.com --link-scope footer                    # restrict the real HTTP link check to just <footer> links
+aura explore https://example.com --check-links                          # also run a real HTTP-level link check (off by default)
+aura explore https://example.com --check-links --link-scope footer      # restrict that link check to just <footer> links
+aura explore https://example.com --check-links --link-scope nav         # restrict it to just <nav> links
 ```
 
 Generalizes the same click-and-diff engine `--ui-audit` uses (`orchestrator/ui_audit_runner.py`) from "nav + footer only" to every interactive-looking element on the page (nav, hero, footer, body). Output is a terminal summary plus a JSON report under `reports\explore_<run_id>\report.json` — this mode doesn't (yet) produce an HTML report, since `render_html()` expects a full spec-driven run on disk and `explore` deliberately has neither a spec nor a `RunEngine` pass.
 
-**Real HTTP link check (`agents/capability/link_checker.py`):** alongside the OCR click-and-diff loop, `explore` also fetches the page's raw HTML and issues a real HTTP status check against every navigable `<a href>` link — `--link-scope` controls which ones (`all` by default, or `footer`/`nav`). Two things worth knowing about how this works:
+**Real HTTP link check (`agents/capability/link_checker.py`) — opt-in via `--check-links`:** by default `explore` only does the OCR click-and-diff sweep above; pass `--check-links` to *additionally* fetch the page's raw HTML and issue a real HTTP status check against every navigable `<a href>` link. `--link-scope` (`all` by default, or `footer`/`nav`) only has any effect when `--check-links` is also passed — it's not a separate way to trigger the check. This is opt-in rather than automatic because a live HTTP request against every link on the page is a meaningfully different (and heavier/network-dependent) check than the OCR sweep, and shouldn't run silently on a plain `aura explore` call. Two things worth knowing about how this works:
 - **Redirects are shown, not hidden.** A link that 301/302-redirects somewhere else still counts as "working" (its final destination is what matters), but the redirect chain — every hop's status code and target — is reported explicitly rather than silently landing on the final URL and looking identical to a direct hit.
 - **Client-rendered (React/Next.js/Angular) pages have a real, disclosed coverage limit.** AURA's link check reads the raw HTML returned by a plain HTTP request — the same "no DOM automation" posture as the rest of the vision pipeline — so if a page's links are injected by JavaScript after load rather than present in the server-delivered HTML, they genuinely won't be found. When this happens, the report says so explicitly (`client_rendered_suspected: true` in the JSON output, plus a plain-English explanation in the terminal) instead of looking like a clean pass with nothing to check. Actually checking JS-injected links would require a headless-browser render step (e.g. Playwright), which AURA does not currently do — this is flagged as a known limitation, not silently worked around.
 
@@ -421,10 +429,21 @@ This surface is fully unit-tested (`tests/test_capabilities.py`, `tests/test_16_
 
 ## Web dashboard & REST API (preview — not production-ready)
 
-`api/main.py` is a FastAPI service (`AURA Universal QA Platform`) with a small web dashboard (`webui/`) and REST endpoints for triggering and inspecting runs, separate from the CLI. **This exists in the codebase but has real gaps you should know about before relying on it:**
+`api/main.py` is a FastAPI service (`AURA Universal QA Platform`) with a small web dashboard (`webui/`) and REST endpoints for triggering and inspecting runs, separate from the CLI.
 
-- **Run execution is currently a stub.** `POST /api/v1/test-runs` accepts a spec and always reports `"passed"` — it does not yet call the real `RunEngine`. Don't use this endpoint to actually validate anything yet; use the CLI (`aura execute`) for real runs.
-- **There's no way to log in yet.** Every endpoint requires a JWT (role-gated: `admin`/`executor`/`viewer`), but no endpoint issues one — token creation (`api/security.py::create_access_token`) has to be called manually (e.g. from a Python shell) until a login route is added.
+- **Login exists.** `POST /api/v1/auth/login` (username/password) and `POST /api/v1/auth/signup` both issue a real JWT (`api/user_store.py`, PBKDF2-hashed passwords); Google/GitHub OAuth is also available under `/api/v1/auth/oauth/{provider}/login` when the corresponding client ID/secret env vars are set. Every other endpoint requires that JWT (role-gated: `admin`/`executor`/`viewer`).
+- **`POST /api/v1/test-runs` actually executes.** A `mode: "guided"` spec runs through the real `RunEngine.run_spec()`; `mode: "autonomous"` runs through the Planner (`RunEngine.run()`). Setting `"full_exploration": true` on an autonomous request instead routes to the same zero-instruction engine `aura explore` uses (`orchestrator/ui_audit_runner.run_exploration`) — same opt-in link-check fields as the CLI's `--check-links`/`--link-scope`:
+  ```json
+  {
+    "mode": "autonomous",
+    "target": "https://example.com",
+    "full_exploration": true,
+    "max_elements": 25,
+    "check_links": true,
+    "link_scope": "footer"
+  }
+  ```
+  `check_links` defaults to `false` (the real HTTP link check does not run unless explicitly requested) and `link_scope` (`"all"` | `"footer"` | `"nav"`) only has any effect when `check_links` is `true`.
 - **No `aura serve` command yet.** Start it manually:
   ```powershell
   pip install -e ".[dev]"
