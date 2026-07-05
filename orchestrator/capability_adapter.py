@@ -41,7 +41,12 @@ class CapabilityAdapterRegistry:
     def register(self, adapter: CapabilityAdapter) -> None:
         self._adapters[adapter.capability_type] = adapter
 
-    def get(self, capability_type: CapabilityType) -> CapabilityAdapter:
+    def get(self, capability_type: CapabilityType | None) -> CapabilityAdapter:
+        if capability_type is None:
+            raise CapabilityAdapterNotFoundError(
+                "This step has no capability_type set, so there's no adapter to route it to "
+                "(a capability_check step must specify one, e.g. 'api', 'database', 'file_system')."
+            )
         if capability_type not in self._adapters:
             raise CapabilityAdapterNotFoundError(
                 f"No adapter registered for capability_type '{capability_type.value}'"

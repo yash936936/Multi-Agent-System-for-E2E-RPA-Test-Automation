@@ -8,141 +8,189 @@
 </head>
 <body>
 
-  <!-- Login Screen -->
-  <div id="login-screen" class="login-screen">
-    <div class="login-card">
-      <div class="login-logo">AURA</div>
-      <div class="login-sub">Universal QA Platform</div>
-      <form id="login-form">
-        <label class="field-label">Username</label>
-        <input type="text" id="login-username" class="input-pill" placeholder="admin" autocomplete="username" required>
-        <label class="field-label">Password</label>
-        <input type="password" id="login-password" class="input-pill" placeholder="********" autocomplete="current-password" required>
-        <div id="login-error" class="login-error"></div>
-        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
-      </form>
-    </div>
-  </div>
-
-  <!-- App Shell -->
   <div id="app-shell" class="app-shell hidden">
-    <aside class="sidebar">
-      <div class="logo">AURA</div>
-      <nav>
-        <a href="#" class="nav-item active" data-view="dashboard"></a>
-        <a href="#" class="nav-item" data-view="runs"></a>
-        <a href="#" class="nav-item" data-view="adapters"></a>
-        <a href="#" class="nav-item" data-view="settings"></a>
-      </nav>
-      <div class="sidebar-footer">
-        <div class="user-chip">
-          <span class="icon-inline" id="user-icon"></span>
-          <span id="current-user">-</span>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <div class="logo">
+          <div class="logo-mark"><img src="/static/img/logo-mark.png" alt="AURA"></div>
+          <span class="logo-word">AURA</span>
         </div>
-        <button class="nav-item logout-btn" id="logout-btn"></button>
+        <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar"></button>
+      </div>
+
+      <div class="nav-section-label">Workspace</div>
+      <nav>
+        <a href="#" class="nav-item active" data-view="dashboard"><span class="nav-icon"></span><span class="nav-label">Dashboard</span></a>
+        <a href="#" class="nav-item" data-view="runs"><span class="nav-icon"></span><span class="nav-label">Test Runs</span></a>
+        <a href="#" class="nav-item" data-view="adapters"><span class="nav-icon"></span><span class="nav-label">Adapters</span></a>
+        <a href="#" class="nav-item" data-view="commands"><span class="nav-icon"></span><span class="nav-label">Commands</span></a>
+        <a href="#" class="nav-item" data-view="settings"><span class="nav-icon"></span><span class="nav-label">Settings</span></a>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="user-chip">
+          <div class="user-avatar" id="user-avatar">-</div>
+          <div class="user-meta">
+            <div class="user-name" id="current-user">-</div>
+            <div class="user-role" id="current-role">-</div>
+          </div>
+        </div>
+        <button class="logout-btn" id="logout-btn"><span class="nav-icon"></span><span class="nav-label">Log out</span></button>
       </div>
     </aside>
 
     <main class="main-content">
+      <div class="dash-bg" id="dash-bg">
+        <div class="dash-bg-blob dash-bg-blob--indigo"></div>
+        <div class="dash-bg-blob dash-bg-blob--teal"></div>
+        <div class="dash-bg-blob dash-bg-blob--rose"></div>
+        <div class="dash-bg-grain"></div>
+        <div class="dash-bg-lines"></div>
+        <div class="dash-bg-scrim"></div>
+      </div>
+
       <header class="header">
         <div>
           <h1 id="view-title">Dashboard</h1>
-          <div class="subtitle" id="view-subtitle">Real-time visibility into every run, adapter, and capability check.</div>
+          <p class="subtitle" id="view-subtitle">Real-time visibility into every run, adapter, and capability check.</p>
         </div>
         <div class="header-actions">
-          <div class="input-pill search-wrap">
-            <span class="icon-inline"></span>
-            <input type="text" id="search-input" placeholder="Search test runs, specs, or adapters...">
+          <div class="search-slot" id="search-slot">
+            <div class="search-wrap" id="search-wrap">
+              <span></span>
+              <input type="text" id="search-input" placeholder="Search test runs, specs, or adapters...">
+            </div>
           </div>
-          <button class="btn btn-secondary" id="refresh-btn"></button>
-          <button class="btn btn-primary" id="new-run-btn"></button>
+          <button class="icon-btn" id="refresh-btn" title="Refresh"></button>
+          <button class="btn btn-primary" id="new-run-btn"><span></span> New run</button>
         </div>
       </header>
 
-      <!-- Dashboard view -->
+      <!-- Dashboard -->
       <section id="view-dashboard" class="view">
         <div class="stat-grid" id="stat-grid"></div>
-
         <div class="section-row">
           <h2 class="section-title">Recent Executions</h2>
+          <div class="section-meta">Live from the run store</div>
         </div>
         <div class="grid" id="runs-grid"></div>
       </section>
 
-      <!-- Test Runs view -->
+      <!-- Test Runs -->
       <section id="view-runs" class="view hidden">
         <div class="section-row">
           <h2 class="section-title">All Test Runs</h2>
+          <div class="section-meta" id="runs-count-meta"></div>
         </div>
         <div class="grid" id="all-runs-grid"></div>
       </section>
 
-      <!-- Adapters view -->
+      <!-- Adapters -->
       <section id="view-adapters" class="view hidden">
         <div class="section-row">
           <h2 class="section-title">Capability Adapters</h2>
-          <div class="section-meta">Live from the orchestrator's adapter registry -- not a hardcoded list.</div>
+          <div class="section-meta">Live from the orchestrator's adapter registry</div>
         </div>
         <div class="grid" id="adapters-grid"></div>
       </section>
 
-      <!-- Settings view -->
-      <section id="view-settings" class="view hidden">
+      <!-- Commands -->
+      <section id="view-commands" class="view hidden">
         <div class="section-row">
-          <h2 class="section-title">Settings</h2>
+          <h2 class="section-title">CLI Reference</h2>
+          <div class="section-meta">Everything you can run from a terminal</div>
         </div>
+        <div class="commands-card" id="commands-list"></div>
+      </section>
+
+      <!-- Settings -->
+      <section id="view-settings" class="view hidden">
+        <div class="section-row"><h2 class="section-title">Settings</h2></div>
         <div class="settings-card">
-          <div class="settings-row">
-            <div>
-              <div class="settings-label">Signed in as</div>
-              <div class="settings-value" id="settings-user">-</div>
-            </div>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-label">Tenant</div>
-              <div class="settings-value" id="settings-tenant">-</div>
-            </div>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-label">Role</div>
-              <div class="settings-value" id="settings-role">-</div>
-            </div>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-label">API base</div>
-              <div class="settings-value">/api/v1</div>
-            </div>
-          </div>
+          <div class="settings-row"><div><div class="settings-label">Signed in as</div><div class="settings-value" id="settings-user">-</div></div></div>
+          <div class="settings-row"><div><div class="settings-label">Tenant</div><div class="settings-value" id="settings-tenant">-</div></div></div>
+          <div class="settings-row"><div><div class="settings-label">Role</div><div class="settings-value" id="settings-role">-</div></div></div>
+          <div class="settings-row"><div><div class="settings-label">API base</div><div class="settings-value">/api/v1</div></div></div>
         </div>
       </section>
     </main>
   </div>
 
-  <!-- New Run Modal -->
+  <!-- New Test Run Wizard -->
   <div id="new-run-modal" class="modal-backdrop hidden">
     <div class="modal">
       <div class="modal-header">
-        <h3>New Test Run</h3>
+        <h3 id="wizard-title">New Test Run</h3>
         <button class="icon-btn" id="close-modal-btn"></button>
       </div>
-      <div class="modal-body">
-        <label class="field-label">Test name</label>
-        <input type="text" id="run-name-input" class="input-pill modal-input" placeholder="e.g. SAP PO Creation - Happy Path">
-
-        <div class="steps-header">
-          <span class="field-label" style="margin:0;">Steps</span>
-          <button class="btn btn-secondary btn-small" id="add-step-btn"></button>
-        </div>
-        <div id="steps-list"></div>
-
-        <div id="run-error" class="login-error"></div>
+      <div class="modal-steps" id="wizard-dots">
+        <div class="modal-step-dot active"></div>
+        <div class="modal-step-dot"></div>
+        <div class="modal-step-dot"></div>
       </div>
+
+      <div class="modal-body">
+        <!-- Step 1: choose mode -->
+        <div class="wizard-step" id="wizard-step-1">
+          <p class="subtitle" style="margin-bottom:16px;">How should AURA approach this run?</p>
+          <div class="mode-choice-grid">
+            <button class="mode-choice" data-mode="human_in_loop">
+              <div class="mode-choice-icon"></div>
+              <div class="mode-choice-title">Human in the loop</div>
+              <div class="mode-choice-desc">You lay out the steps in plain language. AURA executes and pauses for your input where needed.</div>
+            </button>
+            <button class="mode-choice" data-mode="autonomous">
+              <div class="mode-choice-icon"></div>
+              <div class="mode-choice-title">Fully autonomous</div>
+              <div class="mode-choice-desc">Give AURA a target and a goal. It plans and runs the whole test on its own.</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 2: target -->
+        <div class="wizard-step hidden" id="wizard-step-2">
+          <div class="field-group">
+            <label class="field-label">Test name</label>
+            <input type="text" id="run-name-input" class="input-pill" placeholder="e.g. SAP PO Creation - Happy Path">
+          </div>
+          <div class="field-group">
+            <label class="field-label">URL or file to test</label>
+            <input type="text" id="run-target-input" class="input-pill" placeholder="https://app.example.com/login or /path/to/file">
+            <div class="form-hint">This is the page, app, or file AURA will open and work with.</div>
+          </div>
+        </div>
+
+        <!-- Step 3a: human-in-loop steps + optional prompt -->
+        <div class="wizard-step hidden" id="wizard-step-3-hitl">
+          <div class="steps-header">
+            <span class="field-label" style="margin:0;">Steps</span>
+            <button class="btn btn-ghost btn-small" id="add-step-btn"><span></span> Add step</button>
+          </div>
+          <div id="steps-list"></div>
+
+          <div class="field-group" style="margin-top:18px;">
+            <label class="field-label">Extra guidance (optional)</label>
+            <textarea id="run-prompt-hitl" class="input-pill" placeholder="Anything else AURA should know, e.g. 'use the test card ending 4242' or 'skip the newsletter popup'"></textarea>
+          </div>
+        </div>
+
+        <!-- Step 3b: autonomous prompt only -->
+        <div class="wizard-step hidden" id="wizard-step-3-auto">
+          <div class="field-group">
+            <label class="field-label">What should AURA test? (optional)</label>
+            <textarea id="run-prompt-auto" class="input-pill" placeholder="e.g. 'Sign up with a new account, add two items to the cart, and complete checkout'"></textarea>
+            <div class="form-hint">Leave this blank and AURA will run a general smoke test against the target.</div>
+          </div>
+        </div>
+
+        <div id="run-error" class="form-error"></div>
+      </div>
+
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="cancel-run-btn">Cancel</button>
-        <button class="btn btn-primary" id="submit-run-btn">Queue Run</button>
+        <button class="back-link hidden" id="wizard-back-btn"><span></span> Back</button>
+        <div style="flex:1;"></div>
+        <button class="btn btn-ghost" id="cancel-run-btn">Cancel</button>
+        <button class="btn btn-primary" id="wizard-next-btn">Continue</button>
       </div>
     </div>
   </div>
@@ -159,6 +207,8 @@
       </div>
     </div>
   </div>
+
+  <div class="toast-stack" id="toast-stack"></div>
 
   <script src="/static/js/icons.js"></script>
   <script src="/static/js/app.js"></script>

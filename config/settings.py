@@ -134,6 +134,15 @@ class Settings(BaseSettings):
     local_llm_context_size: int = 4096
     local_llm_temperature: float = 0.1  # low temperature: this is structured JSON extraction, not creative writing
 
+    # --- OAuth providers (optional; unset = provider disabled in UI) ---
+    # Populate via env vars AURA_GOOGLE_CLIENT_ID / AURA_GOOGLE_CLIENT_SECRET
+    # and AURA_GITHUB_CLIENT_ID / AURA_GITHUB_CLIENT_SECRET, or a .env file.
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    github_client_id: str | None = None
+    github_client_secret: str | None = None
+    oauth_redirect_base: str = "http://localhost:8000"
+
     @property
     def models_dir(self) -> Path:
         return self.project_root / "models"

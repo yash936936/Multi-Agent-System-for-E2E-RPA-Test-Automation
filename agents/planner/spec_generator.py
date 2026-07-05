@@ -63,6 +63,13 @@ _NAVIGATE_PATTERNS = [
     re.compile(r"\bopen(?:s|ed|ing)?\s+(?:the\s+(?:browser|site|page|url)\s+(?:at|to)\s+)?(https?://\S+)", re.IGNORECASE),
     re.compile(r"browser\s+is\s+open\s+at\s+(https?://\S+)", re.IGNORECASE),
     re.compile(r"\btarget[\s_-]?url\s*:?\s*(https?://\S+)", re.IGNORECASE),
+    # Matches the literal "Target: <url>" line the API builds for autonomous
+    # runs (see api/routers/runs.py create_run) -- without this, an
+    # autonomous run's requirement_text ("Target: https://example.com\n\n
+    # check homepage loads") never matched any of the patterns above
+    # (they all require the word "url" or a verb like navigate/go/open),
+    # so no NAVIGATE_URL step was ever produced.
+    re.compile(r"^\s*target\s*:\s*(https?://\S+)", re.IGNORECASE | re.MULTILINE),
 ]
 _PRECONDITION_MARKERS = re.compile(r"^\s*(?:given|precondition|assumes?)\s*:?\s*(.+)$", re.IGNORECASE)
 _DATA_FIELD_HINTS = re.compile(r"\b(username|password|email|phone|name|address|date of birth|dob|zip|postal code|credit card)\b", re.IGNORECASE)
@@ -91,6 +98,22 @@ class LocalHeuristicBackend:
             steps = self._prepend_navigate_step(steps, nav_url)
         assertions = self._extract_assertions(lines)
         data_requirements = self._extract_data_requirements(requirement_text)
+
+        # Fallback: free-text prompts (most commonly autonomous-mode runs,
+        # e.g. "check homepage loads" with no explicit "click"/"type"/
+        # "navigate to" phrasing) can legitimately match none of the
+        # patterns above. Previously that meant `steps` stayed [], which
+        # fails TestSpec's "must contain at least one step" validator and
+        # crashed the whole run with a 500 before a single action ever
+        # executed. Treat an unmatched prompt as an implicit "assert the
+        # page loaded" check instead of raising -- this is what an
+        # undirected exploration prompt means in practice, and it keeps
+        # the offline heuristic backend able to always produce a valid
+        # spec.
+        if not steps:
+            steps = [TestStep(step_id=1, action=ActionType.ASSERT, expected_state="page_loaded")]
+        if not assertions:
+            assertions = [{"type": AssertionType.VISUAL_STATE.value, "expected": "page_loaded"}]
 
         return {
             "test_id": test_id,

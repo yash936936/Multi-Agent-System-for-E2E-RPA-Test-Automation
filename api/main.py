@@ -29,3 +29,13 @@ templates = Jinja2Templates(directory=str(_webui_dir / "templates"))
 @app.get("/")
 async def serve_dashboard(request: Request):
     return templates.TemplateResponse(request, "index.html", {})
+
+
+@app.get("/login")
+async def serve_login(request: Request):
+    return templates.TemplateResponse(request, "login.html", {})
+
+
+@app.get("/signup")
+async def serve_signup(request: Request):
+    return templates.TemplateResponse(request, "signup.html", {})

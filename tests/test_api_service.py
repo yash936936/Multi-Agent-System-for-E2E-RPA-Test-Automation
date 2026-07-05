@@ -138,3 +138,33 @@ def test_adapter_status_reflects_real_registry(client):
     # dict) should be the thing that changes, and this test should be
     # updated to match reality rather than loosened to always pass.
     assert {"fake", "api", "database", "email", "file_system", "excel", "pdf_ocr", "cloud", "workflow"} <= types
+
+
+def test_create_run_autonomous_mode_no_longer_crashes_on_spec_generation(client):
+    # End-to-end regression test for the reported bug: an autonomous run
+    # with a free-text prompt and no click/type/navigate phrasing used to
+    # fail immediately at Planner.generate_spec with:
+    #   "TestSpec must contain at least one step"
+    # before a single action ever executed. After the fix, spec generation
+    # must succeed; any later failure must come from step execution (e.g.
+    # this sandbox having no real display to screenshot), never from spec
+    # validation.
+    token = _login(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    spec = {
+        "mode": "autonomous",
+        "test_name": "Auto smoke",
+        "target": "https://example.com",
+        "prompt": "check homepage loads",
+    }
+    resp = client.post("/api/v1/test-runs/", json=spec, headers=headers)
+    assert resp.status_code == 200, resp.text
+    run_id = resp.json()["run_id"]
+
+    get_resp = client.get(f"/api/v1/test-runs/{run_id}", headers=headers)
+    assert get_resp.status_code == 200
+    body = get_resp.json()
+    if body["status"] == "failed":
+        assert "TestSpec must contain at least one step" not in (body.get("error") or "")
+        assert "Planner.generate_spec" not in (body.get("error") or "")

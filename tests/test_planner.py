@@ -74,6 +74,51 @@ def test_generate_spec_captures_data_requirements():
     assert any(d.startswith("edge_case_") for d in spec.data_requirements)
 
 
+# --------------------------------------------------------------------------
+# Regression tests: autonomous-mode requirement text used to produce zero
+# steps, which failed TestSpec's "must contain at least one step" validator
+# and crashed the run with:
+#   "tool call 'Planner.generate_spec' failed: ... TestSpec must contain
+#   at least one step"
+# See api/routers/runs.py::create_run, which builds requirement_text as
+# "Target: <url>\n\n<prompt>" (or just "Target: <url>" when prompt is
+# empty) for mode == "autonomous".
+# --------------------------------------------------------------------------
+
+def test_generate_spec_autonomous_prompt_with_no_action_verbs_does_not_crash():
+    # Mirrors the "Auto smoke" bug report exactly: target + a descriptive
+    # prompt with no click/type/navigate phrasing.
+    requirement_text = "Target: https://example.com\n\ncheck homepage loads"
+    spec = generate_spec(RequirementInput(requirement_text=requirement_text))
+
+    assert len(spec.steps) >= 1
+    assert spec.steps[0].action == ActionType.NAVIGATE_URL
+    assert spec.steps[0].url == "https://example.com"
+    assert len(spec.assertions) >= 1
+
+
+def test_generate_spec_autonomous_empty_prompt_does_not_crash():
+    # Mirrors the second bug report: target set, prompt is an empty string.
+    requirement_text = "Target: https://personal-portfolio-yashmalik.vercel.app/"
+    spec = generate_spec(RequirementInput(requirement_text=requirement_text))
+
+    assert len(spec.steps) >= 1
+    assert spec.steps[0].action == ActionType.NAVIGATE_URL
+    assert spec.steps[0].url == "https://personal-portfolio-yashmalik.vercel.app/"
+
+
+def test_generate_spec_no_target_and_no_action_verbs_still_produces_valid_spec():
+    # Defensive fallback: even with no URL and no recognizable action
+    # verbs at all, generate_spec must never raise -- it should degrade to
+    # an implicit page-loaded assertion rather than crash.
+    spec = generate_spec(RequirementInput(requirement_text="Some vague, unstructured note."))
+
+    assert len(spec.steps) == 1
+    assert spec.steps[0].action == ActionType.ASSERT
+    assert spec.steps[0].expected_state == "page_loaded"
+    assert len(spec.assertions) == 1
+
+
 def test_diagnose_returns_schema_valid_skill_record_for_not_found():
     step = TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Login button")
     payload = DiagnosisInput(
@@ -260,10 +305,18 @@ def test_generate_spec_with_bare_domain_normalized_upstream_still_works():
     assert spec.steps[0].url == "https://example.com"
 
 
-def test_generate_spec_bare_domain_without_scheme_produces_no_steps():
-    # Documents the actual failure mode this bug caused, so a future
-    # change to _NAVIGATE_PATTERNS that silently reintroduces it gets
-    # caught here rather than only downstream in the CLI.
+def test_generate_spec_bare_domain_without_scheme_falls_back_instead_of_crashing():
+    # A bare domain with no "https://" scheme still doesn't match any
+    # _NAVIGATE_PATTERNS entry (by design -- ActionType.NAVIGATE_URL.url
+    # needs a real URL), and "the user waits for the page to finish
+    # loading" doesn't match any click/type pattern either. This used to
+    # mean zero steps were produced, which crashed TestSpec's "must
+    # contain at least one step" validator (the same class of bug as the
+    # autonomous-mode "Target: <url>" crash above). generate_spec must
+    # degrade to the implicit page-loaded fallback instead of raising.
     text = "# Smoke Test\n\nGiven: navigate to example.com\n\nThe user waits for the page to finish loading.\n"
-    with pytest.raises(Exception):
-        generate_spec(RequirementInput(requirement_text=text))
+    spec = generate_spec(RequirementInput(requirement_text=text))
+
+    assert len(spec.steps) == 1
+    assert spec.steps[0].action == ActionType.ASSERT
+    assert spec.steps[0].expected_state == "page_loaded"

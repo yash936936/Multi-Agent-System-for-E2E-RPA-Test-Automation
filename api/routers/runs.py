@@ -37,6 +37,24 @@ async def create_run(
     background_tasks: BackgroundTasks = BackgroundTasks(),
     user: TokenPayload = Depends(require_role(["admin", "executor"])),
 ):
+    mode = spec.get("mode", "guided")
+
+    if mode == "autonomous":
+        target = (spec.get("target") or "").strip()
+        if not target:
+            raise HTTPException(status_code=422, detail="Autonomous runs need a target URL or file")
+        prompt = (spec.get("prompt") or "").strip()
+        requirement_text = f"Target: {target}\n\n{prompt}" if prompt else f"Target: {target}"
+
+        run_id = str(uuid.uuid4())
+        run_store.create(run_id, user.tenant_id, user.user_id, spec)
+        audit_logger.log(
+            user.tenant_id, user.user_id, "CREATE_RUN", run_id,
+            {"spec_name": spec.get("test_name", run_id), "mode": "autonomous"},
+        )
+        background_tasks.add_task(execute_autonomous_run, user.tenant_id, run_id, requirement_text)
+        return {"run_id": run_id, "status": "queued"}
+
     try:
         test_spec = build_test_spec(spec)
     except ValueError as e:
@@ -47,7 +65,7 @@ async def create_run(
 
     audit_logger.log(
         user.tenant_id, user.user_id, "CREATE_RUN", run_id,
-        {"spec_name": spec.get("test_name", test_spec.test_id)},
+        {"spec_name": spec.get("test_name", test_spec.test_id), "mode": "guided"},
     )
     background_tasks.add_task(execute_run, user.tenant_id, run_id, test_spec)
 
@@ -64,6 +82,29 @@ def execute_run(tenant_id: str, run_id: str, test_spec) -> None:
         run_store.update(run_id, status="running")
         engine = _get_engine()
         result = engine.run_spec(test_spec, run_id=run_id)
+        report = result.report
+        run_store.update(run_id, status=report.status.value, report=report.model_dump(mode="json"))
+    except Exception as e:
+        run_store.update(run_id, status="failed", error=str(e))
+    finally:
+        _run_lock.release()
+
+
+def execute_autonomous_run(tenant_id: str, run_id: str, requirement_text: str) -> None:
+    """
+    Same execution path as execute_run, but lets the Planner derive the
+    TestSpec from free-text (RunEngine.run) instead of accepting
+    hand-assembled steps (RunEngine.run_spec).
+    """
+    acquired = _run_lock.acquire(blocking=False)
+    if not acquired:
+        run_store.update(run_id, status="failed", error="Vision Core busy -- another run is in flight")
+        return
+
+    try:
+        run_store.update(run_id, status="running")
+        engine = _get_engine()
+        result = engine.run(requirement_text, run_id=run_id)
         report = result.report
         run_store.update(run_id, status=report.status.value, report=report.model_dump(mode="json"))
     except Exception as e:

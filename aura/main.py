@@ -18,7 +18,7 @@ from __future__ import annotations
 import typer
 from rich.console import Console
 
-from aura.cli import debug_cmd, execute_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd
+from aura.cli import debug_cmd, execute_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd
 from config.settings import settings
 
 console = Console()
@@ -27,6 +27,7 @@ app = typer.Typer(
     help="AURA - Autonomous Unified RPA Agent (offline, vision-first, self-healing QA testing)",
     no_args_is_help=True,
 )
+app.add_typer(trigger_cmd.trigger_app, name="trigger")
 
 
 @app.command()

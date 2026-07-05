@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in — AURA</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-glow"></div>
+    <div class="auth-grid-lines"></div>
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <div class="auth-logo-row">
+          <div class="auth-logo-mark"><img src="/static/img/logo-mark.png" alt="AURA"></div>
+          <div class="auth-logo-word">AURA</div>
+        </div>
+
+        <div class="auth-eyebrow"><span class="dot"></span> Universal QA Platform</div>
+        <h1 class="auth-title">Welcome back</h1>
+        <p class="auth-sub">Sign in to run, monitor, and heal your test suites.</p>
+
+        <div id="form-error" class="form-error"></div>
+
+        <form id="login-form">
+          <div class="field-group">
+            <label class="field-label">Username</label>
+            <input type="text" id="login-username" class="input-pill" placeholder="admin" autocomplete="username" required>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Password</label>
+            <input type="password" id="login-password" class="input-pill" placeholder="••••••••" autocomplete="current-password" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" id="login-submit">Sign in</button>
+        </form>
+
+        <div class="auth-divider">or continue with</div>
+
+        <div class="oauth-row">
+          <a class="btn-oauth" href="/api/v1/auth/oauth/google/login">
+            <svg viewBox="0 0 24 24"><path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.3-1.6 3.8-5.5 3.8-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.1.8 3.9 1.5l2.6-2.5C16.9 3.2 14.7 2 12 2 6.9 2 2.7 6.2 2.7 11.3s4.2 9.3 9.3 9.3c5.4 0 9-3.8 9-9.1 0-.6-.1-1.1-.2-1.5H12z"/></svg>
+            Continue with Google
+          </a>
+          <a class="btn-oauth" href="/api/v1/auth/oauth/github/login">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 00-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.15-1.11-1.46-1.11-1.46-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.6 9.6 0 015 0c1.91-1.3 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85V21c0 .27.18.58.69.48A10 10 0 0012 2z"/></svg>
+            Continue with GitHub
+          </a>
+        </div>
+
+        <div class="auth-footer">Don't have an account? <a href="/signup">Create one</a></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = '/api/v1';
+    const form = document.getElementById('login-form');
+    const errorBox = document.getElementById('form-error');
+    const submitBtn = document.getElementById('login-submit');
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.classList.add('visible');
+    }
+
+    // Pick up a token handed back from an OAuth redirect (see api/routers/auth.py::oauth_callback)
+    if (location.hash.startsWith('#token=')) {
+      const token = decodeURIComponent(location.hash.slice(7));
+      localStorage.setItem('aura_token', token);
+      location.replace('/');
+    }
+
+    // Already signed in? Skip straight to the dashboard.
+    if (localStorage.getItem('aura_token')) {
+      location.replace('/');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorBox.classList.remove('visible');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Signing in…';
+
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+
+      try {
+        const res = await fetch(`${API}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Invalid username or password');
+        localStorage.setItem('aura_token', data.access_token);
+        location.href = '/';
+      } catch (err) {
+        showError(err.message);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign in';
+      }
+    });
+  </script>
+</body>
+</html>

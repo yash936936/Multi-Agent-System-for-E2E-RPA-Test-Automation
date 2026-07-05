@@ -53,17 +53,27 @@ class CrossModalDiagnoser:
         return None # Fallback to LLM or escalate
 
     def _heal_db_drift(self, step: TestStep, hints: dict) -> TestStep | None:
-        """Heals DB schema drift (e.g., column renamed)."""
-        error_type = hints.get("error_type", "")
-        query = hints.get("query_failed", "")
-        
+        """
+        Heals DB schema drift (e.g., column renamed).
+
+        Unlike _heal_api_drift, db_adapter.py's healing_hints only ever
+        carries `query_failed` and `error_type` (see agents/capability/
+        db_adapter.py) -- there's no list of actual/available columns to
+        diff against, so even when we can pattern-match the missing
+        column out of the exception text, there is nothing to safely
+        rename it *to* without querying information_schema (out of scope
+        for a heuristic diagnoser). We still detect the pattern so this
+        stays easy to extend once that lookup exists, but today it can
+        only confirm "this looks like a column-drift error" and escalate
+        rather than fabricate a guess.
+        """
         # Heuristic: Look for standard "column does not exist" errors
         # e.g., PostgreSQL: "column users.user_name does not exist"
         match = re.search(r'column\s+([a-zA-Z0-9_\.]+)\s+does not exist', str(hints.get("exception", "")), re.IGNORECASE)
         if match:
-            missing_col = match.group(1).split('.')[-1]
-            # If we know it's missing, we can't guess the new name without querying information_schema.
-            # For Phase 18, we flag it for the LLM or mark as unhealable.
-            pass 
-            
-        return None # DB structural changes are highly contextual; escalate to human/LLM
+            # Confirmed a column-drift error, but with no candidate
+            # replacement name available, escalate to the LLM/human
+            # rather than guess.
+            return None
+
+        return None  # DB structural changes are highly contextual; escalate to human/LLM

@@ -1,416 +1,582 @@
-/**
- * AURA dashboard -- static/js/app.js
- *
- * Phase 17 rewrite. Everything here talks to the real, Phase-15-wired
- * API (JWT login, RunEngine-backed test-runs, live adapter registry) --
- * no mock/fallback data. If the API is unreachable the UI says so
- * instead of quietly showing fake runs.
- */
+const API = '/api/v1';
 
-const API_BASE = "/api/v1";
+// ---------- Auth guard ----------
+const token = localStorage.getItem('aura_token');
+if (!token) {
+  location.replace('/login');
+}
 
-const state = {
-  token: localStorage.getItem("aura_token") || null,
-  tenantId: localStorage.getItem("aura_tenant") || null,
-  role: localStorage.getItem("aura_role") || null,
-  username: localStorage.getItem("aura_username") || null,
-  runs: [],
-  adapters: [],
-  pollHandle: null,
-  currentView: "dashboard",
+function authHeaders() {
+  return { Authorization: `Bearer ${localStorage.getItem('aura_token')}` };
+}
+
+function decodeJwt(t) {
+  try {
+    const payload = t.split('.')[1];
+    return JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+  } catch {
+    return {};
+  }
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(opts.headers || {}) },
+  });
+  if (res.status === 401) {
+    localStorage.removeItem('aura_token');
+    location.replace('/login');
+    throw new Error('Session expired');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
+  return data;
+}
+
+// ---------- Toasts ----------
+function toast(message, isError = false) {
+  const stack = document.getElementById('toast-stack');
+  const el = document.createElement('div');
+  el.className = `toast${isError ? ' error' : ''}`;
+  el.textContent = message;
+  stack.appendChild(el);
+  setTimeout(() => el.remove(), 4200);
+}
+
+// ---------- Icon injection ----------
+function paintIcons() {
+  const map = {
+    dashboard: 'dashboard', runs: 'runs', adapters: 'adapters', commands: 'commands', settings: 'settings',
+  };
+  document.querySelectorAll('.nav-item[data-view]').forEach(a => {
+    const view = a.dataset.view;
+    const iconSpan = a.querySelector('.nav-icon');
+    if (iconSpan && map[view]) iconSpan.innerHTML = icon(map[view]);
+  });
+  const put = (sel, name) => { const el = document.querySelector(sel); if (el) el.innerHTML = icon(name); };
+  put('#sidebar-toggle', 'chevronLeft');
+  put('#logout-btn .nav-icon', 'logout');
+  put('.search-wrap span', 'search');
+  put('#refresh-btn', 'refresh');
+  put('#new-run-btn span', 'plus');
+  put('#close-modal-btn', 'close');
+  put('#close-detail-btn', 'close');
+  put('#add-step-btn span', 'plus');
+  put('#wizard-back-btn span', 'arrowLeft');
+  const hitl = document.querySelector('[data-mode="human_in_loop"] .mode-choice-icon');
+  if (hitl) hitl.innerHTML = icon('hand');
+  const auto = document.querySelector('[data-mode="autonomous"] .mode-choice-icon');
+  if (auto) auto.innerHTML = icon('robot');
+}
+
+// ---------- Sidebar ----------
+const shell = document.getElementById('app-shell');
+const sidebarToggle = document.getElementById('sidebar-toggle');
+
+function applySidebarState() {
+  const collapsed = localStorage.getItem('aura_sidebar_collapsed') === '1';
+  shell.classList.toggle('sidebar-collapsed', collapsed);
+}
+sidebarToggle.addEventListener('click', () => {
+  const collapsed = shell.classList.toggle('sidebar-collapsed');
+  localStorage.setItem('aura_sidebar_collapsed', collapsed ? '1' : '0');
+});
+
+// ---------- Routing ----------
+const VIEW_META = {
+  dashboard: { title: 'Dashboard', subtitle: "Real-time visibility into every run, adapter, and capability check." },
+  runs: { title: 'Test Runs', subtitle: 'Every run this tenant has queued, executed, or healed.' },
+  adapters: { title: 'Adapters', subtitle: "The capability adapters this orchestrator can currently route to." },
+  commands: { title: 'Commands', subtitle: 'Everything AURA can do from a terminal, in one place.' },
+  settings: { title: 'Settings', subtitle: 'Your account and this workspace, at a glance.' },
 };
 
-const ACTIONS = [
-  "visual_click", "type_text", "navigate_url", "scroll", "assert",
-  "capability_check", "wait_for_human_action",
-];
-
-// -------------------- API helpers --------------------
-
-async function apiFetch(path, options = {}) {
-  const headers = Object.assign(
-    { "Content-Type": "application/json" },
-    options.headers || {},
-    state.token ? { Authorization: `Bearer ${state.token}` } : {}
-  );
-  const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  if (response.status === 401) {
-    logout();
-    throw new Error("Session expired -- please sign in again.");
-  }
-  if (!response.ok) {
-    let detail = response.statusText;
-    try {
-      const body = await response.json();
-      detail = body.detail || JSON.stringify(body);
-    } catch (_) { /* ignore */ }
-    throw new Error(detail);
-  }
-  if (response.status === 204) return null;
-  return response.json();
+function setView(view) {
+  document.querySelectorAll('.nav-item[data-view]').forEach(a => a.classList.toggle('active', a.dataset.view === view));
+  document.querySelectorAll('.view').forEach(s => s.classList.add('hidden'));
+  document.getElementById(`view-${view}`).classList.remove('hidden');
+  document.getElementById('view-title').textContent = VIEW_META[view].title;
+  document.getElementById('view-subtitle').textContent = VIEW_META[view].subtitle;
+  document.getElementById('dash-bg').classList.toggle('hidden', view !== 'dashboard');
+  location.hash = view;
+  if (view === 'runs') loadAllRuns();
+  if (view === 'adapters') loadAdapters();
+  if (view === 'settings') loadSettings();
+  if (view === 'commands') loadCommands();
+  if (view === 'dashboard') loadDashboard();
 }
 
-// -------------------- Auth --------------------
+document.querySelectorAll('.nav-item[data-view]').forEach(a => {
+  a.addEventListener('click', (e) => { e.preventDefault(); setView(a.dataset.view); });
+});
 
-function isLoggedIn() {
-  return Boolean(state.token);
+// ---------- Logout ----------
+document.getElementById('logout-btn').addEventListener('click', () => {
+  localStorage.removeItem('aura_token');
+  location.replace('/login');
+});
+
+// ---------- User chip ----------
+function paintUser() {
+  const claims = decodeJwt(localStorage.getItem('aura_token') || '');
+  const name = claims.user_id || claims.sub || 'user';
+  document.getElementById('current-user').textContent = name;
+  document.getElementById('current-role').textContent = claims.role || '—';
+  document.getElementById('user-avatar').textContent = name.slice(0, 1).toUpperCase();
+  document.getElementById('settings-user').textContent = name;
+  document.getElementById('settings-tenant').textContent = claims.tenant_id || '—';
+  document.getElementById('settings-role').textContent = claims.role || '—';
 }
 
-function logout() {
-  state.token = null;
-  state.tenantId = null;
-  state.role = null;
-  state.username = null;
-  localStorage.removeItem("aura_token");
-  localStorage.removeItem("aura_tenant");
-  localStorage.removeItem("aura_role");
-  localStorage.removeItem("aura_username");
-  stopPolling();
-  showLogin();
-}
-
-async function login(username, password) {
-  const data = await apiFetchUnauthenticated("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ username, password }),
-  });
-  state.token = data.access_token;
-  state.tenantId = data.tenant_id;
-  state.role = data.role;
-  state.username = username;
-  localStorage.setItem("aura_token", state.token);
-  localStorage.setItem("aura_tenant", state.tenantId);
-  localStorage.setItem("aura_role", state.role);
-  localStorage.setItem("aura_username", username);
-}
-
-async function apiFetchUnauthenticated(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: Object.assign({ "Content-Type": "application/json" }, options.headers || {}),
-  });
-  if (!response.ok) {
-    let detail = response.statusText;
-    try {
-      const body = await response.json();
-      detail = body.detail || JSON.stringify(body);
-    } catch (_) { /* ignore */ }
-    throw new Error(detail);
-  }
-  return response.json();
-}
-
-// -------------------- Screen toggling --------------------
-
-function showLogin() {
-  document.getElementById("login-screen").classList.remove("hidden");
-  document.getElementById("app-shell").classList.add("hidden");
-}
-
-function showApp() {
-  document.getElementById("login-screen").classList.add("hidden");
-  document.getElementById("app-shell").classList.remove("hidden");
-  document.getElementById("current-user").textContent = state.username || "-";
-  document.getElementById("settings-user").textContent = state.username || "-";
-  document.getElementById("settings-tenant").textContent = state.tenantId || "-";
-  document.getElementById("settings-role").textContent = state.role || "-";
-}
-
-function switchView(view) {
-  state.currentView = view;
-  document.querySelectorAll(".nav-item[data-view]").forEach((el) => {
-    el.classList.toggle("active", el.dataset.view === view);
-  });
-  document.querySelectorAll(".view").forEach((el) => el.classList.add("hidden"));
-  document.getElementById(`view-${view}`).classList.remove("hidden");
-
-  const titles = {
-    dashboard: ["Dashboard", "Real-time visibility into every run, adapter, and capability check."],
-    runs: ["Test Runs", "Every run executed through this AURA instance, newest first."],
-    adapters: ["Adapters", "Live capability adapters registered with the orchestrator."],
-    settings: ["Settings", "Your session and API details."],
-  };
-  const [title, subtitle] = titles[view] || ["AURA", ""];
-  document.getElementById("view-title").textContent = title;
-  document.getElementById("view-subtitle").textContent = subtitle;
-
-  if (view === "adapters") loadAdapters();
-}
-
-// -------------------- Rendering --------------------
-
+// ---------- Dashboard ----------
 function statusBadge(status) {
-  return `<span class="badge badge-${status}">${status.replace(/_/g, " ")}</span>`;
+  const s = (status || 'queued').toLowerCase();
+  const cls = s === 'passed' ? 'badge-passed' : s === 'failed' ? 'badge-failed' : s === 'running' ? 'badge-running' : 'badge-queued';
+  return `<div class="badge ${cls}"><span class="dot"></span>${s}</div>`;
 }
 
-function renderStats() {
-  const counts = { total: state.runs.length, passed: 0, failed: 0, running: 0 };
-  state.runs.forEach((r) => {
-    if (r.status === "passed" || r.status === "passed_with_healing") counts.passed++;
-    else if (r.status === "failed") counts.failed++;
-    else if (r.status === "running" || r.status === "queued") counts.running++;
-  });
-
-  const cards = [
-    { label: "Total runs", value: counts.total, cls: "" },
-    { label: "Passed", value: counts.passed, cls: "accent-passed" },
-    { label: "Failed", value: counts.failed, cls: "accent-failed" },
-    { label: "In flight", value: counts.running, cls: "accent-running" },
-  ];
-
-  document.getElementById("stat-grid").innerHTML = cards
-    .map((c) => `
-      <div class="stat-card ${c.cls}">
-        <div class="stat-value">${c.value}</div>
-        <div class="stat-label">${c.label}</div>
-      </div>`)
-    .join("");
-}
-
-function runCard(run) {
-  const specName = (run.spec && (run.spec.test_name || run.spec.requirement_ref)) || "Unnamed run";
-  const when = run.created_at ? new Date(run.created_at).toLocaleString() : "";
+function runCard(run, i) {
+  const name = run.spec?.test_name || run.spec?.target || run.id;
+  const when = run.created_at ? new Date(run.created_at).toLocaleString() : '';
   return `
-    <div class="card" data-run-id="${run.id}">
-      <div class="card-header">
-        ${statusBadge(run.status)}
-      </div>
-      <div class="card-title">${escapeHtml(specName)}</div>
-      <div class="card-meta">ID: ${run.id.substring(0, 8)}... &bull; ${when}</div>
-      ${run.error ? `<div class="card-meta" style="color: var(--text-negative);">${escapeHtml(run.error)}</div>` : ""}
+    <div class="card reveal reveal-${(i % 4) + 1}" data-run-id="${run.id}">
+      ${statusBadge(run.status)}
+      <div class="card-title">${escapeHtml(name)}</div>
+      <div class="card-meta">ID: ${run.id.slice(0, 8)}... • ${when}</div>
     </div>`;
 }
 
-function renderRunsGrid(elementId, runs) {
-  const grid = document.getElementById(elementId);
-  if (!runs.length) {
-    grid.innerHTML = `<div class="empty-state">No test runs yet. Click "New Run" to queue your first execution.</div>`;
-    return;
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s ?? '';
+  return d.innerHTML;
+}
+
+function emptyState(label, hint) {
+  return `<div class="empty-state">${icon('inbox')}<div class="empty-state-title">${label}</div><div>${hint}</div></div>`;
+}
+
+async function loadDashboard() {
+  try {
+    const runs = await api('/test-runs/');
+    const total = runs.length;
+    const passed = runs.filter(r => r.status === 'passed').length;
+    const failed = runs.filter(r => r.status === 'failed').length;
+    const inFlight = runs.filter(r => r.status === 'running' || r.status === 'queued').length;
+
+    document.getElementById('stat-grid').innerHTML = `
+      <div class="stat-card reveal reveal-1"><div class="stat-value">${total}</div><div class="stat-label">Total runs</div></div>
+      <div class="stat-card reveal reveal-2"><div class="stat-value accent">${passed}</div><div class="stat-label">Passed</div></div>
+      <div class="stat-card reveal reveal-3"><div class="stat-value" style="color:#d99494">${failed}</div><div class="stat-label">Failed</div></div>
+      <div class="stat-card reveal reveal-4"><div class="stat-value warn">${inFlight}</div><div class="stat-label">In flight</div></div>
+    `;
+
+    const recent = runs.slice(0, 6);
+    document.getElementById('runs-grid').innerHTML = recent.length
+      ? recent.map(runCard).join('')
+      : emptyState('No runs yet', 'Start your first test run to see it here.');
+    bindRunCardClicks('#runs-grid');
+  } catch (e) {
+    toast(e.message, true);
   }
-  grid.innerHTML = runs.map(runCard).join("");
-  grid.querySelectorAll(".card").forEach((card) => {
-    card.addEventListener("click", () => openRunDetail(card.dataset.runId));
+}
+
+async function loadAllRuns() {
+  try {
+    const runs = await api('/test-runs/');
+    document.getElementById('runs-count-meta').textContent = `${runs.length} total`;
+    document.getElementById('all-runs-grid').innerHTML = runs.length
+      ? runs.map(runCard).join('')
+      : emptyState('No runs yet', 'New runs you queue will show up here.');
+    bindRunCardClicks('#all-runs-grid');
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function bindRunCardClicks(containerSel) {
+  document.querySelectorAll(`${containerSel} .card`).forEach(card => {
+    card.addEventListener('click', () => openRunDetail(card.dataset.runId));
   });
-}
-
-function renderAdapters() {
-  const grid = document.getElementById("adapters-grid");
-  if (!state.adapters.length) {
-    grid.innerHTML = `<div class="empty-state">No adapters registered.</div>`;
-    return;
-  }
-  grid.innerHTML = state.adapters
-    .map((a) => `
-      <div class="adapter-card">
-        <div class="adapter-name">${a.capability_type.replace(/_/g, " ")}</div>
-        <div><span class="status-dot"></span>${a.status}</div>
-      </div>`)
-    .join("");
-}
-
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-// -------------------- Data loading --------------------
-
-async function loadRuns() {
-  try {
-    const runs = await apiFetch("/test-runs/");
-    state.runs = runs;
-    renderStats();
-    renderRunsGrid("runs-grid", runs.slice(0, 12));
-    renderRunsGrid("all-runs-grid", runs);
-  } catch (e) {
-    document.getElementById("runs-grid").innerHTML =
-      `<div class="empty-state">Couldn't reach AURA's API: ${escapeHtml(e.message)}</div>`;
-  }
-}
-
-async function loadAdapters() {
-  try {
-    const data = await apiFetch("/adapters/status");
-    state.adapters = data.adapters || [];
-    renderAdapters();
-  } catch (e) {
-    document.getElementById("adapters-grid").innerHTML =
-      `<div class="empty-state">Couldn't reach AURA's API: ${escapeHtml(e.message)}</div>`;
-  }
 }
 
 async function openRunDetail(runId) {
   try {
-    const run = await apiFetch(`/test-runs/${runId}`);
-    document.getElementById("run-detail-title").textContent = `Run ${runId.substring(0, 8)}...`;
-    document.getElementById("run-detail-body").textContent = JSON.stringify(run, null, 2);
-    document.getElementById("run-detail-modal").classList.remove("hidden");
+    const run = await api(`/test-runs/${runId}`);
+    document.getElementById('run-detail-title').textContent = run.spec?.test_name || runId;
+    document.getElementById('run-detail-body').textContent = JSON.stringify(run, null, 2);
+    document.getElementById('run-detail-modal').classList.remove('hidden');
   } catch (e) {
-    alert(`Couldn't load run: ${e.message}`);
+    toast(e.message, true);
   }
 }
+document.getElementById('close-detail-btn').addEventListener('click', () => {
+  document.getElementById('run-detail-modal').classList.add('hidden');
+});
+document.getElementById('run-detail-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'run-detail-modal') e.target.classList.add('hidden');
+});
 
-// -------------------- Polling --------------------
-
-function startPolling() {
-  stopPolling();
-  loadRuns();
-  state.pollHandle = setInterval(loadRuns, 4000);
-}
-
-function stopPolling() {
-  if (state.pollHandle) clearInterval(state.pollHandle);
-  state.pollHandle = null;
-}
-
-// -------------------- New Run modal --------------------
-
-let stepCounter = 0;
-
-function addStepRow(prefill = {}) {
-  stepCounter += 1;
-  const id = `step-${stepCounter}`;
-  const container = document.createElement("div");
-  container.className = "step-row";
-  container.id = id;
-  container.innerHTML = `
-    <div class="step-row-top">
-      <select class="step-action">
-        ${ACTIONS.map((a) => `<option value="${a}" ${a === prefill.action ? "selected" : ""}>${a}</option>`).join("")}
-      </select>
-      <input type="text" class="step-target" placeholder="Target / value (e.g. Submit Button, URL, capability target)" value="${escapeHtml(prefill.target || "")}">
-      <button type="button" class="step-remove-btn">${icon("close")}</button>
-    </div>
-  `;
-  container.querySelector(".step-remove-btn").addEventListener("click", () => container.remove());
-  document.getElementById("steps-list").appendChild(container);
-}
-
-function collectSteps() {
-  return Array.from(document.querySelectorAll(".step-row")).map((row) => ({
-    action: row.querySelector(".step-action").value,
-    target: row.querySelector(".step-target").value,
-  }));
-}
-
-function openNewRunModal() {
-  document.getElementById("run-name-input").value = "";
-  document.getElementById("run-error").textContent = "";
-  document.getElementById("steps-list").innerHTML = "";
-  addStepRow({ action: "capability_check", target: "smoke" });
-  document.getElementById("new-run-modal").classList.remove("hidden");
-}
-
-async function submitNewRun() {
-  const testName = document.getElementById("run-name-input").value.trim();
-  const steps = collectSteps();
-  const errorEl = document.getElementById("run-error");
-  errorEl.textContent = "";
-
-  if (!testName) {
-    errorEl.textContent = "Test name is required.";
-    return;
-  }
-  if (!steps.length) {
-    errorEl.textContent = "At least one step is required.";
-    return;
-  }
-
+// ---------- Adapters ----------
+async function loadAdapters() {
   try {
-    await apiFetch("/test-runs/", {
-      method: "POST",
-      body: JSON.stringify({ test_name: testName, steps }),
-    });
-    document.getElementById("new-run-modal").classList.add("hidden");
-    switchView("dashboard");
-    loadRuns();
+    const data = await api('/adapters/status');
+    const items = data.adapters || [];
+    document.getElementById('adapters-grid').innerHTML = items.length
+      ? items.map((a, i) => `
+        <div class="card reveal reveal-${(i % 4) + 1}" style="cursor:default;">
+          <div class="badge badge-passed"><span class="dot"></span>${a.status}</div>
+          <div class="card-title">${escapeHtml(a.capability_type)}</div>
+          <div class="card-meta">Registered capability adapter</div>
+        </div>`).join('')
+      : emptyState('No adapters registered', 'Register a capability adapter in the orchestrator to see it here.');
   } catch (e) {
-    errorEl.textContent = e.message;
+    toast(e.message, true);
   }
 }
 
-// -------------------- Wiring --------------------
+// ---------- Settings ----------
+function loadSettings() { paintUser(); }
 
-function wireStaticIcons() {
-  document.querySelector('[data-view="dashboard"]').innerHTML = `${icon("home")} Dashboard`;
-  document.querySelector('[data-view="runs"]').innerHTML = `${icon("rocket")} Test Runs`;
-  document.querySelector('[data-view="adapters"]').innerHTML = `${icon("plug")} Adapters`;
-  document.querySelector('[data-view="settings"]').innerHTML = `${icon("setting")} Settings`;
-  document.getElementById("logout-btn").innerHTML = `${icon("logout")} Log out`;
-  document.getElementById("user-icon").innerHTML = ICONS.user;
-  document.getElementById("refresh-btn").innerHTML = icon("refresh");
-  document.getElementById("new-run-btn").innerHTML = `${icon("add")} New Run`;
-  document.getElementById("add-step-btn").innerHTML = `${icon("add")} Add step`;
-  document.querySelector(".search-wrap .icon-inline").innerHTML = ICONS.search;
-  document.getElementById("close-modal-btn").innerHTML = icon("close");
-  document.getElementById("close-detail-btn").innerHTML = icon("close");
+// ---------- Commands reference ----------
+const CLI_COMMANDS = [
+  {
+    name: 'aura init',
+    desc: 'Run the first-time setup wizard: target app type, scheduling, and compression policy.',
+    flags: ['--yes / -y  Skip interactive prompts, write defaults'],
+  },
+  {
+    name: 'aura execute [test_id]',
+    desc: 'Execute a test: approval checkpoint → live vision-execution loop → report. Pass a spec/requirement file, or use --url / --prompt / --all instead of a test_id.',
+    flags: [
+      '--all  Execute every requirement doc in requirements_input/',
+      '--yes / -y  Auto-approve spec, low-confidence actions, and healed steps (unattended)',
+      '--autonomous  Same as --yes — explicit name for zero-human-input mode',
+      '--refresh-data  Force-regenerate synthetic data instead of reusing the cache',
+      '--pdf  Also export the report as PDF (requires the "report" extra)',
+      '--url <url>  Live website URL to test',
+      '--prompt <text>  Plain-English instruction for what to test (runs unattended)',
+      '--scroll-test  After the main steps, scroll top-to-bottom checking for broken/error content',
+      '--ui-audit  Check nav/hero/footer are present and test-click nav/footer links',
+      '--interactive  Human-in-the-loop: AURA waits for you to perform the --prompt action yourself',
+      '--timeout <seconds>  Only with --interactive — give up after N seconds (0 = wait forever)',
+    ],
+  },
+  {
+    name: 'aura explore <url>',
+    desc: 'Fully autonomous exploration: give it a URL, nothing else. Navigates, scrolls, finds every clickable element via OCR, clicks each one, checks nothing broke, and reports back.',
+    flags: [
+      '--max-elements <n>  Cap on detected clickable elements to test-click (default 25)',
+      '--prompt <text>  Optional thing to keep an eye out for while exploring',
+      '--no-scroll-scan  Skip the full-page scroll/error scan before clicking elements',
+    ],
+  },
+  {
+    name: 'aura debug <path>',
+    desc: 'Scan Python file(s) for common bug patterns and report them — detection only, never modifies code.',
+    flags: [
+      '--out <file>  Also write the full findings list to a Markdown file',
+      '--no-ruff  Skip the supplementary ruff lint pass',
+    ],
+  },
+  {
+    name: 'aura schedule <action> [cron] [test_id]',
+    desc: 'Manage unattended scheduled runs. action is one of: add, remove, list.',
+    flags: [
+      'add "<cron>" <test_id>  e.g. aura schedule add "0 2 * * *" TC-LOGIN-001',
+      'remove <job_id>',
+      'list',
+    ],
+  },
+  {
+    name: 'aura skills <action>',
+    desc: 'Inspect, export, import, or diff the local self-healing skill library. action is one of: list, export, import, diff.',
+    flags: [
+      '--app <name>  App identifier filter/tag',
+      '--out <file>  Output file for export, or input file for import',
+      '--before <file>  Earlier skill-pack export (required for diff)',
+      '--after <file>  Later skill-pack export (required for diff)',
+    ],
+  },
+  {
+    name: 'aura trigger listen',
+    desc: 'Start the inbound webhook listener so CI/CD systems can trigger runs directly.',
+    flags: ['--host <ip>  Default 0.0.0.0', '--port <port>  Default 8099'],
+  },
+  {
+    name: 'aura trigger process',
+    desc: 'Process any pending webhook triggers and queue them for execution.',
+    flags: [],
+  },
+];
+
+function loadCommands() {
+  document.getElementById('commands-list').innerHTML = CLI_COMMANDS.map(c => `
+    <div class="command-item">
+      <div class="command-name">${escapeHtml(c.name)}</div>
+      <div class="command-desc">${escapeHtml(c.desc)}</div>
+      ${c.flags.length ? `<ul class="command-flags">${c.flags.map(f => `<li class="command-flag">${escapeHtml(f)}</li>`).join('')}</ul>` : ''}
+    </div>`).join('');
 }
 
-function wireEvents() {
-  document.getElementById("login-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const username = document.getElementById("login-username").value.trim();
-    const password = document.getElementById("login-password").value;
-    const errorEl = document.getElementById("login-error");
-    errorEl.textContent = "";
-    try {
-      await login(username, password);
-      showApp();
-      switchView("dashboard");
-      startPolling();
-    } catch (err) {
-      errorEl.textContent = err.message || "Login failed.";
-    }
+// ---------- Refresh / search ----------
+document.getElementById('refresh-btn').addEventListener('click', async (e) => {
+  e.currentTarget.classList.add('spinning');
+  const active = document.querySelector('.nav-item.active')?.dataset.view || 'dashboard';
+  await { dashboard: loadDashboard, runs: loadAllRuns, adapters: loadAdapters, settings: loadSettings, commands: async () => loadCommands() }[active]();
+  setTimeout(() => e.currentTarget.classList.remove('spinning'), 300);
+  toast('Refreshed');
+});
+
+document.getElementById('search-input').addEventListener('input', (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  document.querySelectorAll('.grid .card').forEach(card => {
+    const text = card.textContent.toLowerCase();
+    card.style.display = !q || text.includes(q) ? '' : 'none';
   });
+});
 
-  document.getElementById("logout-btn").addEventListener("click", logout);
-
-  document.querySelectorAll(".nav-item[data-view]").forEach((el) => {
-    el.addEventListener("click", (e) => {
-      e.preventDefault();
-      switchView(el.dataset.view);
-    });
-  });
-
-  document.getElementById("refresh-btn").addEventListener("click", () => {
-    loadRuns();
-    if (state.currentView === "adapters") loadAdapters();
-  });
-
-  document.getElementById("new-run-btn").addEventListener("click", openNewRunModal);
-  document.getElementById("cancel-run-btn").addEventListener("click", () =>
-    document.getElementById("new-run-modal").classList.add("hidden")
-  );
-  document.getElementById("close-modal-btn").addEventListener("click", () =>
-    document.getElementById("new-run-modal").classList.add("hidden")
-  );
-  document.getElementById("submit-run-btn").addEventListener("click", submitNewRun);
-  document.getElementById("add-step-btn").addEventListener("click", () => addStepRow());
-
-  document.getElementById("close-detail-btn").addEventListener("click", () =>
-    document.getElementById("run-detail-modal").classList.add("hidden")
-  );
-
-  document.getElementById("search-input").addEventListener("input", (e) => {
-    const q = e.target.value.toLowerCase();
-    const filtered = state.runs.filter((r) => {
-      const name = (r.spec && (r.spec.test_name || r.spec.requirement_ref)) || "";
-      return name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || r.status.toLowerCase().includes(q);
-    });
-    renderRunsGrid("runs-grid", filtered.slice(0, 12));
-    renderRunsGrid("all-runs-grid", filtered);
-  });
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  wireStaticIcons();
-  wireEvents();
-  if (isLoggedIn()) {
-    showApp();
-    switchView("dashboard");
-    startPolling();
-  } else {
-    showLogin();
+// Touch devices have no :hover, so tapping the collapsed pill expands it
+// and focuses the input; tapping elsewhere collapses it again.
+const searchWrap = document.getElementById('search-wrap');
+const searchInput = document.getElementById('search-input');
+searchWrap.addEventListener('click', () => {
+  if (!searchWrap.classList.contains('expanded')) {
+    searchWrap.classList.add('expanded');
+    searchInput.focus();
   }
 });
+document.addEventListener('click', (e) => {
+  if (!searchWrap.contains(e.target) && !searchInput.value) {
+    searchWrap.classList.remove('expanded');
+  }
+});
+
+// =====================================================================
+// New Test Run wizard
+// =====================================================================
+const wizard = {
+  mode: null,        // 'human_in_loop' | 'autonomous'
+  step: 1,           // 1 = mode, 2 = target, 3 = details
+  steps: [],         // human-in-the-loop step rows
+};
+
+const STEP_TYPES = [
+  { value: 'visual_click', label: 'Click something', fields: ['target'] },
+  { value: 'type_text', label: 'Type into a field', fields: ['target', 'value'] },
+  { value: 'navigate_url', label: 'Go to a URL', fields: ['url'] },
+  { value: 'scroll', label: 'Scroll the page', fields: ['target'] },
+  { value: 'assert', label: 'Check that…', fields: ['target'] },
+  { value: 'wait_for_human_action', label: 'Pause for me', fields: ['target'] },
+  { value: 'capability_check', label: 'Run a system check', fields: ['target', 'value'] },
+];
+
+const FIELD_PLACEHOLDERS = {
+  target: {
+    visual_click: 'e.g. the "Submit" button',
+    type_text: 'e.g. the email field',
+    scroll: 'e.g. down to the footer (optional)',
+    assert: 'e.g. a success message appears',
+    wait_for_human_action: 'e.g. solve the CAPTCHA, then continue',
+    capability_check: 'e.g. api, database, file_system',
+  },
+  value: {
+    type_text: 'e.g. someone@example.com',
+    capability_check: 'e.g. the orders table, or leave blank',
+  },
+  url: { navigate_url: 'https://app.example.com/login' },
+};
+
+function openWizard() {
+  wizard.mode = null;
+  wizard.step = 1;
+  wizard.steps = [{ action: 'visual_click', target: '', value: '', url: '' }];
+  document.getElementById('run-name-input').value = '';
+  document.getElementById('run-target-input').value = '';
+  document.getElementById('run-prompt-hitl').value = '';
+  document.getElementById('run-prompt-auto').value = '';
+  document.getElementById('run-error').classList.remove('visible');
+  document.querySelectorAll('.mode-choice').forEach(b => b.classList.remove('selected'));
+  renderWizardStep();
+  document.getElementById('new-run-modal').classList.remove('hidden');
+}
+
+function closeWizard() {
+  document.getElementById('new-run-modal').classList.add('hidden');
+}
+
+function renderWizardStep() {
+  const dots = document.querySelectorAll('#wizard-dots .modal-step-dot');
+  dots.forEach((d, i) => {
+    d.classList.toggle('active', i === wizard.step - 1);
+    d.classList.toggle('done', i < wizard.step - 1);
+  });
+
+  document.getElementById('wizard-step-1').classList.toggle('hidden', wizard.step !== 1);
+  document.getElementById('wizard-step-2').classList.toggle('hidden', wizard.step !== 2);
+  document.getElementById('wizard-step-3-hitl').classList.toggle('hidden', !(wizard.step === 3 && wizard.mode === 'human_in_loop'));
+  document.getElementById('wizard-step-3-auto').classList.toggle('hidden', !(wizard.step === 3 && wizard.mode === 'autonomous'));
+
+  document.getElementById('wizard-back-btn').classList.toggle('hidden', wizard.step === 1);
+  const nextBtn = document.getElementById('wizard-next-btn');
+  nextBtn.textContent = wizard.step === 3 ? 'Queue run' : 'Continue';
+
+  document.getElementById('wizard-title').textContent =
+    wizard.step === 1 ? 'New Test Run' : wizard.mode === 'autonomous' ? 'Autonomous run' : 'Human-in-the-loop run';
+
+  if (wizard.step === 3 && wizard.mode === 'human_in_loop') renderSteps();
+}
+
+document.querySelectorAll('.mode-choice').forEach(btn => {
+  btn.addEventListener('click', () => {
+    wizard.mode = btn.dataset.mode;
+    document.querySelectorAll('.mode-choice').forEach(b => b.classList.toggle('selected', b === btn));
+  });
+});
+
+function renderSteps() {
+  const list = document.getElementById('steps-list');
+  list.innerHTML = wizard.steps.map((s, i) => {
+    const type = STEP_TYPES.find(t => t.value === s.action) || STEP_TYPES[0];
+    const showTarget = type.fields.includes('target');
+    const showValue = type.fields.includes('value');
+    const showUrl = type.fields.includes('url');
+    return `
+      <div class="step-row" data-idx="${i}">
+        <span class="step-index">${i + 1}</span>
+        <select class="step-select" data-role="action">
+          ${STEP_TYPES.map(t => `<option value="${t.value}" ${t.value === s.action ? 'selected' : ''}>${t.label}</option>`).join('')}
+        </select>
+        ${showUrl ? `<input class="step-input" data-role="url" placeholder="${FIELD_PLACEHOLDERS.url.navigate_url}" value="${escapeHtml(s.url)}">` : ''}
+        ${showTarget ? `<input class="step-input" data-role="target" placeholder="${FIELD_PLACEHOLDERS.target[s.action] || 'Describe it in plain words'}" value="${escapeHtml(s.target)}">` : ''}
+        ${showValue ? `<input class="step-input" data-role="value" placeholder="${FIELD_PLACEHOLDERS.value[s.action] || ''}" value="${escapeHtml(s.value)}">` : ''}
+        <button class="step-remove" data-role="remove" title="Remove step">${icon('trash')}</button>
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('.step-row').forEach(row => {
+    const idx = Number(row.dataset.idx);
+    row.querySelector('[data-role="action"]').addEventListener('change', (e) => {
+      wizard.steps[idx].action = e.target.value;
+      renderSteps();
+    });
+    row.querySelectorAll('input').forEach(inp => {
+      inp.addEventListener('input', (e) => { wizard.steps[idx][e.target.dataset.role] = e.target.value; });
+    });
+    const rm = row.querySelector('[data-role="remove"]');
+    rm.addEventListener('click', () => {
+      if (wizard.steps.length === 1) return;
+      wizard.steps.splice(idx, 1);
+      renderSteps();
+    });
+  });
+}
+
+document.getElementById('add-step-btn').addEventListener('click', () => {
+  wizard.steps.push({ action: 'visual_click', target: '', value: '', url: '' });
+  renderSteps();
+});
+
+document.getElementById('new-run-btn').addEventListener('click', openWizard);
+document.getElementById('close-modal-btn').addEventListener('click', closeWizard);
+document.getElementById('cancel-run-btn').addEventListener('click', closeWizard);
+document.getElementById('new-run-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'new-run-modal') closeWizard();
+});
+
+document.getElementById('wizard-back-btn').addEventListener('click', () => {
+  wizard.step = Math.max(1, wizard.step - 1);
+  renderWizardStep();
+});
+
+function showWizardError(msg) {
+  const box = document.getElementById('run-error');
+  box.textContent = msg;
+  box.classList.add('visible');
+}
+
+document.getElementById('wizard-next-btn').addEventListener('click', async () => {
+  document.getElementById('run-error').classList.remove('visible');
+
+  if (wizard.step === 1) {
+    if (!wizard.mode) { showWizardError('Pick an approach to continue.'); return; }
+    wizard.step = 2;
+    return renderWizardStep();
+  }
+
+  if (wizard.step === 2) {
+    const target = document.getElementById('run-target-input').value.trim();
+    if (!target) { showWizardError('Add a URL or file to test.'); return; }
+    wizard.step = 3;
+    return renderWizardStep();
+  }
+
+  // step 3 -> submit
+  await submitRun();
+});
+
+async function submitRun() {
+  const name = document.getElementById('run-name-input').value.trim() || 'Untitled run';
+  const target = document.getElementById('run-target-input').value.trim();
+  const btn = document.getElementById('wizard-next-btn');
+  btn.disabled = true;
+  btn.textContent = 'Queuing…';
+
+  try {
+    let body;
+    if (wizard.mode === 'autonomous') {
+      body = {
+        mode: 'autonomous',
+        test_name: name,
+        target,
+        prompt: document.getElementById('run-prompt-auto').value.trim(),
+      };
+    } else {
+      const steps = wizard.steps.map(s => {
+        const type = STEP_TYPES.find(t => t.value === s.action);
+        const step = { action: s.action };
+        if (s.action === 'capability_check') {
+          // The first field holds the adapter key (api/database/file_system/...),
+          // which the backend requires as `capability_type` -- it is NOT the
+          // same as a generic `target` description, so it must be mapped
+          // explicitly or the run fails later with an opaque validation error.
+          step.capability_type = s.target;
+          step.target = s.value || '';
+        } else {
+          if (type.fields.includes('target')) step.target = s.target;
+          if (type.fields.includes('value')) step.value = s.value;
+        }
+        if (type.fields.includes('url')) step.url = s.url || target;
+        return step;
+      });
+      // Always make sure the target itself is reachable first.
+      if (!steps.some(s => s.action === 'navigate_url')) {
+        steps.unshift({ action: 'navigate_url', url: target });
+      }
+      const prompt = document.getElementById('run-prompt-hitl').value.trim();
+      body = { mode: 'guided', test_name: name, steps, ...(prompt ? { notes: prompt } : {}) };
+    }
+
+    const result = await api('/test-runs/', { method: 'POST', body: JSON.stringify(body) });
+    toast(`Run queued — ${result.run_id.slice(0, 8)}…`);
+    closeWizard();
+    const active = document.querySelector('.nav-item.active')?.dataset.view || 'dashboard';
+    if (active === 'dashboard') loadDashboard(); else if (active === 'runs') loadAllRuns();
+  } catch (e) {
+    showWizardError(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Queue run';
+  }
+}
+
+// ---------- Boot ----------
+(function init() {
+  applySidebarState();
+  paintIcons();
+  paintUser();
+  document.getElementById('app-shell').classList.remove('hidden');
+  const initial = (location.hash || '#dashboard').slice(1);
+  setView(VIEW_META[initial] ? initial : 'dashboard');
+})();

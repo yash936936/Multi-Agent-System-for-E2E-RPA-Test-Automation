@@ -13,7 +13,15 @@ class CloudAdapter:
         params = payload.params
         expected = payload.expected or {}
         action = params.get("action", "s3_object_exists")
-        
+        if action != "s3_object_exists":
+            # Only s3_object_exists is implemented so far -- previously
+            # `action` was read but never checked, so any other value
+            # (e.g. a typo, or a not-yet-implemented action) silently ran
+            # the s3_object_exists path anyway instead of failing loudly.
+            return self._fail(
+                f"Unsupported cloud action '{action}'. Supported actions: s3_object_exists"
+            )
+
         bucket = params.get("bucket")
         key = params.get("key")
         

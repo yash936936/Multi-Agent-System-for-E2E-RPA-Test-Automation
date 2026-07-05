@@ -19,6 +19,7 @@ import json
 import os
 import secrets
 import sys
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -45,14 +46,18 @@ class UserStore:
     def __init__(self, path: Optional[Path] = None) -> None:
         self.path = path or (settings.project_root / "config" / "users.json")
         self._seeded = False
+        self._lock = threading.RLock()
 
     def _ensure_seeded(self) -> None:
         if self._seeded:
             return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.path.exists():
-            self._seed()
-        self._seeded = True
+        with self._lock:
+            if self._seeded:
+                return
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            if not self.path.exists():
+                self._seed()
+            self._seeded = True
 
     def _seed(self) -> None:
         admin_password = os.environ.get("AURA_ADMIN_PASSWORD")
@@ -79,22 +84,54 @@ class UserStore:
 
     def _load(self) -> dict:
         self._ensure_seeded()
-        return json.loads(self.path.read_text())
+        with self._lock:
+            return json.loads(self.path.read_text())
+
+    def _save(self, users: dict) -> None:
+        with self._lock:
+            self.path.write_text(json.dumps(users, indent=2))
 
     def verify(self, username: str, password: str) -> Optional[dict]:
         users = self._load()
         record = users.get(username)
-        if not record:
+        if not record or record.get("oauth_provider"):
             return None
         if not _verify(password, record["salt"], record["hash"]):
             return None
         return {"tenant_id": record["tenant_id"], "role": record["role"], "user_id": username}
 
-    def create_user(self, username: str, password: str, tenant_id: str, role: str) -> None:
+    def user_exists(self, username: str) -> bool:
+        return username in self._load()
+
+    def create_user(
+        self, username: str, password: str, tenant_id: str = "default", role: str = "executor"
+    ) -> None:
         self._ensure_seeded()
-        users = self._load()
-        users[username] = {"tenant_id": tenant_id, "role": role, **_new_hash(password)}
-        self.path.write_text(json.dumps(users, indent=2))
+        with self._lock:
+            users = self._load()
+            if username in users:
+                raise ValueError(f"User '{username}' already exists")
+            users[username] = {"tenant_id": tenant_id, "role": role, **_new_hash(password)}
+            self._save(users)
+
+    def find_or_create_oauth_user(
+        self, username: str, provider: str, tenant_id: str = "default", role: str = "executor"
+    ) -> dict:
+        """
+        Looks up a user previously linked to `provider`, or creates one on
+        first login via that provider. OAuth-linked accounts have no local
+        password (oauth_provider is set, salt/hash are absent) so `verify()`
+        deliberately refuses to authenticate them via the password path.
+        """
+        self._ensure_seeded()
+        with self._lock:
+            users = self._load()
+            record = users.get(username)
+            if record is None:
+                record = {"tenant_id": tenant_id, "role": role, "oauth_provider": provider}
+                users[username] = record
+                self._save(users)
+        return {"tenant_id": record["tenant_id"], "role": record["role"], "user_id": username}
 
 
 user_store = UserStore()
