@@ -49,11 +49,23 @@ llm = [
 aura = "aura.main:app"
 
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=75.6.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+# Explicitly anchor the source root so pip's build-isolation subprocess
+# (which changes cwd to a temp dir) can still find the packages.
+package-dir = {"" = "."}
+
 [tool.setuptools.packages.find]
-include = ["aura*", "orchestrator*", "agents*", "runtime*", "reports*", "config*", "api*"]
+where = ["."]
+exclude = [
+    ".venv*", "build*", "dist*", "*.egg-info*",
+    "tests*", "docs*", "scripts*", "target_app*",
+    "webui*", "logs*", "requirements_input*",
+]
+
+
 
 [tool.pytest.ini_options]
 # Only collect functions named test_* as tests; prevents pytest from trying
