@@ -470,3 +470,87 @@ runtime network calls are made by Playwright itself). Phase E, if picked
 up later, should give the automation_anywhere/playwright_validator wiring
 its own full decisions.md entry (CLI docs, `test_16_categories_verification.py`-style
 registration test) rather than relying on this pass's minimal conflict fix.
+
+## D-020 — Phase D: capability-adapter egress controls (kill switch, host allowlist, audit trail)
+
+**Context:** Roadmap.md's own Phase D entry (written before Phase C landed)
+scoped this as: a hard kill switch (`settings.capability_adapters_enabled`),
+an egress allowlist (`settings.allowed_capability_hosts`), and extending the
+audit trail to log capability-adapter outbound target host + timestamp.
+Sequenced after Phase C on the assumption Phase C would introduce new
+egress points needing the same hardening — in practice Phase C's Playwright
+work is a *local* browser automation surface (no new outbound capability
+target), so Phase D's actual scope is entirely about the pre-existing
+`agents/capability/*.py` adapters, which were already the system's sole
+intentional network/filesystem surface.
+
+**What changed:**
+- `config/settings.py`: added `capability_adapters_enabled: bool = True`
+  (hard kill switch) and `allowed_capability_hosts: list[str] | None = None`
+  (opt-in egress allowlist). Both default to today's behavior unchanged —
+  no existing spec breaks.
+- `orchestrator/capability_router.py::route_capability` (the single
+  kernel-facing chokepoint for every capability adapter, per its own
+  module docstring) now, in order: (1) rejects everything if the kill
+  switch is off, (2) extracts the target host from the payload and
+  rejects if an allowlist is set and the host doesn't match, (3) logs a
+  `CAPABILITY_EGRESS` record (host + UTC timestamp only, never payload
+  contents — params can carry credentials) to `orchestrator.audit_logger`,
+  the same sink `api/routers/runs.py` already uses for run-level auditing,
+  then (4) dispatches to the adapter as before.
+- Host extraction (`_extract_egress_host`) is deliberately built from the
+  real `params.get(...)` key names actually used across
+  `agents/capability/*.py` (audited file by file, not assumed):
+  `url`/`webhook_url`/`account_url`/`endpoint` (api, workflow, chat_ops,
+  azure blob account URL), `connection_string`/`conn_str` (db, azure),
+  `smtp_server`/`imap_server`/`host` (email), falling back to
+  `payload.target` itself if it parses as a URL (link_check).
+- **Known, documented gap, not silently papered over:** `azure_adapter.py`
+  and `gcp_adapter.py` primarily authenticate via SDK default-credential
+  chains (`DefaultAzureCredential`, ADC) rather than an explicit host in
+  `params`, so `_extract_egress_host` often returns `None` for those two
+  adapters specifically. `_host_allowed` fails open when the host is
+  unresolvable (the kill switch remains the hard backstop for that case),
+  and the audit record still logs `host: null` rather than skipping the
+  log line, so the gap is visible in the trail rather than hidden. A
+  future pass could thread the actual resolved storage-account/project
+  hostname through those two adapters' `params` if tighter allowlisting is
+  needed for them specifically — not done here to avoid changing two
+  adapters' external call shape as a side effect of an audit feature.
+- `FAKE` is the one capability exempted from host checks entirely (no
+  real network target ever) but still respects the kill switch, so "one
+  flag disables the whole layer" stays true without exception.
+- New test file `tests/test_capability_egress_controls.py` (16 tests):
+  kill-switch rejection, host extraction across each real param-key
+  convention, allowlist exact/subdomain match and rejection, fail-open
+  behavior when no host is resolvable, and audit-log content (present on
+  permit, absent on kill-switch rejection, never containing payload data).
+
+**Verification:** full existing suite plus the new file:
+**300/309 passing** (the 9 failures are the pre-existing Phase C
+Playwright/Chromium tests, which fail in this sandbox only because its own
+network egress rules block `cdn.playwright.dev`'s browser-binary download
+— confirmed as the *only* failure cause by running the full suite
+unmodified before this change and seeing the identical 9 tests fail for
+the identical reason; nothing in this Phase D change touches Playwright
+code). `pyflakes` clean on every file touched.
+
+**Not done in this pass (out of scope for Phase D as scoped):** per-adapter
+host resolution for azure/gcp (noted above as a documented gap); a
+structured event-type taxonomy for `orchestrator/audit_logger.py` more
+broadly (that was a separate, lower-priority idea from `external_repos.md`
+Batch 6's langfuse extraction, not part of Phase D's stated scope);
+threading real tenant/user identity into `route_capability`'s audit calls
+(it currently logs `tenant_id="system"` because `RunEngine`/the kernel
+don't carry request-level identity down to the capability layer today —
+would require a broader context-passing change through `RunEngine.run_spec`
+and is deliberately left as a follow-up rather than bundled here).
+
+**Revisit when:** Phase E (Automation Anywhere) adds
+`automation_anywhere_adapter.py`'s real trigger endpoint to the
+egress-controlled set — it already routes through the same
+`route_capability` chokepoint (`CapabilityType.AUTOMATION_ANYWHERE` is
+registered per D-019's conflict-fix note), so it inherits Phase D's kill
+switch and allowlist automatically; confirm its `params` key for the AA
+Control Room URL is covered by `_URL_PARAM_KEYS` when that phase is
+picked up properly.

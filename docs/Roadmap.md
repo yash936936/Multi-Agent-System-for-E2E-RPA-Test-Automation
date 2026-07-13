@@ -197,20 +197,33 @@ their technical design, which stays in TRD.md §10/§11.
 - **Phase C — Playwright interaction layer.** Not started. Same work as
   §6 Phase 20 above (20a/20b specifically). This is now the largest
   remaining item in this roadmap.
-- **Phase D — Offline hardening & API boundary.** Not started. Adds a
-  hard kill-switch (`settings.capability_adapters_enabled`) and an
-  egress allowlist (`settings.allowed_capability_hosts`) on top of
-  Phase C's Playwright integration point, plus extends
-  `orchestrator/audit_logger.py` to log capability-adapter outbound
-  target host + timestamp (not payload contents) into the same trace
-  file used for tool-call auditing. Depends on Phase C landing first
-  since it hardens the same egress points Phase C introduces.
+- **Phase D — Offline hardening & API boundary.** ✅ **DONE, 2026-07-14**
+  — see `decisions.md` D-020. Added the hard kill-switch
+  (`settings.capability_adapters_enabled`) and egress allowlist
+  (`settings.allowed_capability_hosts`), enforced at
+  `orchestrator/capability_router.py::route_capability` (the single
+  chokepoint every capability adapter is dispatched through), plus
+  audit-logged every permitted capability call's target host + UTC
+  timestamp (never payload contents) via `orchestrator/audit_logger.py`.
+  Turned out not to actually depend on Phase C landing first — Phase C's
+  Playwright work is a local browser-automation surface, not a new
+  outbound capability target, so Phase D's real scope was entirely the
+  pre-existing `agents/capability/*.py` adapters. Known documented gap:
+  `azure_adapter`/`gcp_adapter` authenticate via SDK default-credential
+  chains rather than an explicit host param, so their calls can't be
+  host-allowlisted yet (kill switch still covers them).
 - **Phase E — Automation Anywhere trigger/validate.** Not started. Same
   work as §7 Phase 21 above. Deliberately sequenced last — lowest
   urgency, and 21b depends on Phase C's Playwright session/locator code.
+  Inherits Phase D's kill switch/allowlist automatically once picked up,
+  since it routes through the same `route_capability` chokepoint.
 
-**Current status (2026-07-13): A and B done, C/D/E not started.** Each
+**Current status (2026-07-14): A, B, C, and D done; E not started.** Each
 phase gets its own `decisions.md` entry before code changes, and the
 existing test suite is kept green throughout rather than batching
-everything into one untested drop — Phase A/B's work added 9 new tests on
-top of the existing suite, all passing (267/267 total).
+everything into one untested drop — Phase D added 16 new tests on top of
+the existing suite: **300/309 passing** (the 9 failures are the
+pre-existing Phase C Playwright/Chromium tests, which fail in a sandboxed
+environment only when its own network rules block the one-time Chromium
+binary download — not a Phase D regression; confirmed by running the
+identical 9-failure baseline before touching any Phase D code).

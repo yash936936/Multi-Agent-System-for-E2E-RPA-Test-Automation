@@ -139,6 +139,25 @@ class Settings(BaseSettings):
     # filesystem surface, and each one requires its own explicit
     # `params.target`/connection string from the caller -- see TRD.md §9.
 
+    # --- Phase D: capability-adapter egress controls (decisions D-020) ---
+    # Hard kill switch: when False, orchestrator.capability_router rejects
+    # every CapabilityCheckInput before any adapter runs (Vision/Playwright/
+    # Planner are untouched -- this only gates the intentionally-outbound
+    # adapters: api, database, email, file_system, excel, pdf_ocr, cloud,
+    # azure_blob, gcp_storage, sharepoint, workflow, chat_ops, link_check,
+    # automation_anywhere, web_validation). One flag for a fully air-gapped
+    # deployment, instead of needing to know every adapter's name.
+    capability_adapters_enabled: bool = True
+
+    # Egress allowlist: when set, a capability's target host must match one
+    # of these entries (exact match, or be a subdomain of one) or the
+    # request is rejected before the adapter runs. None (default) = no
+    # restriction beyond the kill switch above -- this is opt-in hardening,
+    # not a default behavior change that could break existing specs.
+    # Non-network capabilities (local file_system/excel/pdf_ocr targets,
+    # and FAKE) are exempt from host matching -- there is no host to check.
+    allowed_capability_hosts: list[str] | None = None
+
     # --- OCR engine (optional override) ---
     # If pytesseract can't find the `tesseract` binary on PATH (common on
     # Windows), set this to the full path to tesseract.exe, either here or

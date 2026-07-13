@@ -9,6 +9,29 @@ project: AURA
 
 ---
 
+## 2026-07-14 — Roadmap Phase D: capability-adapter egress controls
+
+**What happened:**
+- Implemented the remediation roadmap's Phase D (Section 4: offline hardening / API boundary). Full detail in `decisions.md` D-020 — this entry is a summary.
+- **Verified, not re-fixed:** confirmed Phases A/B/C were already genuinely landed in the current codebase (real Playwright integration in `agents/vision/dom_locator.py`, `runtime/hooks/browser.py`, etc.) before starting — the roadmap's own sequencing note said Phase D depended on Phase C landing first, but on inspection Phase C's Playwright work is a local browser-automation surface, not a new outbound network target, so Phase D didn't actually need to wait on it.
+- **Added:**
+  1. `config/settings.py`: `capability_adapters_enabled: bool = True` (hard kill switch) and `allowed_capability_hosts: list[str] | None = None` (opt-in egress allowlist), both defaulting to unchanged behavior.
+  2. `orchestrator/capability_router.py::route_capability` — the single chokepoint every capability adapter dispatches through — now enforces the kill switch and allowlist before any adapter runs, and audit-logs every permitted call's target host + UTC timestamp (never payload contents, since params can carry credentials) via the existing `orchestrator/audit_logger.py` sink already used for run-level auditing.
+  3. Host extraction was built from the real `params.get(...)` key names actually used across every file in `agents/capability/*.py` (audited, not assumed): `url`/`webhook_url`/`account_url`/`endpoint`, `connection_string`/`conn_str`, `smtp_server`/`imap_server`/`host`, falling back to `payload.target` if it parses as a URL.
+  4. New test file `tests/test_capability_egress_controls.py` (16 tests): kill-switch rejection, per-adapter-convention host extraction, allowlist exact/subdomain matching and rejection, fail-open behavior when no host is resolvable, and audit-log content checks (present on permit, absent on kill-switch rejection, no payload leakage).
+- **Documented gap, not hidden:** `azure_adapter.py`/`gcp_adapter.py` primarily authenticate via SDK default-credential chains rather than an explicit host param, so `_extract_egress_host` often can't resolve a host for them — `_host_allowed` fails open in that case (kill switch remains the backstop) and the audit record logs `host: null` rather than silently skipping the log line.
+- **Verification:** ran the full suite before touching any code to establish a clean baseline (284/293 passing — the 9 failures are pre-existing Phase C Playwright/Chromium tests that fail in this specific sandbox because its own network egress rules block the one-time Chromium binary download, unrelated to anything in this repo). After Phase D's changes: 300/309 passing — identical 9 pre-existing failures, 16 new tests all passing, zero regressions. `pyflakes` clean on every file touched.
+- **What's left:** only Phase E (Automation Anywhere trigger/validate, TRD §11) remains unimplemented from the original 5-phase roadmap. It already routes through `route_capability` once picked up (per D-019's earlier conflict fix registering `CapabilityType.AUTOMATION_ANYWHERE`), so it inherits Phase D's kill switch/allowlist automatically.
+
+**What changed:**
+- Capability-adapter layer (the system's sole intentional network/filesystem surface) now has a single, uniform, testable kill switch and an opt-in host allowlist, plus a real audit trail of outbound egress — closing the last item from the original remediation roadmap's Section 4 ("offline-first architecture — hardened, not just default off").
+
+**What should happen next:**
+- Pick up Phase E (Automation Anywhere) if/when prioritized — give it its own full `decisions.md` entry per D-019's note, not a minimal fix.
+- Optional follow-up (not blocking): thread a resolvable hostname through `azure_adapter`/`gcp_adapter`'s params if tighter allowlisting is ever needed for those two specifically.
+
+---
+
 ## 2026-07-13 — Roadmap Phases A & B: safety/correctness fixes + full removal of AnthropicBackend
 
 **What happened:**
