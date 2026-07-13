@@ -147,28 +147,70 @@ in any order once 20a/20b are done or in parallel with them.
 
 ---
 
-## 7. Phase 21 (delivered) — Automation Anywhere trigger/validate architecture
+## 7. Phase 21 (proposed, not started) — Automation Anywhere trigger/validate architecture
 
-Full technical design in `docs/TRD.md` §11. Status: **delivered** — see
-`docs/decisions.md` D-017 and `docs/STATUS.md`.
+Full technical design in `docs/TRD.md` §11. Status: **proposed only** —
+nothing in this phase is implemented; adds a distinct execution pattern
+alongside (not replacing) Phases 13–20.
 
-- **21a. `agents/capability/automation_anywhere_adapter.py`** (delivered) —
+- **21a. `agents/capability/automation_anywhere_adapter.py`** (new) — new
   `CapabilityType.AUTOMATION_ANYWHERE`, triggers a bot via the Control Room
   REST API or the local AAE CLI, polls to terminal status.
-- **21b. `agents/capability/playwright_validator.py`** (delivered) —
-  read-only Playwright-based post-run check against the web app's expected
-  state (`CapabilityType.WEB_VALIDATION`). Playwright is an optional
-  dependency (`pip install .[automation_anywhere]`) for now; will share
-  browser-session code with Phase 20a's locator work once that lands.
-- **21c. Validation-leg cross-check** — not yet enforced at the `RunEngine`
-  level; both adapters return standard `CapabilityCheckResult`s so a
-  `TestSpec` can sequence a trigger step followed by web/database/file
-  validation steps, but `RunEngine` doesn't yet require at least one
-  validation leg to pass independently of the bot's own reported status.
-  Left as follow-up work — see `docs/decisions.md` D-017.
+- **21b. `agents/capability/playwright_validator.py`** (new) — read-only
+  Playwright-based post-run check against the web app's expected state.
+  Shares its browser-session code with Phase 20a's locator work once that
+  lands, rather than a second independent Playwright integration.
+- **21c. Validation-leg cross-check** — a bot-reported `COMPLETED` status is
+  never sufficient alone; at least one of the web/database/file validation
+  legs (`playwright_validator`, existing `db_adapter`, existing
+  `file_adapter`) must independently confirm the expected end state before
+  `RunEngine` marks the run passed.
 
-Sequencing note: 21b's Playwright dependency is currently independent of
-20a/20b (§10 hasn't landed yet), so it manages its own browser lifecycle
-for now rather than sharing one that doesn't exist.
+Sequencing note: 21b depends on the same Playwright dependency as 20a/20b,
+so 21 is naturally sequenced after or alongside Phase 20, not before it.
 
 ---
+
+## 8. Remediation roadmap (Phases A–E) — supersedes/refines Phases 20–21's sequencing
+
+This section records a five-phase remediation plan covering both the
+outstanding audit issues (roadmap items 1.1–1.11, referenced throughout
+`decisions.md`) and the Phase 20/21 work above, in an explicit priority
+order. Phases C and E below are the same work as Phase 20 and Phase 21
+respectively — this section exists to record the *sequencing decision*
+(safety fixes and planner cleanup first, then the large Playwright change,
+then offline hardening, then Automation Anywhere last), not to duplicate
+their technical design, which stays in TRD.md §10/§11.
+
+- **Phase A — Safety/correctness fixes.** ✅ **DONE, 2026-07-13** — see
+  `decisions.md` D-017. Secrets split (vault key vs. JWT secret),
+  `cloud_adapter.py` gained a real `list_objects` action (detect-only,
+  matching its documented design — mutating actions deliberately not
+  added), `db_adapter.py` hardened against mutating functions hidden
+  inside a SELECT, and a real data-flow bug between `db_adapter.py` and
+  `cross_modal_diagnoser.py` was found and fixed (the `healing_hints`
+  dict was missing the `exception` key the diagnoser's regex needed).
+- **Phase B — Remove Anthropic from the Planner, local LLM only.** ✅
+  **DONE, 2026-07-13** — see `decisions.md` D-018. `AnthropicBackend` and
+  `settings.allow_network_calls` removed entirely (not disabled). The
+  Planner now has exactly two backends: `heuristic` and `local_llm`.
+- **Phase C — Playwright interaction layer.** Not started. Same work as
+  §6 Phase 20 above (20a/20b specifically). This is now the largest
+  remaining item in this roadmap.
+- **Phase D — Offline hardening & API boundary.** Not started. Adds a
+  hard kill-switch (`settings.capability_adapters_enabled`) and an
+  egress allowlist (`settings.allowed_capability_hosts`) on top of
+  Phase C's Playwright integration point, plus extends
+  `orchestrator/audit_logger.py` to log capability-adapter outbound
+  target host + timestamp (not payload contents) into the same trace
+  file used for tool-call auditing. Depends on Phase C landing first
+  since it hardens the same egress points Phase C introduces.
+- **Phase E — Automation Anywhere trigger/validate.** Not started. Same
+  work as §7 Phase 21 above. Deliberately sequenced last — lowest
+  urgency, and 21b depends on Phase C's Playwright session/locator code.
+
+**Current status (2026-07-13): A and B done, C/D/E not started.** Each
+phase gets its own `decisions.md` entry before code changes, and the
+existing test suite is kept green throughout rather than batching
+everything into one untested drop — Phase A/B's work added 9 new tests on
+top of the existing suite, all passing (267/267 total).

@@ -130,8 +130,14 @@ class Settings(BaseSettings):
     compression_mode: str = "max"  # one of: max | balanced | off
     release_agent_after_call: bool = True
 
-    # --- offline guarantee (decisions D-002) ---
-    allow_network_calls: bool = False
+    # --- offline guarantee (decisions D-002, hardened by D-018) ---
+    # There used to be an `allow_network_calls` escape-hatch flag here,
+    # gating the now-removed AnthropicBackend. It's gone, not just unused:
+    # the planner has no network-capable code path left at all, so there
+    # is nothing left for a flag like this to gate. Capability adapters
+    # (agents/capability/*.py) remain the sole intentional network/
+    # filesystem surface, and each one requires its own explicit
+    # `params.target`/connection string from the caller -- see TRD.md §9.
 
     # --- OCR engine (optional override) ---
     # If pytesseract can't find the `tesseract` binary on PATH (common on
@@ -140,13 +146,12 @@ class Settings(BaseSettings):
     # on PATH (default, works out of the box on most Linux/Mac setups).
     tesseract_cmd: str | None = None
 
-    # --- Planner backend selection (decisions.md D-010) ---
+    # --- Planner backend selection (decisions.md D-010, D-018) ---
     # "heuristic": LocalHeuristicBackend, zero dependencies.
     # "local_llm": LocalLLMBackend -- a small GGUF model run fully on-device
-    #   via llama-cpp-python. No network call, so this stays compatible
-    #   with the offline guarantee (D-002) unlike AnthropicBackend, which
-    #   requires allow_network_calls=True and remains available for
-    #   reference/opt-in cloud use only.
+    #   via llama-cpp-python. No network call. This is now the only
+    #   LLM-backed path -- AnthropicBackend was removed entirely (D-018),
+    #   not just disabled.
     #
     # Left unset (None) by default so a bundled model can be auto-detected
     # (see _auto_detect_planner_backend below): drop a .gguf file in

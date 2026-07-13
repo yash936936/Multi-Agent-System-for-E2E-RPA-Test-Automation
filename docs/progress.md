@@ -9,6 +9,39 @@ project: AURA
 
 ---
 
+## 2026-07-13 — Roadmap Phases A & B: safety/correctness fixes + full removal of AnthropicBackend
+
+**What happened:**
+- Worked through a remediation roadmap's Phase A (Section 1 safety/correctness fixes) and Phase B (Section 2: remove Anthropic from the Planner, local LLM only). Full detail in `decisions.md` D-017 (Phase A) and D-018 (Phase B) — this entry is a summary.
+- **Verified, not re-fixed:** roadmap items 1.1 (`execute_run` stub) and 1.2 (missing login endpoint) were already resolved in the current codebase before this pass started — the roadmap document was written against an earlier snapshot. Confirmed by reading the actual current source rather than trusting the roadmap's framing.
+- **Phase A, actually fixed:**
+  1. Split `config/vault.key` (Fernet) from a new `config/jwt.key` (JWT HMAC secret) in `api/security.py` — they were previously the same file doing double duty, so anyone who could read `vault.key` could forge an admin token. Added both to `.gitignore` (neither was ignored before, though `vault.key` was already committed — pre-existing hygiene issue, not rewritten this pass).
+  2. `agents/capability/cloud_adapter.py`: added a real second action, `list_objects` (detect-only). Deliberately did **not** add `upload_object`/`delete_object` as an earlier draft of the roadmap suggested — this adapter is detect-only by design (`TRD.md` §9), and adding mutating actions would be a design regression, not a fix.
+  3. `agents/capability/db_adapter.py`: added a second, denylist-based check for mutating/exfiltration function calls that can hide inside a syntactically-valid SELECT (`setval`, `pg_terminate_backend`, `lo_export`, `LOAD_FILE`, `INTO OUTFILE`, `EXEC`/`CALL`, `OPENROWSET`, `dblink_exec`, etc.), on top of the existing statement-prefix allowlist. Explicitly documented as a pattern denylist, not a full SQL sandbox.
+  4. **Found (not in the original roadmap's framing) and fixed a real bug:** `agents/planner/cross_modal_diagnoser.py::_heal_db_drift()` read `hints.get("exception", "")`, but `db_adapter.py`'s `healing_hints` dict never actually contained an `"exception"` key — the real error text only ever landed one level up in the top-level `evidence` dict. The column-drift regex was therefore always matching an empty string and could never fire. Fixed by including `exception` inside `healing_hints` too. This is exactly the class of bug `docs/debug.md`'s cross-file-consistency check exists to catch — neither file was wrong in isolation, only the contract between them was.
+- **Phase B — AnthropicBackend removed entirely, not disabled:** deleted the class, its `anthropic` import, and its `_BACKEND_REGISTRY` entry from `agents/planner/spec_generator.py`; removed `settings.allow_network_calls` from `config/settings.py` (confirmed via grep it had no other consumer before removing); removed the `"anthropic"` branch from `aura/cli/preflight.py`. The Planner now has exactly two backends (`heuristic`, `local_llm`) with no network-capable code path left anywhere in it. `prompts.py` reviewed and left unchanged (already backend-agnostic). Docs (`docs/README.md`'s config table and feature bullets) updated in the same pass so they don't describe a backend that no longer exists.
+- 9 new tests added (`tests/test_cloud_workflow_adapters.py` +3, `tests/test_db_adapter.py` +3, `tests/test_preflight.py` +3, one old anthropic-specific test replaced rather than just deleted). Full suite: **267/267 passing.**
+
+**What changed:**
+- `api/security.py` — `SecretVault`/`JWTSecretStore` split.
+- `agents/capability/cloud_adapter.py` — `list_objects` action, explicit mutating-action rejection message.
+- `agents/capability/db_adapter.py` — mutating-function denylist, `healing_hints["exception"]` fix.
+- `agents/planner/cross_modal_diagnoser.py` — docstring updated to reflect the fixed data flow.
+- `agents/planner/spec_generator.py` — `AnthropicBackend` removed, module/class docstrings updated.
+- `config/settings.py` — `allow_network_calls` removed, comments updated.
+- `aura/cli/preflight.py` — `"anthropic"` branch removed.
+- `.gitignore` — `config/vault.key`, `config/jwt.key` added.
+- `tests/test_cloud_workflow_adapters.py`, `tests/test_db_adapter.py`, `tests/test_preflight.py` — new/replaced tests, see above.
+- `docs/README.md` — config table and feature-bullet updates (no more `AURA_ALLOW_NETWORK_CALLS`/`anthropic` mentions).
+- `docs/decisions.md` — D-017, D-018 added.
+- `docs/STATUS.md` — Next-action list updated (vault split marked done, Phase A/B summarized).
+
+**What should happen next:**
+- Roadmap Phase C (Playwright interaction layer, `docs/TRD.md` §10 / `docs/Roadmap.md` Phase 20) is now the largest remaining item — everything else in the original roadmap (Phase D offline hardening, Phase E Automation Anywhere) is sequenced after it.
+- Roadmap items 1.4 (SQLite run-store persistence, kill-and-restart integration test), 1.9 (Word/PowerPoint adapters), 1.10 (real desktop/mainframe test) remain open, explicitly not silently claimed as done.
+
+---
+
 ## 2026-07-05 — Link-check fix: default scope, redirect visibility, client-rendered-page detection
 
 **What happened:**

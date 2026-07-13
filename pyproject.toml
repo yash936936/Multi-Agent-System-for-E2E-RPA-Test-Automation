@@ -38,9 +38,6 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
 ]
-automation_anywhere = [
-    "playwright>=1.42",   # Phase 21b: read-only web validator (docs/TRD.md §11.4)
-]
 report = [
     "weasyprint>=61.0",
 ]

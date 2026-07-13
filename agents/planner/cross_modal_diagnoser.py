@@ -56,16 +56,15 @@ class CrossModalDiagnoser:
         """
         Heals DB schema drift (e.g., column renamed).
 
-        Unlike _heal_api_drift, db_adapter.py's healing_hints only ever
-        carries `query_failed` and `error_type` (see agents/capability/
-        db_adapter.py) -- there's no list of actual/available columns to
-        diff against, so even when we can pattern-match the missing
-        column out of the exception text, there is nothing to safely
-        rename it *to* without querying information_schema (out of scope
-        for a heuristic diagnoser). We still detect the pattern so this
-        stays easy to extend once that lookup exists, but today it can
-        only confirm "this looks like a column-drift error" and escalate
-        rather than fabricate a guess.
+        `db_adapter.py`'s healing_hints carries `query_failed`, `error_type`,
+        and `exception` (the raw driver error text -- see decisions.md D-017;
+        this key used to be missing from `healing_hints`, so the regex below
+        could never actually match anything). Even now that the pattern can
+        be detected, there's still no list of actual/available columns to
+        diff against, so we can confirm "this looks like a column-drift
+        error" but cannot safely rename the column without querying
+        information_schema (out of scope for a heuristic diagnoser) -- we
+        detect and escalate rather than fabricate a guess.
         """
         # Heuristic: Look for standard "column does not exist" errors
         # e.g., PostgreSQL: "column users.user_name does not exist"

@@ -10,39 +10,74 @@ from config.settings import settings
 bearer_scheme = HTTPBearer()
 
 # --- Local Vault ---
+# NOTE (2026-07-13, decisions.md D-017): vault.key and the JWT signing
+# secret used to be the *same file* -- SecretVault generated one key,
+# used it both as the Fernet key AND raw as JWT_SECRET. Anyone who could
+# read vault.key could forge an admin token. They are now two
+# independently-generated files with no derivation relationship: vault.key
+# (Fernet, reserved for future stored-credential encryption -- not
+# currently used to encrypt anything in this codebase, but kept as the
+# vault primitive other adapters may grow into) and jwt.key (raw HMAC
+# secret for JWT signing, used nowhere else). Rotating one has zero effect
+# on the other.
 class SecretVault:
     def __init__(self):
         config_dir = settings.project_root / "config"
         config_dir.mkdir(parents=True, exist_ok=True)
         self.key_path = config_dir / "vault.key"
-        self._ensure_key()
-        self.cipher = Fernet(self._load_key())
+        self._ensure_key(self.key_path, generator=Fernet.generate_key)
+        self.cipher = Fernet(self._load_key(self.key_path))
 
-    def _ensure_key(self):
-        if not self.key_path.exists():
-            self.key_path.write_bytes(Fernet.generate_key())
-        self._restrict_permissions()
+    def _ensure_key(self, path, generator):
+        if not path.exists():
+            path.write_bytes(generator())
+        self._restrict_permissions(path)
 
-    def _restrict_permissions(self):
-        # This file is the JWT signing secret -- anyone who can read it can
-        # forge an admin token. Default file creation permissions (subject
-        # to umask, commonly 0644) leave it group/world-readable on POSIX
+    def _restrict_permissions(self, path):
+        # Default file creation permissions (subject to umask, commonly
+        # 0644) leave secret key files group/world-readable on POSIX
         # systems. Restrict to owner read/write only. No-op on platforms
         # without POSIX chmod semantics (e.g. Windows), where NTFS ACLs
         # already default to the owning user.
+        try:
+            path.chmod(0o600)
+        except (NotImplementedError, OSError):
+            pass
+
+    def _load_key(self, path):
+        return path.read_bytes()
+
+
+class JWTSecretStore:
+    """
+    Independent JWT HMAC signing secret, stored in its own file
+    (config/jwt.key), generated with os.urandom -- NOT derived from, or
+    shared with, the Fernet vault key. See decisions.md D-017.
+    """
+
+    def __init__(self):
+        import os
+
+        config_dir = settings.project_root / "config"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        self.key_path = config_dir / "jwt.key"
+        if not self.key_path.exists():
+            self.key_path.write_bytes(os.urandom(32))
+        self._restrict_permissions()
+
+    def _restrict_permissions(self):
         try:
             self.key_path.chmod(0o600)
         except (NotImplementedError, OSError):
             pass
 
-    def _load_key(self):
+    def get_secret(self) -> bytes:
         return self.key_path.read_bytes()
 
-    def get_jwt_secret(self) -> bytes:
-        return self._load_key()
 
 vault = SecretVault()
-JWT_SECRET = vault.get_jwt_secret()
+_jwt_store = JWTSecretStore()
+JWT_SECRET = _jwt_store.get_secret()
 JWT_ALGORITHM = "HS256"
 
 # --- RBAC Models ---

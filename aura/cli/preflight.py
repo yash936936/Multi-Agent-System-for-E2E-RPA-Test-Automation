@@ -106,19 +106,10 @@ def check_planner_backend_available() -> tuple[bool, str | None]:
                 "(Tip: the README's local_llm example path is a placeholder, "
                 "not a real path -- it isn't meant to be used as-is.)"
             )
-    elif backend == "anthropic":
-        if not settings.allow_network_calls:
-            return False, (
-                "AURA_PLANNER_BACKEND is set to 'anthropic', which requires "
-                "AURA_ALLOW_NETWORK_CALLS=true (AURA defaults to fully "
-                "offline). Either set that, or switch back to the default "
-                "zero-dependency parser with:\n"
-                "    AURA_PLANNER_BACKEND=heuristic"
-            )
-    elif backend not in ("heuristic", "local_llm", "anthropic"):
+    elif backend not in ("heuristic", "local_llm"):
         return False, (
             f"AURA_PLANNER_BACKEND is set to an unknown value '{backend}'. "
-            "Valid options: heuristic | local_llm | anthropic."
+            "Valid options: heuristic | local_llm."
         )
 
     return True, None

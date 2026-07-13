@@ -51,6 +51,68 @@ def test_cloud_adapter_s3_not_found():
         assert result.passed is True # Passed because we expected it to be missing
         assert result.evidence["exists"] is False
 
+def test_cloud_adapter_list_objects_success():
+    adapter = CloudAdapter()
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.CLOUD, target="s3://my-bucket/exports/",
+        params={
+            "action": "list_objects",
+            "bucket": "my-bucket",
+            "prefix": "exports/",
+            "aws_access_key_id": "test",
+            "aws_secret_access_key": "test",
+        },
+        expected={"min_count": 1, "must_contain_key": "exports/report.pdf"},
+    )
+
+    with patch("agents.capability.cloud_adapter.boto3.client") as mock_boto:
+        mock_s3 = MagicMock()
+        mock_boto.return_value = mock_s3
+        mock_s3.list_objects_v2.return_value = {
+            "Contents": [{"Key": "exports/report.pdf"}, {"Key": "exports/summary.csv"}]
+        }
+
+        result = adapter.run(payload)
+        assert result.passed is True
+        assert result.evidence["object_count"] == 2
+        assert result.evidence["required_key_found"] is True
+
+
+def test_cloud_adapter_list_objects_missing_required_key_fails():
+    adapter = CloudAdapter()
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.CLOUD, target="s3://my-bucket/exports/",
+        params={"action": "list_objects", "bucket": "my-bucket", "aws_access_key_id": "t", "aws_secret_access_key": "t"},
+        expected={"must_contain_key": "exports/missing.pdf"},
+    )
+
+    with patch("agents.capability.cloud_adapter.boto3.client") as mock_boto:
+        mock_s3 = MagicMock()
+        mock_boto.return_value = mock_s3
+        mock_s3.list_objects_v2.return_value = {"Contents": [{"Key": "exports/report.pdf"}]}
+
+        result = adapter.run(payload)
+        assert result.passed is False
+        assert result.evidence["required_key_found"] is False
+
+
+def test_cloud_adapter_rejects_mutating_actions_explicitly():
+    # upload_object/delete_object were never implemented and never should
+    # be -- this adapter is detect-only by design (TRD.md §9). Confirms the
+    # rejection is explicit (with a clear reason), not a silent fallthrough
+    # into s3_object_exists.
+    adapter = CloudAdapter()
+    for bad_action in ("upload_object", "delete_object", "download_object", "typo_action"):
+        payload = CapabilityCheckInput(
+            capability=CapabilityType.CLOUD, target="",
+            params={"action": bad_action, "bucket": "b", "key": "k"},
+            expected={},
+        )
+        result = adapter.run(payload)
+        assert result.passed is False
+        assert bad_action in result.evidence["error"]
+
+
 # --- Workflow Adapter Tests ---
 def test_workflow_adapter_trigger_success():
     adapter = WorkflowAdapter()

@@ -7,14 +7,21 @@ Converts normalized requirement text into a schema-valid TestSpec
   - LocalHeuristicBackend (default): pure-Python sentence-pattern parser.
     No network call, no model weights — matches decisions.md D-002
     (fully offline) and D-004 (agents defined by contract, not by a
-    specific model). This is what actually runs in this sandbox.
+    specific model). This is what actually runs in this sandbox, and is
+    always available with zero dependencies.
 
-  - AnthropicBackend (optional, off by default): if the caller sets
-    settings.allow_network_calls = True and an API key is available,
-    spec generation can be delegated to a real LLM using the prompts in
-    prompts.py. Not used unless explicitly enabled — kept here so the
-    architecture is swappable per D-004/D-006 without changing the tool
-    contract.
+  - LocalLLMBackend (opt-in): a small local GGUF model (llama-cpp-python),
+    run fully on-device. No network call is made at any point. This is
+    now the *only* enhanced/LLM-backed path — see decisions.md D-018.
+
+2026-07-13 (decisions.md D-018, roadmap Phase B): AnthropicBackend and the
+`allow_network_calls` setting were removed entirely, not just disabled.
+There is no network-capable code path left anywhere in the planner — not
+"off by default," genuinely absent, so there is no residual attack
+surface, no accidental-enable risk via a config flag, and no dependency on
+an external API being reachable or funded. The planner now has exactly
+two backends: heuristic (always available) and local_llm (opt-in,
+verified end-to-end, see LocalLLMBackend's docstring below).
 
 Either backend must return data that validates against TestSpec; if it
 doesn't, generate_spec re-prompts once (WORKFLOW.md Step 1.3) before
@@ -251,42 +258,6 @@ class LocalHeuristicBackend:
 
 
 # --------------------------------------------------------------------------
-# Optional network-backed LLM backend (off by default, D-002/D-004/D-006)
-# --------------------------------------------------------------------------
-
-class AnthropicBackend:
-    """
-    Delegates spec generation to a real LLM via the Anthropic API using the
-    prompts in prompts.py. Disabled unless settings.allow_network_calls is
-    explicitly set True by the caller — the default offline posture
-    (decisions.md D-002) must be an opt-in override, never silent.
-    """
-
-    def __init__(self, model: str = "claude-sonnet-4-6") -> None:
-        self.model = model
-
-    def generate(self, requirement_text: str) -> dict:
-        if not settings.allow_network_calls:
-            raise RuntimeError(
-                "AnthropicBackend requires settings.allow_network_calls=True. "
-                "AURA defaults to fully offline operation (decisions.md D-002)."
-            )
-        import anthropic  # local import: optional dependency, only needed if this path is used
-
-        from agents.planner.prompts import SPEC_GENERATION_SYSTEM_PROMPT, SPEC_GENERATION_USER_TEMPLATE
-
-        client = anthropic.Anthropic()
-        response = client.messages.create(
-            model=self.model,
-            max_tokens=2000,
-            system=SPEC_GENERATION_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": SPEC_GENERATION_USER_TEMPLATE.format(requirement_text=requirement_text)}],
-        )
-        text = "".join(block.text for block in response.content if block.type == "text")
-        return json.loads(text)
-
-
-# --------------------------------------------------------------------------
 # Local, fully-offline LLM backend (decisions.md D-010)
 # --------------------------------------------------------------------------
 
@@ -299,8 +270,9 @@ class LocalLLMBackend:
     Runs spec generation through a small local LLM (any GGUF-format model,
     e.g. a quantized Llama/Mistral/Phi variant) entirely on-device via
     llama-cpp-python. No network call is made at any point, so this stays
-    compatible with the offline guarantee in decisions.md D-002 -- unlike
-    AnthropicBackend above, which needs settings.allow_network_calls=True.
+    compatible with the offline guarantee in decisions.md D-002 -- this is
+    now the *only* LLM-backed planner path (AnthropicBackend was removed
+    entirely, decisions.md D-018).
 
     This is intentionally *not* wired up to download a model automatically:
     per D-002/D-005 (no fixed hardware baseline, no silent network calls),
@@ -393,12 +365,11 @@ def _extract_json_object(text: str) -> dict:
 _BACKEND_REGISTRY: dict[str, type] = {
     "heuristic": LocalHeuristicBackend,
     "local_llm": LocalLLMBackend,
-    "anthropic": AnthropicBackend,
 }
 
 
 def _default_backend() -> SpecBackend:
-    """Resolves settings.planner_backend ('heuristic' | 'local_llm' | 'anthropic') to a backend instance."""
+    """Resolves settings.planner_backend ('heuristic' | 'local_llm') to a backend instance."""
     backend_cls = _BACKEND_REGISTRY.get(settings.planner_backend)
     if backend_cls is None:
         raise ValueError(

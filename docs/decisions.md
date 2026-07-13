@@ -227,42 +227,145 @@ introducing a second independent Playwright integration.
 relative to code. Also revisit alongside Phase 20, since both depend on the
 same Playwright dependency landing in the codebase.
 
-**Update (2026-07-13) — D-017:** Phase 21 implemented. See D-017 below.
+---
 
-## D-017 — Phase 21 delivered: `automation_anywhere_adapter.py` + `playwright_validator.py`
+## D-017 — Phase A: safety/correctness fixes (secrets split, cloud_adapter branching, db_adapter hardening, cross_modal_diagnoser data-flow bug)
 
-Implements the design from D-016 / `docs/TRD.md` §11 / `docs/Roadmap.md`
-Phase 21 exactly as proposed, no deviations:
+**Decided:** 2026-07-13
+**Context:** a remediation roadmap identified several outstanding issues
+from an earlier audit. On inspection, three of the eleven originally listed
+(1.1 `execute_run` stub, 1.2 missing login endpoint, most of 1.6's "dead
+variables") turned out to already be fixed in the current codebase — the
+roadmap was written against an earlier snapshot. This entry covers only the
+items actually still present, plus one real bug found *during* this pass
+that the original roadmap's framing of 1.6 didn't quite capture.
+**Decisions:**
+1. **Secrets split (roadmap 1.3):** `api/security.py`'s `SecretVault`
+   previously generated one key file (`config/vault.key`) and used it both
+   as the Fernet cipher key and, raw, as the JWT HMAC signing secret —
+   anyone who could read `vault.key` could forge an admin token. Split into
+   two independently-generated files: `config/vault.key` (Fernet, reserved
+   for future credential encryption — not currently used to encrypt
+   anything) and `config/jwt.key` (raw `os.urandom(32)`, JWT signing only,
+   new `JWTSecretStore` class). Both `.gitignore`d going forward (neither
+   was previously ignored, though `vault.key` was already committed —
+   pre-existing repo hygiene issue, left as a follow-up since rewriting git
+   history is out of scope for this pass).
+2. **`cloud_adapter.py` action branching (roadmap 1.5):** the unbranched-
+   `action` bug itself was already fixed (unsupported actions were already
+   rejected explicitly). What was still missing: the adapter only ever
+   implemented one action (`s3_object_exists`). Added `list_objects`
+   (detect-only: lists keys under a prefix, checks count/presence) as a
+   second real action. **Deliberately did NOT add** `upload_object`/
+   `delete_object`/`download_object` as the roadmap's draft text suggested —
+   this adapter is detect-only by explicit design (`docs/TRD.md` §9: "cloud_
+   adapter default[s] to read/detect-only operations rather than mutating
+   the systems they check"). Adding write/delete actions here would be a
+   design regression disguised as a bug fix. If mutating S3 operations are
+   ever genuinely needed, they belong in a separate, clearly-labeled
+   adapter, not folded into the one every test spec already trusts to be
+   side-effect-free.
+3. **`db_adapter.py` read-only hardening (roadmap 1.7):** the existing
+   prefix allowlist (reject anything not starting with SELECT/WITH/EXPLAIN/
+   SHOW/PRAGMA/DESC/DESCRIBE) only checks the start of the statement. Added
+   a second denylist check for known mutating/exfiltration function calls
+   and clauses that can hide inside an otherwise-valid SELECT (`setval`,
+   `pg_terminate_backend`, `lo_export`, `LOAD_FILE`, `INTO OUTFILE`,
+   `EXEC`/`CALL`, `OPENROWSET`, `dblink_exec`, etc. — see the code comment
+   for the full list and per-dialect notes). Explicitly documented as a
+   **pattern denylist, not a full SQL sandbox** — a sufficiently creative
+   dialect-specific construct not on the list could still get through; the
+   real guarantee has to come from the DB connection's own grants being
+   read-only, which is an operator/deployment concern this adapter cannot
+   enforce from inside Python. Tested against both the new dangerous-query
+   set and a set of legitimate SELECTs that mention similar-looking words
+   (e.g. a column named `execution_id`), to confirm the new check isn't
+   over-broad.
+4. **`cross_modal_diagnoser.py` — real bug found during this pass, not just
+   the roadmap's "dead variables" framing:** `_heal_db_drift()` reads
+   `hints.get("exception", "")` to regex-match "column X does not exist"
+   errors, but `db_adapter.py`'s `healing_hints` dict never actually
+   contained an `"exception"` key — the real error text was only ever
+   placed one level up, in the top-level `evidence["exception"]`, not
+   inside `evidence["healing_hints"]`. The regex was therefore always
+   matching against an empty string; this detection path could never fire
+   in practice, regardless of how many "dead variables" were cleaned up
+   around it. Fixed by also including `"exception": error_msg` inside
+   `healing_hints` in `db_adapter.py`. Added a test
+   (`test_query_error_healing_hints_include_exception_text`) that exercises
+   the full path end-to-end (db_adapter → evidence → diagnoser) to prevent
+   this specific data-flow break from silently regressing again — a plain
+   unit test on either file in isolation would not have caught it, since
+   each file's own logic was internally consistent; only the *contract*
+   between them was wrong.
+**Explicitly not done in this pass** (verify-only per the roadmap, not
+fix-required): 1.1 (`execute_run` calling `RunEngine` — confirmed already
+correct), 1.2 (login endpoint — confirmed present, no refresh-token support
+added, out of scope), 1.4 (SQLite run-store persistence — not
+re-verified with a kill-and-restart integration test this pass), 1.9
+(Word/PowerPoint adapters — not started), 1.10 (desktop/mainframe
+automation — remains an explicitly documented limitation, not silently
+claimed as working), 1.11 (covered as a byproduct of D-018 below).
+**Verification:** all four fixes covered by passing tests —
+`tests/test_cloud_workflow_adapters.py` (7 tests, 3 new), `tests/test_db_adapter.py`
+(11 tests, 3 new), plus a manual `python3 -c` check confirming the two
+secret files are independently generated with different content.
+**Revisit when:** 1.4/1.9/1.10 are picked up in a future pass — update this
+entry's "explicitly not done" list rather than opening a new one for the
+same roadmap items.
 
-- `orchestrator/schemas.py`: added `CapabilityType.AUTOMATION_ANYWHERE` and
-  `CapabilityType.WEB_VALIDATION`.
-- `agents/capability/automation_anywhere_adapter.py` (new): triggers a bot
-  via Control Room REST (`/v4/automations/deploy` + `/v3/activity/list`
-  polling) or the local CLI/Bot Launcher, returns a `CapabilityCheckResult`
-  with the bot's own terminal status as evidence. Opaque to the bot's
-  internal steps by design, matching TRD §11.2.
-- `agents/capability/playwright_validator.py` (new): read-only Playwright
-  check (`contains_text` / `selector_present` / `selector_text` assertions)
-  against the page the bot was expected to update. No clicking or typing.
-  Playwright is an optional dependency (`pip install .[automation_anywhere]`);
-  the adapter fails closed with a clear error if it isn't installed rather
-  than raising `ImportError` through the capability router.
-- `orchestrator/capability_adapter.py::default_registry()`: both adapters
-  registered alongside the existing capability adapters.
-- `pyproject.toml`: new `[project.optional-dependencies].automation_anywhere`
-  extra (`playwright>=1.42`), kept optional rather than a hard dependency
-  since most AURA runs don't need it (TRD §11.6's disclosed network/process
-  exception, same posture as the other capability adapters).
-- Tests: `tests/test_automation_anywhere.py` (13 tests) — REST success/
-  failure/missing-params, CLI success/nonzero-exit/missing-command/unknown-
-  mode, Playwright validator missing-url/not-installed/pass/fail, registry
-  wiring, and a full trigger-then-validate scenario mirroring the diagram.
+---
 
-**Not yet done (explicitly out of scope for this pass, per TRD §11.5/§11.6):**
-sharing browser-session code with TRD §10's proposed locator-resolution
-work (that work itself is still "proposed, not started" — nothing to share
-with yet), and `RunEngine`-level enforcement of "at least one validation leg
-must confirm before a run is marked passed" (§11.6) — that cross-check is a
-`RunEngine`/spec-level policy, not something either adapter can enforce on
-its own, and is left for whoever wires Phase 21 into an actual `TestSpec`
-step sequence.
+## D-018 — Phase B: removed AnthropicBackend and `allow_network_calls` entirely from the Planner
+
+**Decided:** 2026-07-13
+**Context:** the Planner previously had three backend options
+(`heuristic`, `local_llm`, `anthropic`), with `AnthropicBackend` gated
+behind `settings.allow_network_calls` (default `False`). Per explicit
+instruction, this pass removes the cloud path entirely rather than leaving
+it present-but-disabled.
+**Decision:** deleted `AnthropicBackend` (the class, its import of the
+`anthropic` package, and its entry in `_BACKEND_REGISTRY`) from
+`agents/planner/spec_generator.py`. Removed `settings.allow_network_calls`
+from `config/settings.py` entirely (confirmed via grep it had no other
+consumer anywhere in the codebase before removing it). Removed the
+`"anthropic"` branch from `aura/cli/preflight.py::check_planner_backend_available()`
+— an unrecognized `planner_backend` value (including `"anthropic"` itself,
+now) falls through to the existing generic "unknown value" error, same as
+any other typo. `prompts.py` was reviewed and left unchanged — its templates
+were already generic (used identically by both backends), nothing in them
+was Anthropic-message-format-specific. No `anthropic` package dependency
+existed in `pyproject.toml` to remove (it was always a function-local
+`import anthropic`, an implicit optional dependency, never declared).
+**Result:** the Planner now has exactly two backend options,
+`heuristic` (default, zero dependencies) and `local_llm` (opt-in, via
+`llama-cpp-python` and an operator-supplied `.gguf` file). There is no
+network-capable code path left anywhere in the planner — not "off by
+default," genuinely absent from the source, closing the residual
+attack-surface/accidental-enable-via-config-flag risk `allow_network_calls`
+represented. This also resolves roadmap issue 1.11 (`LocalLLMBackend` never
+verified end-to-end live) as a natural byproduct: it's now the *only*
+enhanced planner path, so any future work that exercises the enhanced path
+at all necessarily exercises `LocalLLMBackend`, not a cloud fallback.
+**Docs updated in the same pass** (per `docs/debug.md`'s rule against
+letting docs drift from code): `docs/README.md` (removed the
+`AURA_ALLOW_NETWORK_CALLS` config-table row and the `anthropic` option from
+`AURA_PLANNER_BACKEND`'s valid values; reworded the "zero cloud reliance"
+feature bullet). `config/settings.py` and `agents/planner/spec_generator.py`
+module/class docstrings updated to stop describing a backend that no longer
+exists.
+**Verification:** `tests/test_preflight.py` — replaced the old
+network-flag-gated anthropic test with three new tests confirming the
+backend is genuinely gone: an unknown-`"anthropic"`-value now produces the
+generic error (not a special network-flag message), `Settings` no longer
+has an `allow_network_calls` attribute at all, and
+`spec_generator._BACKEND_REGISTRY` contains exactly
+`{"heuristic", "local_llm"}` with no `AnthropicBackend` class present in the
+module. Full existing test suite re-run to confirm no other test depended
+on the removed backend or setting (none did — `allow_network_calls` had no
+other consumer).
+**Revisit when:** local LLM inference is actually verified end-to-end on a
+real machine with `llama-cpp-python` installed and a real `.gguf` model
+(per D-010's still-open "Revisit when" — this pass did not change that
+verification gap, it just made `local_llm` the only enhanced path there is
+to eventually verify).

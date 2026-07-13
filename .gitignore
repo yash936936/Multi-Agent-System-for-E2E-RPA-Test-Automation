@@ -13,6 +13,10 @@ reports/run_*/
 *.pdf
 !reports/templates/
 
+# Local secrets (regenerated on first run -- see api/security.py, decisions.md D-017)
+config/vault.key
+config/jwt.key
+
 # Python
 __pycache__/
 *.pyc

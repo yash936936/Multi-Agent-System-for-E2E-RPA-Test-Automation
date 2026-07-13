@@ -147,15 +147,36 @@ def test_check_planner_backend_local_llm_real_path_ok(monkeypatch, tmp_path):
     assert message is None
 
 
-def test_check_planner_backend_anthropic_requires_network_flag(monkeypatch):
+def test_check_planner_backend_anthropic_is_gone_not_just_disabled(monkeypatch):
+    # 2026-07-13 (decisions.md D-018, roadmap Phase B): AnthropicBackend
+    # was removed entirely, not disabled behind a flag. Setting
+    # planner_backend to "anthropic" is now just an unknown-value error,
+    # the same as any other typo -- there is no special-cased "needs
+    # network flag" branch left to test.
     from aura.cli.preflight import check_planner_backend_available
     from config.settings import settings as global_settings
 
     monkeypatch.setattr(global_settings, "planner_backend", "anthropic")
-    monkeypatch.setattr(global_settings, "allow_network_calls", False)
     ok, message = check_planner_backend_available()
     assert ok is False
-    assert "AURA_ALLOW_NETWORK_CALLS" in message
+    assert "unknown value 'anthropic'" in message
+    assert "heuristic | local_llm" in message
+
+
+def test_allow_network_calls_setting_no_longer_exists():
+    # Confirms the escape-hatch flag was actually removed from Settings,
+    # not just left unused.
+    from config.settings import Settings
+
+    assert not hasattr(Settings(), "allow_network_calls")
+
+
+def test_spec_generator_has_no_anthropic_backend():
+    import agents.planner.spec_generator as sg
+
+    assert not hasattr(sg, "AnthropicBackend")
+    assert "anthropic" not in sg._BACKEND_REGISTRY
+    assert set(sg._BACKEND_REGISTRY) == {"heuristic", "local_llm"}
 
 
 def test_check_planner_backend_unknown_value(monkeypatch):

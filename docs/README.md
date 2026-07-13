@@ -40,7 +40,7 @@ see the [Docs](#docs) section at the bottom.
 - **Synthetic Data Generator** — produces realistic + edge-case test data (usernames, emails, boundary values, etc.)
 - **Self-healing loop** — when a step fails, diagnoses why, tries a fix, and remembers it as a reusable "skill" so the same failure doesn't need re-diagnosing next time
 - **Guardrails** — stops runaway retry loops instead of hammering a broken step forever
-- **Zero cloud reliance** — no screenshots, requirements, or business data ever leave the machine unless you explicitly opt into the reference `AnthropicBackend` path (off by default)
+- **Zero cloud reliance** — no screenshots, requirements, or business data ever leave the machine; the planner has no network-capable code path at all (see decisions.md D-018)
 
 ---
 
@@ -327,8 +327,7 @@ All settings live in `config\settings.py` and can be overridden via a `.env` fil
 | `AURA_TESSERACT_CMD` | *(none — relies on PATH)* | Full path to `tesseract.exe`; set this on Windows to avoid PATH issues |
 | `AURA_VISION_CONFIDENCE_THRESHOLD` | `0.75` | Minimum OCR match confidence before a click/assertion is trusted without asking |
 | `AURA_COMPRESSION_MODE` | `max` | `max` \| `balanced` \| `off` — resource usage philosophy (no fixed hardware baseline assumed) |
-| `AURA_ALLOW_NETWORK_CALLS` | `false` | Must be explicitly set `true` to use the reference cloud (`AnthropicBackend`) planner path — leave `false` to guarantee zero data egress |
-| `AURA_PLANNER_BACKEND` | `heuristic` | `heuristic` \| `local_llm` \| `anthropic` — see [Local LLM backend](#local-llm-planner-backend-optional-offline) below |
+| `AURA_PLANNER_BACKEND` | `heuristic` | `heuristic` \| `local_llm` — see [Local LLM backend](#local-llm-planner-backend-optional-offline) below |
 | `AURA_LOCAL_LLM_MODEL_PATH` | *(none)* | Path to a local `.gguf` model file, required if `planner_backend=local_llm` |
 | `AURA_PROJECT_ROOT` | repo root | Override where AURA looks for/writes `runtime\`, `reports\`, etc. |
 
