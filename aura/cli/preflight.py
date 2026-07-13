@@ -115,11 +115,97 @@ def check_planner_backend_available() -> tuple[bool, str | None]:
     return True, None
 
 
+def check_display_available() -> tuple[bool, str | None]:
+    """
+    Warns (does not block) when no display/screenshot backend is reachable.
+    This was a real gap: earlier crashes in run_engine.py and `aura explore`
+    dying silently under a missing tkinter were exactly the class of
+    failure preflight is supposed to catch early for other subsystems, but
+    didn't cover for this one. This is advisory only, not a hard failure --
+    plenty of legitimate runs (pure API/DB/file capability checks) never
+    touch the screen at all, so treating "no display" as fatal here would
+    block work that doesn't need a display in the first place.
+    """
+    from runtime.hooks.capture import NoDisplayError, capture_screenshot
+    import uuid as _uuid
+
+    try:
+        capture_screenshot(f"preflight_{_uuid.uuid4().hex[:6]}", 0)
+    except NoDisplayError as e:
+        return False, (
+            f"No display/screen-capture backend is reachable ({e}). "
+            "This is fine for pure API/database/file capability checks, but "
+            "`aura execute`'s vision steps and `aura explore` need a live "
+            "display (or a virtual one, e.g. Xvfb) to take screenshots."
+        )
+    except Exception as e:  # noqa: BLE001 - advisory check, never let it crash preflight itself
+        return False, f"Could not verify display availability ({e})."
+    return True, None
+
+
+def check_playwright_browser_available() -> tuple[bool, str | None]:
+    """
+    Advisory check for whether Playwright and its browser binaries are
+    installed -- used by `agents/capability/playwright_validator.py` (Phase
+    21) and `aura explore`'s link-checking fallback. Non-fatal: most runs
+    don't touch this capability at all.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return False, (
+            "Playwright isn't installed. Needed only for capability='web_validation' "
+            "checks (docs/TRD.md §11.4). Install with: pip install .[automation_anywhere] "
+            "&& playwright install chromium"
+        )
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            browser.close()
+    except Exception as e:  # noqa: BLE001 - advisory check
+        return False, (
+            f"Playwright is installed but its browser binary isn't ({e}). "
+            "Run: playwright install chromium"
+        )
+    return True, None
+
+
+def check_capability_adapter_dependencies() -> list[str]:
+    """
+    Advisory-only: reports which optional capability-adapter dependencies
+    (paramiko, boto3, azure-storage-blob, google-cloud-storage) aren't
+    importable in this environment. Returns a list of human-readable
+    warning strings (empty if everything importable is present). Never
+    raises and never blocks -- most runs only use a handful of adapters,
+    so a missing SDK for one you're not using shouldn't stop anything.
+    """
+    warnings: list[str] = []
+    optional_modules = {
+        "paramiko": "SFTP support in agents/capability/file_adapter.py",
+        "boto3": "agents/capability/cloud_adapter.py (S3)",
+        "azure.storage.blob": "agents/capability/azure_adapter.py",
+        "google.cloud.storage": "agents/capability/gcp_adapter.py",
+    }
+    for module_name, used_by in optional_modules.items():
+        try:
+            __import__(module_name)
+        except ImportError:
+            warnings.append(f"'{module_name}' isn't installed -- {used_by} will fail if used.")
+    return warnings
+
+
 def run_preflight_or_exit() -> None:
     """
     Call at the top of any command that will actually run the vision
     pipeline (`execute`). Prints a clear, actionable message and exits
     cleanly rather than letting the run start and crash mid-step.
+
+    Tesseract and the planner backend remain hard blockers (every vision
+    step needs both). Display/Playwright/adapter-dependency checks are
+    advisory only -- printed as warnings, never blocking -- since many
+    legitimate runs don't need all of them (e.g. a pure API/DB capability
+    check never touches the screen or a browser).
     """
     import typer
 
@@ -128,3 +214,11 @@ def run_preflight_or_exit() -> None:
         if not ok:
             console.print(f"[red]Cannot start:[/red] {message}")
             raise typer.Exit(code=1)
+
+    for advisory_check in (check_display_available, check_playwright_browser_available):
+        ok, message = advisory_check()
+        if not ok:
+            console.print(f"[yellow]Warning:[/yellow] {message}")
+
+    for adapter_warning in check_capability_adapter_dependencies():
+        console.print(f"[dim]Note: {adapter_warning}[/dim]")

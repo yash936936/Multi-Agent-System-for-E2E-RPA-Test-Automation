@@ -32,6 +32,9 @@ def run_debug(path: str, out: str | None = None, no_ruff: bool = False) -> None:
 
     if report.clean:
         console.print(f"[green]Clean — no issues found across {report.files_scanned} file(s).[/green]")
+        if out:
+            _write_report_file(report, Path(out))
+            console.print(f"Full report written to {out}")
         return
 
     table = Table(title=f"Code audit — {report.files_scanned} file(s) scanned")
@@ -67,6 +70,9 @@ def run_debug(path: str, out: str | None = None, no_ruff: bool = False) -> None:
 
 def _write_report_file(report, out_path: Path) -> None:
     lines = ["# Code audit report", "", f"Files scanned: {report.files_scanned}", ""]
-    for finding in report.findings:
-        lines.append(f"- **[{finding.severity}]** `{finding.file}:{finding.line}` ({finding.rule}) — {finding.message}")
+    if report.clean:
+        lines.append("Clean — no issues found.")
+    else:
+        for finding in report.findings:
+            lines.append(f"- **[{finding.severity}]** `{finding.file}:{finding.line}` ({finding.rule}) — {finding.message}")
     out_path.write_text("\n".join(lines), encoding="utf-8")

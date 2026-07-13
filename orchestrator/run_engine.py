@@ -85,6 +85,25 @@ class RunEngine:
         self._sleep = sleep_fn
         self.registry = ToolRegistry().load()
 
+    def _safe_screenshot(self, run_id: str, step_id: int) -> str | None:
+        """
+        Wraps self.screenshot_provider so a missing display (NoDisplayError,
+        raised by runtime/hooks/capture.py when mss/the OS display isn't
+        available -- e.g. any headless CI/sandbox environment) turns into a
+        clean `None` instead of an uncaught traceback that kills the whole
+        run. Every other real action path in this pipeline (agents/vision/
+        executor.py's click/type/navigate) already catches this and
+        escalates gracefully -- this makes the screenshot capture that
+        happens just before dispatching to the vision executor behave the
+        same way, instead of being the one place that crashes.
+        """
+        from runtime.hooks.capture import NoDisplayError
+
+        try:
+            return self.screenshot_provider(run_id, step_id)
+        except NoDisplayError:
+            return None
+
     def run(self, requirement_text: str, run_id: str | None = None) -> RunEngineResult:
         run_id = run_id or str(uuid.uuid4())[:8]
         kernel = OrchestratorKernel(registry=self.registry, run_id=run_id)
@@ -253,7 +272,19 @@ class RunEngine:
                 )
                 poll_interval = settings.human_action_poll_interval_seconds
 
-                baseline_path = self.screenshot_provider(run_id, step.step_id)
+                baseline_path = self._safe_screenshot(run_id, step.step_id)
+                if baseline_path is None:
+                    result = VisionActionResult(
+                        step_id=step.step_id,
+                        action_taken="wait_for_human",
+                        confidence=0.0,
+                        escalate=True,
+                        assertion_passed=False,
+                    )
+                    aggregator.record_step_result(result)
+                    if self.on_step_result:
+                        self.on_step_result(step.step_id, step, result)
+                    continue
                 baseline_hash = file_hash(baseline_path)
 
                 elapsed = 0.0
@@ -265,7 +296,13 @@ class RunEngine:
                     self._sleep(poll_interval)
                     elapsed += poll_interval
 
-                    latest_path = self.screenshot_provider(run_id, step.step_id)
+                    latest_path = self._safe_screenshot(run_id, step.step_id)
+                    if latest_path is None:
+                        # Display disappeared mid-poll -- stop waiting on
+                        # something we can no longer observe rather than
+                        # crashing on file_hash(None).
+                        latest_path = baseline_path
+                        break
                     if file_hash(latest_path) != baseline_hash:
                         changed = True
                         break
@@ -300,8 +337,26 @@ class RunEngine:
                     self.memory.mark_step_complete(run_id, step.step_id)
                 continue
 
-            # --- Vision Execution Branch (Unchanged) ---
-            screenshot_path = self.screenshot_provider(run_id, step.step_id)
+            # --- Vision Execution Branch ---
+            screenshot_path = self._safe_screenshot(run_id, step.step_id)
+            if screenshot_path is None:
+                # No display available (headless/no-display environment) --
+                # every other action path here (click/type/navigate in
+                # agents/vision/executor.py) already escalates gracefully on
+                # this exact condition instead of crashing; this makes the
+                # screenshot capture consistent with that instead of taking
+                # the whole run down with an uncaught NoDisplayError.
+                result = VisionActionResult(
+                    step_id=step.step_id,
+                    action_taken="none",
+                    confidence=0.0,
+                    escalate=True,
+                    assertion_passed=False,
+                )
+                aggregator.record_step_result(result)
+                if self.on_step_result:
+                    self.on_step_result(step.step_id, step, result)
+                continue
 
             # Step 3: skill pre-check
             hint = None
@@ -330,9 +385,12 @@ class RunEngine:
                         self.on_skill_learned(step.step_id, heal_result.skill_used_or_learned)
 
             if step.expected_state and not result.escalate:
-                assertion_screenshot = self.screenshot_provider(run_id, step.step_id)
-                passed = check_assertion(assertion_screenshot, step.expected_state)
-                result = result.model_copy(update={"assertion_passed": passed})
+                assertion_screenshot = self._safe_screenshot(run_id, step.step_id)
+                if assertion_screenshot is None:
+                    result = result.model_copy(update={"assertion_passed": False, "escalate": True})
+                else:
+                    passed = check_assertion(assertion_screenshot, step.expected_state)
+                    result = result.model_copy(update={"assertion_passed": passed})
 
             aggregator.record_step_result(result)
             if self.on_step_result:
@@ -346,8 +404,11 @@ class RunEngine:
         # --- Final spec-level assertions ---
         if spec.assertions:
             final_step_id = len(spec.steps) + 1
-            final_screenshot = self.screenshot_provider(run_id, final_step_id)
-            all_passed = all(check_assertion(final_screenshot, a.expected) for a in spec.assertions)
+            final_screenshot = self._safe_screenshot(run_id, final_step_id)
+            all_passed = (
+                final_screenshot is not None
+                and all(check_assertion(final_screenshot, a.expected) for a in spec.assertions)
+            )
             aggregator.record_step_result(
                 VisionActionResult(
                     step_id=final_step_id,

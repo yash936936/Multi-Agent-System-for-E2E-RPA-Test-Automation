@@ -9,6 +9,7 @@ last_updated: 2026-07-14
 > This file should always reflect the *current* state — overwrite freely, don't accumulate history here (that belongs in `progress.md`).
 
 ## Where things stand (2026-07-14 update)
+- **Phase F (this pass, see `docs/decisions.md` D-022):** three real bugs found via live command-by-command testing, all fixed — `aura debug --out` silently skipped clean scans, `orchestrator/run_engine.py` crashed the whole run on a missing display instead of escalating gracefully (5 unguarded `screenshot_provider` call sites), and `aura explore` died silently (exit 1, no traceback) because `pyautogui`'s `mouseinfo` dependency raises `SystemExit` (not `Exception`) when tkinter is missing on Linux, which nothing caught. Also added non-fatal display/Playwright/adapter-dependency checks to `aura/cli/preflight.py`, which previously only checked Tesseract and the planner backend. **321/321 tests passing**, 10 new.
 This pass (see `docs/decisions.md` D-018/D-019 for full detail):
 - **Phase A** (secrets split, cloud_adapter S3-action branching, cross_modal_diagnoser dead-code/real-bug fix, db_adapter hardening) — verified already correctly implemented from a prior pass, code and tests match the roadmap's fix plan.
 - **Phase B** (removed `AnthropicBackend`/`allow_network_calls` entirely, `local_llm`/`heuristic` are the only planner backends) — verified already correctly implemented.

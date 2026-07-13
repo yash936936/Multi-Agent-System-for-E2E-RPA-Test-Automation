@@ -199,3 +199,51 @@ def test_run_preflight_or_exit_checks_both_tesseract_and_planner_backend(monkeyp
 
     with pytest.raises(typer.Exit):
         preflight.run_preflight_or_exit()
+
+
+def test_check_display_available_returns_false_gracefully_without_display():
+    """
+    Advisory check, never raises regardless of environment -- this sandbox
+    has no display, so ok should be False with a friendly message rather
+    than an uncaught NoDisplayError.
+    """
+    from aura.cli.preflight import check_display_available
+
+    ok, message = check_display_available()
+    assert isinstance(ok, bool)
+    if not ok:
+        assert message is not None
+
+
+def test_check_playwright_browser_available_never_raises():
+    from aura.cli.preflight import check_playwright_browser_available
+
+    ok, message = check_playwright_browser_available()
+    assert isinstance(ok, bool)
+    if not ok:
+        assert message is not None
+
+
+def test_check_capability_adapter_dependencies_returns_list():
+    from aura.cli.preflight import check_capability_adapter_dependencies
+
+    warnings = check_capability_adapter_dependencies()
+    assert isinstance(warnings, list)
+
+
+def test_run_preflight_or_exit_does_not_block_on_advisory_failures(monkeypatch):
+    """
+    Even if display/Playwright checks fail, run_preflight_or_exit() must
+    NOT raise -- these are advisory warnings only, never hard blockers,
+    since plenty of legitimate runs (pure API/DB capability checks) don't
+    need a display or a browser at all.
+    """
+    from aura.cli import preflight
+
+    monkeypatch.setattr(preflight, "check_tesseract_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_planner_backend_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_display_available", lambda: (False, "no display"))
+    monkeypatch.setattr(preflight, "check_playwright_browser_available", lambda: (False, "no playwright"))
+    monkeypatch.setattr(preflight, "check_capability_adapter_dependencies", lambda: ["'boto3' isn't installed"])
+
+    preflight.run_preflight_or_exit()  # should not raise

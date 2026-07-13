@@ -20,6 +20,18 @@ def _pyautogui():
 
         pyautogui.FAILSAFE = True
         return pyautogui
+    except SystemExit as e:
+        # mouseinfo (a pyautogui dependency) calls sys.exit(...) directly
+        # at import time when tkinter isn't installed on Linux, instead of
+        # raising a normal ImportError. SystemExit is a BaseException, not
+        # an Exception, so it isn't caught below and previously killed the
+        # whole process silently (no traceback, just exit code 1) instead
+        # of surfacing as the same NoDisplayError every other no-display
+        # condition in this module already produces. Converting it here
+        # means every caller (autoscan.py, ui_audit_runner.py,
+        # agents/vision/executor.py) gets the graceful fallback it already
+        # expects, instead of the process dying underneath it.
+        raise NoDisplayError(f"pyautogui unavailable (tkinter missing -- see mouseinfo's message: {e}))") from e
     except Exception as e:  # pragma: no cover - exercised only without a display
         raise NoDisplayError(f"pyautogui unavailable: {e}") from e
 

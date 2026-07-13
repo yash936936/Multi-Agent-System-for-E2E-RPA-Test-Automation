@@ -130,3 +130,32 @@ def test_run_engine_generates_and_reuses_cached_synthetic_data(tmp_dir: Path, mo
     cached = load_cached(result1.spec.test_id)
     assert cached is not None
     assert "username" in cached
+
+
+def test_run_engine_escalates_cleanly_on_no_display(tmp_dir: Path):
+    """
+    Regression test: previously, `self.screenshot_provider(...)` in the main
+    vision branch was called with no try/except, so a NoDisplayError (raised
+    by runtime/hooks/capture.py whenever no display/mss is available -- the
+    normal case in headless CI/sandbox environments) propagated all the way
+    up and crashed `aura execute`/`aura explore` with a raw traceback instead
+    of escalating like every other action path already does. This test
+    simulates that exact condition via a provider that raises NoDisplayError,
+    and asserts the run completes with steps escalated instead of raising.
+    """
+    from runtime.hooks.capture import NoDisplayError
+
+    requirement_text = REQUIREMENT_PATH.read_text()
+    skill_store = SkillStore(db_path=tmp_dir / "skills.db")
+    memory = RunMemoryStore(db_path=tmp_dir / "memory.db")
+
+    def no_display_provider(run_id: str, step_id: int) -> str:
+        raise NoDisplayError("no display available (simulated)")
+
+    engine = RunEngine(screenshot_provider=no_display_provider, skill_store=skill_store, memory=memory)
+
+    # This must NOT raise -- that's the whole point of the fix.
+    result = engine.run(requirement_text, run_id="no_display_run")
+
+    assert result.report.escalated_steps > 0
+    assert result.report.status.value in ("escalated", "failed")

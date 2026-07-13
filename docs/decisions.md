@@ -629,3 +629,82 @@ new tests plus all 17 tests in `test_automation_anywhere.py` (13 existing
 (above) is prioritized — it should get its own decisions.md entry since it
 touches both `playwright_validator.py` and the Phase C dom_locator/browser
 modules.
+
+## D-022 — Three real bugs found via live command-by-command testing, all fixed
+
+Found by actually invoking every CLI command/flag combination (not just
+`--help`), including under a real Xvfb virtual display to isolate
+environment-specific failures from genuine breaks:
+
+1. **`aura debug --out <file>` silently wrote nothing when the scan was
+   clean.** `aura/cli/debug_cmd.py::run_debug()` had an early `return`
+   inside the `if report.clean:` branch, before the `if out:` file-write
+   block ever ran — so `--out` only worked when there were findings. Fixed
+   by moving the write into the clean branch too; `_write_report_file()`
+   now writes an explicit "Clean — no issues found." line when there's
+   nothing to list, instead of silently producing nothing.
+
+2. **`orchestrator/run_engine.py` crashed the entire run with an uncaught
+   `NoDisplayError` traceback** in any headless/no-display environment,
+   for every real-execution path (`aura execute --url/--prompt/--interactive`
+   and plain `test_id`, plus `aura explore`). The screenshot capture at
+   line ~323 (main vision branch) — plus 4 other call sites
+   (`WAIT_FOR_HUMAN_ACTION`'s baseline/poll captures, the post-step
+   assertion capture, the final spec-level assertion capture) — called
+   `self.screenshot_provider(...)` with no guard at all, even though
+   `agents/vision/executor.py` already catches this exact exception
+   gracefully for the actual click/type/navigate actions. Fixed by adding
+   `RunEngine._safe_screenshot()`, which wraps every one of those 5 call
+   sites and converts `NoDisplayError` into a clean step-level escalation
+   (`escalate=True`, `assertion_passed=False`) instead of letting it
+   propagate and kill the process. New regression test in
+   `tests/test_run_engine.py`
+   (`test_run_engine_escalates_cleanly_on_no_display`) simulates the exact
+   condition and asserts the run completes rather than raising.
+
+3. **`aura explore` failed silently — exit code 1, zero output beyond one
+   dependency note, no traceback** — reproduced live under a real Xvfb
+   display with tkinter uninstalled. Root cause, confirmed by direct
+   reproduction: `pyautogui` transitively imports `mouseinfo`, which calls
+   `sys.exit(...)` directly at import time on Linux when tkinter isn't
+   installed, instead of raising a normal `ImportError`. `SystemExit` is a
+   `BaseException`, not an `Exception` — so `runtime/hooks/interact.py`'s
+   `_pyautogui()`'s `except Exception as e: raise NoDisplayError(...)`
+   never caught it, and it silently killed the whole Python process
+   instead of degrading gracefully like every other no-display condition
+   already handled in this module. Fixed by adding an explicit
+   `except SystemExit` clause that converts it into the same
+   `NoDisplayError` the rest of the pipeline (`orchestrator/autoscan.py`,
+   `orchestrator/ui_audit_runner.py`) already expects and handles. Verified
+   fixed by live re-run under the identical Xvfb/no-tkinter conditions:
+   `aura explore` now exits 0 and completes the full report. New tests in
+   `tests/test_interact_no_display.py` (3 tests: SystemExit path, plain
+   ImportError path still works, success path unaffected).
+
+**Also closed, as a smaller related gap:** `aura/cli/preflight.py` checked
+Tesseract and the planner backend but nothing else, even though gap #2/#3
+above are exactly the class of failure preflight exists to catch early.
+Added three new **advisory-only** checks (never block, since plenty of
+legitimate runs — pure API/DB/file capability checks — need neither a
+display nor a browser): `check_display_available()`,
+`check_playwright_browser_available()`, and
+`check_capability_adapter_dependencies()` (warns if paramiko/boto3/
+azure-storage-blob/google-cloud-storage aren't importable). 4 new tests in
+`tests/test_preflight.py`.
+
+**Not reproduced in this pass, and not fixed (from the same audit,
+included here for completeness):** the `camelot-py`/`pypdf` version
+conflict didn't reproduce — `camelot` isn't a dependency in this version
+of `pyproject.toml` at all. The Azure/GCP host-allowlisting gap and the
+`tenant_id="system"`/`user_id="system"` hardcoded audit-log identity gap
+(`orchestrator/capability_router.py`) are both pre-existing, already
+documented limitations (see D-020) — unrelated to this pass's three bugs,
+left open.
+
+**Verification:** full suite immediately after cloning, before touching any
+code: **317 passing** (confirming a clean baseline, matching D-021's
+304/313 plus environment-dependent extras already resolvable in this
+sandbox). After this pass: **321 passing** (10 new tests: 1 in
+`test_run_engine.py`, 3 in the new `test_interact_no_display.py`, 4 in
+`test_preflight.py`, and 2 covered implicitly by existing debug-command
+tests exercising the fixed clean-scan branch) — zero regressions.
