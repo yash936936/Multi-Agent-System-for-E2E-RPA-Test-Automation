@@ -188,6 +188,10 @@ def test_client_rendered_page_gets_an_honest_no_links_message(monkeypatch):
         return httpx.Response(200, text='<html><body><div id="__next"></div></body></html>')
 
     _patch_client(monkeypatch, handler)
+    # Force the Playwright render fallback to also come up empty (rather
+    # than actually spinning up a real browser against a URL this test
+    # can't reach), so the honest-degradation branch is what's exercised.
+    monkeypatch.setattr("agents.capability.link_checker._render_with_playwright", lambda *a, **k: None)
 
     adapter = LinkCheckAdapter()
     result = adapter.run(
@@ -200,4 +204,43 @@ def test_client_rendered_page_gets_an_honest_no_links_message(monkeypatch):
 
     assert result.passed is False
     assert result.evidence["client_rendered_suspected"] is True
+    assert result.evidence["rendered_via_playwright"] is False
     assert "client-rendered" in result.evidence["message"].lower()
+
+
+def test_playwright_render_fallback_finds_js_injected_links_on_a_real_client_rendered_page(monkeypatch):
+    """
+    Real end-to-end proof of the TRD §10 point 4 gap closure: a page whose
+    raw (JS-free) HTML has no <a href> at all, but whose real DOM injects
+    one via JavaScript after load, served from a genuine local HTTP server
+    and rendered by a real headless Chromium -- not mocked.
+    """
+    from tests.conftest_local_server import make_server, server_url
+
+    shell_html = b"""
+    <html><body>
+      <div id="__next"></div>
+      <script>
+        const a = document.createElement('a');
+        a.href = '/dashboard';
+        a.textContent = 'Dashboard';
+        document.body.appendChild(a);
+      </script>
+    </body></html>
+    """
+    srv = make_server(shell_html, extra_routes={"/dashboard": b"ok"})
+    try:
+        adapter = LinkCheckAdapter()
+        result = adapter.run(
+            CapabilityCheckInput(
+                capability=CapabilityType.LINK_CHECK,
+                target="",
+                params={"url": server_url(srv) + "/", "scope": "all"},
+            )
+        )
+
+        assert result.evidence["rendered_via_playwright"] is True
+        assert result.evidence["checked"] == 1
+        assert result.passed is True
+    finally:
+        srv.shutdown()

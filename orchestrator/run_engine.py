@@ -362,4 +362,15 @@ class RunEngine:
         report = aggregator.finalize()
         self.memory.finish_run(run_id, report.status.value)
 
+        # Phase C: the Playwright browser session (runtime/hooks/browser.py)
+        # is persistent *across this run's steps* by design (so DOM
+        # resolution/self-heal share one live page), but must not leak into
+        # the next run/process -- close it once this run's steps are done.
+        try:
+            from runtime.hooks import browser as browser_hook
+
+            browser_hook.close()
+        except Exception:
+            pass
+
         return RunEngineResult(run_id=run_id, spec=spec, report=report)

@@ -73,6 +73,8 @@ class CapabilityType(str, Enum):
     SHAREPOINT = "sharepoint"  # Phase 16b
     CHAT_OPS = "chat_ops"  # Phase 16b — Teams/Slack rich messages
     LINK_CHECK = "link_check"  # Real HTTP-status link validation (footer/nav/all <a href> targets)
+    AUTOMATION_ANYWHERE = "automation_anywhere"  # Phase 21a — TRD §11 trigger/poll adapter
+    WEB_VALIDATION = "web_validation"  # Phase 21a — TRD §11 read-only Playwright post-run validator
 
 # --------------------------------------------------------------------------
 # 4.1 Test Spec (Planner output)

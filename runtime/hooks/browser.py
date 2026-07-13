@@ -1,21 +1,26 @@
 """
-Browser navigation — runtime/hooks/browser.py
+Browser navigation & session — runtime/hooks/browser.py
 
-Opens a URL in the system's default browser so AURA can QA-test a live
-website the exact same vision-first way it tests a desktop app: once the
-page is rendered on screen, the screenshot/OCR/click hooks in capture.py
-and interact.py don't know or care that it's a browser tab instead of a
-Tkinter window.
+Phase C (Roadmap §3 / TRD §10): this module used to only shell out to the
+system's default browser via the stdlib `webbrowser` module (decisions.md
+D-002/D-005). It now launches and *owns* a real, persistent Playwright
+Chromium browser context for the duration of a run, so that:
 
-Deliberately uses only the stdlib `webbrowser` module -- no Selenium/
-Playwright/CDP. Reaching for a DOM-aware driver would quietly turn AURA
-into a different (DOM-based) architecture; staying with "control the
-whole screen, read it with OCR" keeps this consistent with the rest of
-runtime/hooks and adds zero new dependencies (decisions.md D-002/D-005).
+- `agents/vision/dom_locator.py` can resolve click/type targets against a
+  live accessibility tree instead of guessing from OCR'd pixels, and
+- `agents/capability/link_checker.py` can see JS-injected links on
+  client-rendered pages as a direct byproduct of the same browser session.
 
-Like capture.py and interact.py, imports are deferred and a NoDisplayError
-is raised (not a bare exception) when there's no display/browser to launch
-against, so agents.vision.* stays importable in headless/test environments.
+The OCR/pixel pipeline (agents/vision/locator.py + runtime/hooks/interact.py)
+is **not removed** -- it remains the fallback path for targets Playwright
+genuinely cannot see (native desktop apps, no accessibility tree available),
+per TRD §10 / decisions.md D-019. This module is only the *primary* path's
+browser-session owner now.
+
+Like capture.py/interact.py, Playwright is imported lazily so this module
+(and anything importing it) stays importable in environments where
+Playwright/its browser binaries aren't installed -- NoDisplayError is
+raised (not a bare exception) in that case, same contract as before.
 """
 from __future__ import annotations
 
@@ -41,29 +46,122 @@ def _normalize_url(url: str) -> str:
     return normalize_url(url)
 
 
+class _BrowserSession:
+    """
+    Owns one Playwright instance + persistent Chromium browser context for
+    the lifetime of a run. Deliberately module-level/singleton-ish (via the
+    module functions below) rather than passed explicitly through every
+    call site in orchestrator/run_engine.py and agents/vision/executor.py --
+    those call sites already don't carry a "browser handle" through their
+    existing signatures, and threading one through every layer is a much
+    larger refactor than Phase C's scope. Tests reset this via close().
+    """
+
+    def __init__(self) -> None:
+        self._playwright = None
+        self._browser = None
+        self._context = None
+        self._page = None
+
+    def get_page(self):
+        if self._page is not None:
+            return self._page
+
+        try:
+            from playwright.sync_api import sync_playwright
+        except Exception as e:  # pragma: no cover - exercised only without the package
+            raise NoDisplayError(f"Playwright is not installed: {e}") from e
+
+        try:
+            if self._playwright is None:
+                self._playwright = sync_playwright().start()
+            if self._browser is None:
+                self._browser = self._playwright.chromium.launch(headless=True)
+            if self._context is None:
+                self._context = self._browser.new_context()
+            self._page = self._context.new_page()
+            return self._page
+        except Exception as e:  # pragma: no cover - exercised only without a browser binary
+            self.close()
+            raise NoDisplayError(f"Could not launch a Playwright browser: {e}") from e
+
+    def has_active_page(self) -> bool:
+        return self._page is not None
+
+    def close(self) -> None:
+        for obj, closer in (
+            (self._page, "close"),
+            (self._context, "close"),
+            (self._browser, "close"),
+            (self._playwright, "stop"),
+        ):
+            if obj is not None:
+                try:
+                    getattr(obj, closer)()
+                except Exception:
+                    pass
+        self._page = None
+        self._context = None
+        self._browser = None
+        self._playwright = None
+
+
+_session = _BrowserSession()
+
+
+def get_page(new: bool = False):
+    """
+    Returns the run's persistent Playwright Page, launching the browser on
+    first call. Raises NoDisplayError if Playwright/its browser binaries
+    aren't available -- callers (agents/vision/executor.py) treat that the
+    same way as any other "no display" condition and fall back to the
+    pixel/OCR path.
+    """
+    if new:
+        _session._page = None
+    return _session.get_page()
+
+
+def has_active_page() -> bool:
+    """True once a Playwright page has been successfully created this run."""
+    return _session.has_active_page()
+
+
+def close() -> None:
+    """Tears down the browser/context/playwright singleton. Call at run end and in test teardown."""
+    _session.close()
+
+
 def open_url(url: str, wait_seconds: float = 2.5, new_window: bool = False) -> str:
     """
-    Opens `url` in the default browser and gives the page a moment to
-    render before AURA's next screenshot/locate step runs against it.
+    Navigates the run's persistent Playwright page to `url`.
 
-    Returns the normalized URL that was opened (e.g. with an https://
-    scheme added if the caller/spec omitted one).
+    Uses `wait_until="commit"` (per docs/external_repos.md Batch 1's
+    Playwright navigate.ts finding: don't block on full load, just on
+    navigation commit) plus a best-effort network-idle wait so
+    JS-rendered content (and JS-injected links, per link_checker.py's
+    upgrade) has a chance to settle before the next screenshot/locate step.
+
+    Returns the normalized URL that was opened, same contract as before.
     """
     normalized = _normalize_url(url)
 
+    page = get_page(new=new_window)
+
     try:
-        import webbrowser
+        page.goto(normalized, wait_until="commit", timeout=30_000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=max(1000, int(wait_seconds * 1000) + 4000))
+        except Exception:
+            # Best-effort only -- some pages (long-polling, websockets,
+            # analytics beacons) never truly go network-idle. Not fatal.
+            pass
+    except NoDisplayError:
+        raise
+    except Exception as e:
+        raise NoDisplayError(f"Could not navigate to {normalized!r}: {e}") from e
 
-        opened = webbrowser.open(normalized, new=1 if new_window else 0)
-    except Exception as e:  # pragma: no cover - exercised only without a display/browser
-        raise NoDisplayError(f"Could not launch a browser for {normalized!r}: {e}") from e
-
-    if not opened:
-        raise NoDisplayError(f"No browser available to open {normalized!r} in this environment.")
-
-    # Best-effort page-load wait. AURA is vision-first with no DOM/network
-    # signal to wait on, so this is a fixed settle time (configurable via
-    # the wait_seconds arg) rather than a real "page loaded" check --
-    # callers testing slow-loading sites should pass a larger value.
-    time.sleep(max(0.0, wait_seconds))
+    # Small additional settle time mirrors the old webbrowser-based
+    # behavior's `wait_seconds` contract for callers/tests that rely on it.
+    time.sleep(max(0.0, min(wait_seconds, 1.0)))
     return normalized

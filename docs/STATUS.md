@@ -1,14 +1,22 @@
 ---
 type: status
 project: AURA
-last_updated: 2026-07-04
+last_updated: 2026-07-14
 ---
 
 # STATUS
 
 > This file should always reflect the *current* state — overwrite freely, don't accumulate history here (that belongs in `progress.md`).
 
-## Where things stand
+## Where things stand (2026-07-14 update)
+This pass (see `docs/decisions.md` D-018/D-019 for full detail):
+- **Phase A** (secrets split, cloud_adapter S3-action branching, cross_modal_diagnoser dead-code/real-bug fix, db_adapter hardening) — verified already correctly implemented from a prior pass, code and tests match the roadmap's fix plan.
+- **Phase B** (removed `AnthropicBackend`/`allow_network_calls` entirely, `local_llm`/`heuristic` are the only planner backends) — verified already correctly implemented.
+- **Conflict found and fixed:** `automation_anywhere_adapter.py` / `playwright_validator.py` (Phase E, TRD §11) existed fully written but were never registered in `CapabilityType`/`default_registry()`, breaking `pytest` collection. Fixed minimally (enum + registration) — full Phase E wiring/docs pass still deferred.
+- **Phase C landed:** Playwright is now the primary interaction/self-heal path for browser targets (`runtime/hooks/browser.py`, `agents/vision/dom_locator.py`, `runtime/hooks/interact.py`'s `dom_*` primitives, `agents/vision/executor.py`), with the OCR/pixel pipeline retained as the fallback for non-browser targets. `link_checker.py` gained a Playwright-render fallback for client-rendered pages. **293/293 tests passing** (280 pre-existing + 13 new, all Phase-C tests run against real local Chromium, not mocks).
+
+## Where things stood before this pass
+
 AURA has grown well past the original CLI-only MVP described in earlier revisions of this file. It is now two things in one repo:
 
 1. **The original offline CLI tool** (Phases 1–12): Planner/Vision/DataSynth agents, self-healing loop, live-URL testing, UI audit, code bug detection, scheduling, reporting. Still fully working, still the recommended way to run AURA today.

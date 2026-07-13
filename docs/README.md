@@ -51,6 +51,7 @@ see the [Docs](#docs) section at the bottom.
 | Windows 10/11 | Real screenshot/click automation needs a visible, unlocked desktop |
 | Python 3.10+ | https://python.org — check "Add to PATH" during install |
 | [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) | Separate binary, not a pip package — AURA's vision pipeline shells out to it |
+| Playwright Chromium | Run `playwright install chromium` once after `pip install -e .` — Phase C's primary browser-target interaction path launches a real local headless Chromium; this is a one-time local binary install, same category as Tesseract, no cloud dependency |
 | A display session | The target app under test must be visible on screen while a run executes (see [Troubleshooting](#troubleshooting-windows) for locked-screen/RDP notes) |
 
 ---

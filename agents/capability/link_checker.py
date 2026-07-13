@@ -24,6 +24,7 @@ every other capability (api/db/email/etc.) via a CAPABILITY_CHECK TestStep
 from __future__ import annotations
 
 from html.parser import HTMLParser
+from typing import Optional
 from urllib.parse import urljoin
 
 import httpx
@@ -141,6 +142,41 @@ def _check_one(client: httpx.Client, url: str) -> dict:
         return {"url": url, "status_code": None, "ok": False, "error": str(e), "redirected": False, "final_url": None, "redirect_chain": []}
 
 
+def _render_with_playwright(url: str, timeout_ms: int = 15_000) -> Optional[str]:
+    """
+    Headless Playwright page load used only as a fallback when the plain
+    HTTP fetch above finds no links and the page looks client-rendered
+    (per TRD §10 point 4 / docs/external_repos.md Batch 1 & 2: wait past
+    navigation commit, then a best-effort network-idle wait, before
+    reading back the fully-rendered HTML). Returns None (never raises) if
+    Playwright/its browser binaries aren't available or the render fails
+    for any reason -- callers treat that exactly like "couldn't render",
+    falling back to the existing honest client-rendered message rather
+    than crashing a capability check over an optional enhancement.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
+        return None
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            try:
+                page = browser.new_page()
+                page.goto(url, wait_until="commit", timeout=timeout_ms)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=timeout_ms)
+                except Exception:
+                    pass  # best-effort only, same posture as runtime/hooks/browser.py
+                html = page.content()
+                return html
+            finally:
+                browser.close()
+    except Exception:
+        return None
+
+
 class LinkCheckAdapter:
     """
     params:
@@ -172,16 +208,35 @@ class LinkCheckAdapter:
                     # but the page has no <footer> element at all), not a
                     # silent pass.
                     client_rendered = _looks_client_rendered(page_resp.text)
+                    rendered_html = None
+                    if client_rendered:
+                        # TRD §10 point 4: this is exactly the gap a
+                        # headless Playwright render closes -- try it
+                        # before concluding there's really nothing here.
+                        rendered_html = _render_with_playwright(str(page_resp.url))
+                        if rendered_html:
+                            links = _extract_links(rendered_html, str(page_resp.url), scope)
+
+                    if links:
+                        results = [_check_one(client, link["resolved_url"]) for link in links[:max_links]]
+                        return self._build_result(url, scope, results, rendered_via_playwright=True)
+
                     message = f"No navigable <a href> links found in scope='{scope}' on this page."
                     if client_rendered:
-                        message += (
-                            " This page looks client-rendered (React/Next.js/Angular-style root element detected) "
-                            "-- if its links/footer are injected by JavaScript after load, a plain HTTP fetch "
-                            "genuinely can't see them; AURA's link checker reads only the server-delivered HTML, "
-                            "by the same no-DOM-automation design as the rest of the vision pipeline. This is a "
-                            "real coverage limit, not a false pass -- a headless-browser render step would be "
-                            "needed to check JS-injected links, which AURA does not currently do."
-                        )
+                        if rendered_html is None:
+                            message += (
+                                " This page looks client-rendered (React/Next.js/Angular-style root element detected) "
+                                "-- if its links/footer are injected by JavaScript after load, a plain HTTP fetch "
+                                "genuinely can't see them. AURA attempted a headless Playwright render to check for "
+                                "JS-injected links, but Playwright/its browser binaries weren't available or the "
+                                "render failed, so this is a real coverage limit for this run, not a false pass."
+                            )
+                        else:
+                            message += (
+                                " This page looks client-rendered, and AURA rendered it with a headless Playwright "
+                                "browser to check for JS-injected links, but the rendered page still had no "
+                                f"navigable links in scope='{scope}'."
+                            )
                     return CapabilityCheckResult(
                         capability=self.capability_type,
                         passed=False,
@@ -191,6 +246,7 @@ class LinkCheckAdapter:
                             "scope": scope,
                             "checked": 0,
                             "client_rendered_suspected": client_rendered,
+                            "rendered_via_playwright": rendered_html is not None,
                             "message": message,
                         },
                         escalate=False,
@@ -203,6 +259,9 @@ class LinkCheckAdapter:
         except httpx.RequestError as e:
             return self._fail(f"Could not reach {url}: {e}")
 
+        return self._build_result(url, scope, results)
+
+    def _build_result(self, url: str, scope: str, results: list[dict], rendered_via_playwright: bool = False) -> CapabilityCheckResult:
         broken = [r for r in results if not r["ok"]]
         redirected = [r for r in results if r["redirected"]]
         passed = len(broken) == 0
@@ -216,6 +275,7 @@ class LinkCheckAdapter:
             "redirected_count": len(redirected),
             "redirected_links": redirected,
             "all_results": results,
+            "rendered_via_playwright": rendered_via_playwright,
             "message": (
                 f"All {len(results)} link(s) in scope='{scope}' resolved successfully."
                 if passed

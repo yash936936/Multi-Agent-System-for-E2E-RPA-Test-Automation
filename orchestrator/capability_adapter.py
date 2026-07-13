@@ -76,6 +76,8 @@ def default_registry() -> CapabilityAdapterRegistry:
     from agents.capability.sharepoint_adapter import SharePointAdapter
     from agents.capability.chatops_adapter import ChatOpsAdapter
     from agents.capability.link_checker import LinkCheckAdapter
+    from agents.capability.automation_anywhere_adapter import AutomationAnywhereAdapter
+    from agents.capability.playwright_validator import PlaywrightValidator
 
     registry = CapabilityAdapterRegistry()
     registry.register(FakeAdapter())
@@ -92,4 +94,6 @@ def default_registry() -> CapabilityAdapterRegistry:
     registry.register(LinkCheckAdapter())
     registry.register(SharePointAdapter())
     registry.register(ChatOpsAdapter())
+    registry.register(AutomationAnywhereAdapter())
+    registry.register(PlaywrightValidator())
     return registry

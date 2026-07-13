@@ -369,3 +369,104 @@ real machine with `llama-cpp-python` installed and a real `.gguf` model
 (per D-010's still-open "Revisit when" — this pass did not change that
 verification gap, it just made `local_llm` the only enhanced path there is
 to eventually verify).
+
+---
+
+## D-019 — Phase C: Playwright as the primary interaction/self-heal path for browser targets
+
+**Decided:** 2026-07-14
+**Context:** roadmap Section 3 (this pass's remediation plan) asked for
+Playwright to become the enforced primary path for click/type/scroll
+against web targets, with the existing OCR/pixel pipeline demoted to a
+fallback for non-browser targets, per TRD §10's already-drafted (but
+previously unimplemented) design.
+**Decision / what changed:**
+- `runtime/hooks/browser.py`: replaced the stdlib-`webbrowser`-only
+  `open_url()` with a persistent Playwright Chromium session
+  (`_BrowserSession`, module-level singleton), navigating via
+  `page.goto(..., wait_until="commit")` + a best-effort `networkidle`
+  wait (docs/external_repos.md Batch 1's `navigate.ts` finding). Public
+  contract (`open_url`, `normalize_url`, `NoDisplayError`) is unchanged so
+  every existing call site (`aura/cli/execute_cmd.py`, `explore_cmd.py`,
+  `api/routers/runs.py`, `agents/vision/executor.py`) and their tests kept
+  working with zero changes. New: `get_page()`, `has_active_page()`,
+  `close()`.
+- `agents/vision/dom_locator.py` (new): `locate_dom()` resolves a step's
+  target_description against a Playwright accessibility-tree snapshot
+  (role/name word-overlap scoring, reusing `agents.vision.locator._match_score`
+  so both paths score comparably), returning a live `Locator` — never a
+  raw screen coordinate — for browser targets. `relocate_dom()` implements
+  the Scrapling-style self-heal from docs/external_repos.md Batch 6:
+  re-score every current candidate at a relaxed 0.40 threshold (Scrapling's
+  own default), log the top score even on failure, return ties rather than
+  guess.
+- `runtime/hooks/interact.py`: added `dom_click()`/`dom_fill()`/
+  `dom_scroll_into_view()` Locator-based primitives alongside the existing
+  OS-pixel primitives (`click`/`type_text`/`scroll` unchanged).
+- `agents/vision/executor.py`: `execute_step()` now tries the DOM path
+  first (`_try_dom_path`) *only if* a live Playwright page already exists
+  this run (i.e. a prior `NAVIGATE_URL` step actually opened one) — chain
+  is `locate_dom()` → `relocate_dom()` self-heal → (if both miss) fall
+  through unchanged to the pre-existing OCR/pixel `locate_text()` path.
+  `VisionActionResult`'s schema is unchanged (TRD §10's explicit
+  non-goal) — DOM-path confidence is just a differently-computed float in
+  the same `[0,1]` range, gated against the same
+  `settings.vision_confidence_threshold`.
+- `agents/capability/link_checker.py`: added `_render_with_playwright()`,
+  used only as a fallback when the plain `httpx` fetch finds zero links
+  on a page that looks client-rendered — closes the documented
+  JS-injected-link gap (STATUS.md) without changing the primary httpx
+  path everything else (redirect handling, footer/nav scoping) still
+  relies on. Confirmed via a real integration test
+  (`test_playwright_render_fallback_finds_js_injected_links...`) against a
+  genuine local HTTP server + real headless Chromium, not a mock.
+- `pyproject.toml`: added `playwright>=1.44` as a real, declared
+  dependency (previously zero DOM-aware dependencies existed anywhere in
+  the codebase, per decisions.md D-002/D-005's original "no
+  Selenium/Playwright/CDP" posture — this pass deliberately supersedes
+  that for browser targets only, per explicit instruction).
+- `orchestrator/run_engine.py`: `run_spec()` now closes the Playwright
+  session at the end of a run so it doesn't leak into the next
+  run/process, while remaining persistent *within* a run's steps.
+
+**Simplification vs. the full TRD §10 text, disclosed rather than silently
+narrowed:** `relocate_dom()`'s self-heal re-scores the *current* page's
+candidates against the *same* target_description that just failed to
+resolve (a relaxed second pass), rather than against a persisted
+"last-known-good element" carried over from a prior successful run —
+`TestStep`/`VisionStepInput` have no field for that yet, and adding one is
+a schema change out of this pass's scope. This still implements Scrapling's
+core mechanism (score-every-candidate, threshold-gate, log-top-score,
+don't-guess-on-ties) faithfully; it's narrower only in *what* it's
+comparing against, not *how*.
+
+**Conflict found and fixed before Phase C started (per the audit
+requested alongside this phase):** `agents/capability/automation_anywhere_adapter.py`
+and `agents/capability/playwright_validator.py` (Phase E / TRD §11,
+"proposed, not yet implemented") already existed fully written in the
+repo, but `orchestrator/schemas.py`'s `CapabilityType` enum never gained
+`AUTOMATION_ANYWHERE`/`WEB_VALIDATION`, and neither adapter was registered
+in `orchestrator/capability_adapter.py::default_registry()` — an
+orphaned, half-landed Phase E attempt that broke `pytest` collection
+entirely (`tests/test_automation_anywhere.py` failed at import time).
+Fixed minimally: added both enum members and registered both adapters, so
+the full test suite collects and runs again. This is **not** a full Phase
+E implementation pass (no new decisions.md entry mirroring D-018's depth,
+no CLI-level registration test beyond what `test_automation_anywhere.py`
+already covered) — it's the smallest fix that resolves the conflict
+without expanding scope into Section 5's deferred work.
+**Verification:** full existing suite (280 tests, pre-Phase-C) confirmed
+passing after the conflict fix and before any Phase C code was written.
+Phase C added 4 new test files (`test_browser_hook.py`,
+`test_dom_locator.py`, `test_executor_dom_path.py`, plus 1 new test in
+`test_link_checker.py`), all exercising real Playwright/Chromium against
+real local HTTP servers rather than mocks — **293/293 tests passing**
+after Phase C. `pyflakes` clean on every file touched this pass.
+**Revisit when:** Phase D (offline hardening/egress allowlist) needs to
+decide whether Playwright's browser-binary download counts as part of
+the "offline-first" posture (it's a one-time local install, same
+category as tesseract, per the original roadmap's own framing — no
+runtime network calls are made by Playwright itself). Phase E, if picked
+up later, should give the automation_anywhere/playwright_validator wiring
+its own full decisions.md entry (CLI docs, `test_16_categories_verification.py`-style
+registration test) rather than relying on this pass's minimal conflict fix.
