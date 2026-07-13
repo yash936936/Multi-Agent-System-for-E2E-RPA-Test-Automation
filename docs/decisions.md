@@ -226,3 +226,43 @@ introducing a second independent Playwright integration.
 "delivered," per `docs/debug.md`'s rule against letting docs go stale
 relative to code. Also revisit alongside Phase 20, since both depend on the
 same Playwright dependency landing in the codebase.
+
+**Update (2026-07-13) — D-017:** Phase 21 implemented. See D-017 below.
+
+## D-017 — Phase 21 delivered: `automation_anywhere_adapter.py` + `playwright_validator.py`
+
+Implements the design from D-016 / `docs/TRD.md` §11 / `docs/Roadmap.md`
+Phase 21 exactly as proposed, no deviations:
+
+- `orchestrator/schemas.py`: added `CapabilityType.AUTOMATION_ANYWHERE` and
+  `CapabilityType.WEB_VALIDATION`.
+- `agents/capability/automation_anywhere_adapter.py` (new): triggers a bot
+  via Control Room REST (`/v4/automations/deploy` + `/v3/activity/list`
+  polling) or the local CLI/Bot Launcher, returns a `CapabilityCheckResult`
+  with the bot's own terminal status as evidence. Opaque to the bot's
+  internal steps by design, matching TRD §11.2.
+- `agents/capability/playwright_validator.py` (new): read-only Playwright
+  check (`contains_text` / `selector_present` / `selector_text` assertions)
+  against the page the bot was expected to update. No clicking or typing.
+  Playwright is an optional dependency (`pip install .[automation_anywhere]`);
+  the adapter fails closed with a clear error if it isn't installed rather
+  than raising `ImportError` through the capability router.
+- `orchestrator/capability_adapter.py::default_registry()`: both adapters
+  registered alongside the existing capability adapters.
+- `pyproject.toml`: new `[project.optional-dependencies].automation_anywhere`
+  extra (`playwright>=1.42`), kept optional rather than a hard dependency
+  since most AURA runs don't need it (TRD §11.6's disclosed network/process
+  exception, same posture as the other capability adapters).
+- Tests: `tests/test_automation_anywhere.py` (13 tests) — REST success/
+  failure/missing-params, CLI success/nonzero-exit/missing-command/unknown-
+  mode, Playwright validator missing-url/not-installed/pass/fail, registry
+  wiring, and a full trigger-then-validate scenario mirroring the diagram.
+
+**Not yet done (explicitly out of scope for this pass, per TRD §11.5/§11.6):**
+sharing browser-session code with TRD §10's proposed locator-resolution
+work (that work itself is still "proposed, not started" — nothing to share
+with yet), and `RunEngine`-level enforcement of "at least one validation leg
+must confirm before a run is marked passed" (§11.6) — that cross-check is a
+`RunEngine`/spec-level policy, not something either adapter can enforce on
+its own, and is left for whoever wires Phase 21 into an actual `TestSpec`
+step sequence.
