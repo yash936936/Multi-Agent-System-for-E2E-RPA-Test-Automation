@@ -1,6 +1,8 @@
 # APPFLOW.md
 ## AURA — End-User Application Flow
 
+> **2026-07-04 note:** this document describes the CLI/TUI flow, which remains the primary, fully-working way to use AURA. A separate web dashboard and REST API also exist in the codebase (`api/`, `webui/`) but are an early preview, not yet functional end-to-end (the run-execution endpoint doesn't call the real engine yet) — see `README.md`'s "Web dashboard & REST API" section and `STATUS.md` before pointing a user at it.
+
 This document describes AURA from the perspective of the human user (QA engineer / RPA developer), covering the CLI/TUI and optional dashboard experience. All orchestration behind these flows runs through the **Hermes Agent API**.
 
 ---

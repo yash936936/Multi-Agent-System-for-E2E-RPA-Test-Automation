@@ -192,3 +192,74 @@ The Hermes Agent API's built-in scheduling enables nightly regression sweeps, wi
 - **Portability:** each sub-agent's implementation abstracted so it can be swapped via tool registration only (no orchestration code changes).
 - **Recoverability:** Orchestrator persists in-flight run state so an interruption mid-run can resume from the last completed step.
 - **Minimal footprint:** resource use for every component compressed as far as technically feasible, with no assumption of any particular hardware tier.
+
+---
+
+## 8. Capability Adapters & Cross-Modal Healing (Roadmap Phases 13–18, delivered)
+
+Beyond the vision-only flow above, a `TestStep` may carry `action: "capability_check"` instead of a Vision action. These steps bypass the Vision Execution Core entirely and route through `orchestrator/capability_router.py` to a registered `CapabilityAdapter` (`orchestrator/capability_adapter.py`), keyed on `TestStep.capability_type` (`CapabilityType`: `api`, `database`, `email`, `file_system`, `excel`, `pdf_ocr`, `cloud`, `workflow`, plus `fake` for tests).
+
+- **Input/output contract:** `CapabilityCheckInput` (`capability`, `target`, `params`, `expected`) in, `CapabilityCheckResult` (`capability`, `passed`, `confidence`, `evidence`, `escalate`) out — mirrors the Vision Action Result contract in §4.2 but for non-UI systems.
+- **Self-healing:** on failure, `run_engine.py` invokes `agents/planner/cross_modal_diagnoser.py` (up to 2 attempts) before escalating — the same skill-persistence pattern as §5.2, applied to schema/payload drift instead of UI drift.
+- **Adapters implemented:** `api_adapter` (httpx), `db_adapter` (SQLAlchemy, read-only by design), `email_adapter` (IMAP/SMTP), `file_adapter` (local + SFTP via paramiko), `excel_adapter` (openpyxl), `pdf_adapter` (pypdf), `cloud_adapter` (boto3, S3 `s3_object_exists` only — other actions are accepted but not yet distinguished), `workflow_adapter` (generic webhook trigger via httpx).
+- **Not yet part of this contract:** the REST service layer described informally in Roadmap.md Phase 17 does not yet invoke this path — `api/routers/runs.py::execute_run()` is a stub that doesn't call `RunEngine` at all. This section describes the CLI/`RunEngine`-driven path only, which is the one with real test coverage (`tests/test_capabilities.py`, `tests/test_16_categories_verification.py`).
+
+## 9. Non-Functional Requirements Addendum
+
+The offline-first posture in §7 applies to the original Vision/Planner/DataSynth path. The capability adapters above are, by design, network- or filesystem-facing (that's their purpose) — each one is explicit about what it connects to via `params`, and none defaults to acting without a configured target. `db_adapter` and `cloud_adapter` default to read/detect-only operations rather than mutating the systems they check.
+
+## 10. Proposed: Navigation & Self-Healing Redesign from External Reference Research
+
+**Status: proposed / not yet implemented.** This section documents a design
+direction backed by verified research into external repos
+(`docs/external_repos.md`, all 6 batches), to be implemented against Task 3
+of the doc-reorg/research work. Nothing in this section is live code yet —
+treat every claim below as "planned," not "current," until `docs/STATUS.md`
+says otherwise.
+
+**Finding:** three independent external projects — Playwright/playwright-mcp
+(`browser_snapshot`/`browser_click`), `vercel-labs/agent-browser` (`@eN`
+refs via CDP `DOM.resolveNode`), and `alibaba/page-agent` (index-based
+selector maps) — converged, unprompted, on the same architecture: **resolve
+an element to a stable reference once, then act via that reference**, rather
+than re-locating from raw pixels/selectors on every single action.
+
+**Proposed redesign of `agents/vision/locator.py` and `runtime/hooks/interact.py`:**
+1. **Primary path (browser targets):** add an accessibility-tree-first
+   resolution step, modeled on Playwright's `browser_snapshot`/`browser_click`
+   (`docs/external_repos.md` Batch 1) — capture an accessibility snapshot,
+   resolve the target element via that tree, and click/type through a
+   Playwright `Locator`, not raw screen coordinates.
+2. **Fallback path (no accessibility tree — native desktop apps):** keep the
+   existing pixel/OCR vision pipeline, hardened with UI-TARS's
+   `smartResizeForV15`-style coordinate normalization (Batch 1) so
+   OCR-bounding-box coordinates map correctly back to true screen pixels
+   after any internal resizing.
+3. **Self-healing for the new primary path:** when a Playwright locator fails
+   to resolve (structure drift), try `Scrapling`-style relocation (Batch 6)
+   before falling back to vision — score every current candidate element
+   against the last-known element, threshold-gate the match (don't guess
+   below a confidence floor), and log the best score found even on failure
+   rather than silently returning nothing. This becomes a new function
+   alongside `agents/planner/cross_modal_diagnoser.py`, not a replacement for
+   it — DOM-structure drift and UI-pixel drift are different failure modes
+   with different fixes.
+4. **`agents/capability/link_checker.py`:** replace the current raw-HTML
+   fetch with a headless Playwright page load (`waitUntil` past commit, plus
+   a network-idle wait — confirmed independently by both the Playwright
+   extraction and PixelRAG's `--wait-network-idle` flag, Batch 1 & 2) before
+   querying for `<a>` elements, closing the documented client-rendered-page
+   false-negative gap (`docs/STATUS.md`).
+
+**Explicitly out of scope for this redesign:** PixelRAG's tiling logic
+(Batch 2) is a *screenshot-reading* pattern, not a click/navigation one — it
+applies to `agents/vision/executor.py` if/when AURA's vision agent is backed
+by a multimodal LLM call rather than OCR-only, not to this navigation
+redesign directly.
+
+**Before implementing:** add a corresponding entry to `docs/decisions.md`
+(this is a real architecture change to a shipped, tested code path) and
+follow `docs/debug.md`'s full checklist — this redesign touches
+`agents/vision/locator.py`, `agents/vision/executor.py`,
+`runtime/hooks/interact.py`, and `agents/capability/link_checker.py`, all of
+which have existing test coverage that must keep passing.

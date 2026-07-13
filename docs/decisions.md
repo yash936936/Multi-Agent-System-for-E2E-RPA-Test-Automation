@@ -135,5 +135,60 @@ project: AURA
 ## Open — not yet decided
 - Specific runtime/model choice for each sub-agent
 - Target OS scope (desktop vs. web vs. both, and priority order)
-- License for the eventual codebase (README.md in `docs/` currently states MIT as a placeholder — not yet confirmed as an actual decision)
+- License for the eventual codebase (`docs/README.md` currently states MIT as a placeholder — not yet confirmed as an actual decision)
 - Repository location / naming convention
+
+---
+
+## D-015 — Documentation reorganization + external reference research integration
+**Decided:** 2026-07-13
+**Context:** the repo had four duplicated doc pairs (root `.md` vs stale
+`docs/.md` copies of the same file — `APPFLOW`, `PRD`, `TRD`, `WORKFLOW`),
+no single root orientation file for AI contributors, and no mandatory
+debug/review protocol. Separately, 18 external repos were researched for
+patterns applicable to AURA (memory, navigation, self-healing, observability,
+agent-loop guardrails), with findings that needed a durable home rather than
+living only in chat history.
+**Decision:**
+1. Added `context.md` at repo root as the single mandatory entry point for
+   any AI contributor, and `docs/debug.md` as a mandatory line-by-line
+   review checklist to run on every code change (both cover process, not
+   product features — see those files directly rather than duplicating their
+   content here).
+2. Resolved all four duplicate doc pairs by diffing root vs. `docs/` copies
+   and confirming (not assuming) the root copies were the current/superseding
+   versions in every case — each root copy contained a later dated note
+   (2026-07-04) absent from its `docs/` counterpart. Root copies were
+   promoted into `docs/`, stale `docs/` copies overwritten, root duplicates
+   removed.
+3. Moved every remaining root-level `.md` file (`README.md`, `STATUS.md`,
+   `Roadmap.md`, `PHASES.md`, `decisions.md`, `progress.md`, `debug_report.md`)
+   into `docs/`, per explicit instruction that `context.md` should be the
+   only `.md` file at repo root. **Deliberate exception:**
+   `requirements_input/example_login_flow.md` was left in place — it is
+   functional test-fixture input data consumed by the Planner agent, not
+   project documentation, and moving it risks breaking whatever expects it at
+   that path for no documentation benefit.
+4. Added `docs/external_repos.md`, a verified (not fabricated) extraction log
+   for all 18 in-scope external repos across 6 batches, with two repos
+   (`elder-plinius/G0DM0D3`, `BraveOPotato/FckSignups`) excluded on sight as
+   apparent safeguard-removal/signup-bypass tooling, not reviewed.
+5. Folded the most directly actionable findings into the docs they actually
+   affect, not just into `external_repos.md`: a proposed navigation/self-heal
+   redesign in `docs/TRD.md` §10 and `docs/Roadmap.md` Phase 20 (Playwright-
+   first resolution, Scrapling-style DOM self-heal, UI-TARS coordinate
+   normalization for the desktop fallback, structured audit-log taxonomy,
+   skill quality-tracking, guardrail-structure review) — all marked
+   **proposed, not implemented**, so nobody mistakes a documented plan for
+   shipped behavior. Also folded a code-minimalism decision ladder
+   (`ponytail`) and an explicit approval-tier list (`q-agent-harness`) into
+   `context.md` §6 as standing process instructions.
+**Verification:** confirmed via `diff` that no content was lost in the four
+dedup operations (root copies were supersets of their `docs/` counterparts in
+every case, not divergent versions); confirmed the final repo root contains
+exactly one `.md` file (`context.md`) via `find . -maxdepth 1 -iname "*.md"`.
+No code was changed in this pass — this is a documentation-only decision.
+**Revisit when:** Phase 20 (or any subset of it) is actually implemented —
+update `docs/TRD.md` §10 and `docs/Roadmap.md`'s Phase 20 status from
+"proposed" to "delivered" (or partially delivered) at that point, per
+`docs/debug.md`'s rule against letting docs go stale relative to code.

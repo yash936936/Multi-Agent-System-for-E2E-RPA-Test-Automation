@@ -1,6 +1,6 @@
 {
-  "target_app_type": "desktop",
-  "scheduled_runs_enabled": true,
+  "target_app_type": "web",
+  "scheduled_runs_enabled": false,
   "notification_channel": null,
-  "compression_mode": "off"
+  "compression_mode": "balanced"
 }

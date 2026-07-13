@@ -45,8 +45,23 @@ class GuardrailSettings(BaseSettings):
     hard_stop_after_same_tool_failure: int = 8
 
 
+
+# Resolve .env relative to the project root (parent of this config/ directory)
+# so AURA_* variables are found regardless of the current working directory.
+# This is critical for global `aura` usage (e.g. running from C:\Users\prakh
+# after install) — a relative ".env" would resolve to the shell's cwd, not
+# the project folder where install.bat wrote AURA_TESSERACT_CMD.
+_PROJECT_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="AURA_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="AURA_",
+        env_file=str(_PROJECT_ENV_FILE),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
 
     # --- root paths ---
     project_root: Path = Field(default_factory=_default_project_root)

@@ -110,3 +110,39 @@ Two things from AURA's original design should carry through every phase above, n
 - **Offline-first stays the default, network is opt-in per adapter.** AURA's local LLM backend runs fully on-device by design; the new API/DB/Email/Cloud adapters are inherently network-facing, which is fine and expected — but each one should be explicit about what it connects to and require the target to be configured, not assumed.
 
 ---
+
+## 6. Phase 20 (proposed, not started) — Navigation redesign + observability, from external reference research
+
+Backed by verified research across 18 external repos, 6 batches, documented
+in full in `docs/external_repos.md`. Status: **proposed only** — nothing in
+this phase is implemented. See `docs/TRD.md` §10 for the full technical
+design.
+
+- **20a. Playwright-first element resolution + Scrapling-style DOM self-heal**
+  for browser targets, UI-TARS-style coordinate normalization retained as the
+  native-desktop fallback path. Touches `agents/vision/locator.py`,
+  `runtime/hooks/interact.py`.
+- **20b. `agents/capability/link_checker.py` headless-render fix** — load the
+  page via Playwright with a network-idle wait before scanning for `<a>`
+  elements, closing the client-rendered-page false-negative gap in
+  `docs/STATUS.md`.
+- **20c. Skill quality-tracking** (inspired by `HKUDS/OpenSpace`'s
+  `skill_engine/analyzer.py`) — add a lightweight success/failure counter to
+  whatever `orchestrator/skill_store.py` persists per skill, so a stored fix
+  that stops working can be surfaced rather than reused forever on faith.
+- **20d. Structured audit-log event taxonomy** (inspired by `langfuse`'s
+  `ObservationType` enum) — give `orchestrator/audit_logger.py` a small fixed
+  set of event types (e.g. `VISION_ACTION`, `CAPABILITY_CHECK`,
+  `PLANNER_DIAGNOSIS`, `SELF_HEAL`, `GUARDRAIL_STOP`) instead of free-form log
+  entries, so `logs/audit.jsonl` becomes queryable/reportable in a structured
+  way.
+- **20e. Guardrail structure review** (inspired by `openhuman`'s
+  stop-hook-middleware pattern) — confirm `orchestrator/guardrails.py` is
+  structured as independently-voting checks (any one check can halt a run)
+  rather than one combined condition, for easier future extension.
+
+Sequencing note: 20a and 20b should land together (both depend on the same
+Playwright integration work); 20c–20e are independent, smaller, and can land
+in any order once 20a/20b are done or in parallel with them.
+
+---
