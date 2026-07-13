@@ -192,3 +192,37 @@ No code was changed in this pass — this is a documentation-only decision.
 update `docs/TRD.md` §10 and `docs/Roadmap.md`'s Phase 20 status from
 "proposed" to "delivered" (or partially delivered) at that point, per
 `docs/debug.md`'s rule against letting docs go stale relative to code.
+
+## D-016 — Automation Anywhere trigger/validate architecture merged into TRD.md §11 (proposed)
+
+**Context:** an external architecture description was supplied for merging
+into AURA's docs: `Playwright Test Suite → trigger Automation Anywhere bot
+(REST API / CLI) → bot runs → Web App / Database / Files → Playwright
+validates`. This is a trigger-and-verify pattern (AURA triggers an external
+RPA bot and independently validates the result), distinct from AURA's
+existing self-contained vision-driven execution model.
+
+**Decision:** documented as `docs/TRD.md` §11 and `docs/Roadmap.md` Phase 21,
+both marked **proposed, not implemented** — no code was changed in this
+pass. Mapped onto existing components rather than inventing a parallel
+engine: new `agents/capability/automation_anywhere_adapter.py`
+(`CapabilityType.AUTOMATION_ANYWHERE`, trigger + poll) and new
+`agents/capability/playwright_validator.py` (read-only web-state check);
+the database and file validation legs reuse the existing `db_adapter` and
+`file_adapter` unchanged.
+
+**Collision noted and resolved:** `docs/TRD.md` §10 already proposes
+Playwright as the primary *action-execution* path for AURA's own
+Vision-driven steps (resolve-then-click via a `Locator`). §11 uses Playwright
+strictly as a *read-only validator* after an external AA bot has already
+performed the interaction — a different step type
+(`capability_check` vs. `visual_click`/`visual_type`), so both coexist.
+§11.5 makes this reconciliation explicit and specifies that once §10 lands,
+`playwright_validator.py` should reuse its browser-session code rather than
+introducing a second independent Playwright integration.
+
+**Revisit when:** Phase 21 (or any subset) is actually implemented — update
+`docs/TRD.md` §11 and `docs/Roadmap.md` Phase 21's status from "proposed" to
+"delivered," per `docs/debug.md`'s rule against letting docs go stale
+relative to code. Also revisit alongside Phase 20, since both depend on the
+same Playwright dependency landing in the codebase.

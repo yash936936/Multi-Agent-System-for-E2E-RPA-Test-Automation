@@ -32,6 +32,8 @@ AURA is a **hub-and-spoke multi-agent system** coordinated entirely through the 
 
 Every sub-agent is registered with the Orchestrator as a named tool with a defined input/output schema. The Orchestrator never calls a sub-agent's implementation directly — all dispatch goes through the Hermes Agent API's tool-calling layer, so any sub-agent can be replaced, upgraded, or compressed without changing orchestration logic.
 
+> **Second execution pattern (§11, proposed):** the diagram above covers AURA driving the UI itself via the Vision Execution Core. A second, independent pattern exists for steps where an external Automation Anywhere bot performs the interaction and AURA only triggers and validates: `Playwright Test Suite → trigger AA bot (REST/CLI) → AA bot runs → validate Web App / Database / Files (Playwright + db_adapter + file_adapter)`. See §11 for the full design and how it reconciles with §10's Playwright locator-resolution redesign.
+
 ---
 
 ## 2. Component Specifications
@@ -263,3 +265,143 @@ follow `docs/debug.md`'s full checklist — this redesign touches
 `agents/vision/locator.py`, `agents/vision/executor.py`,
 `runtime/hooks/interact.py`, and `agents/capability/link_checker.py`, all of
 which have existing test coverage that must keep passing.
+
+---
+
+## 11. RPA Bot-Trigger & Cross-System Validation Architecture (Automation Anywhere) — proposed / not yet implemented
+
+**Status: proposed, supersedes §10 for any test step where the interaction
+itself is performed by an external RPA bot rather than by AURA's own
+Vision Execution Core.** Everything below is "planned," not "current," until
+`docs/STATUS.md` says otherwise. Add a `docs/decisions.md` entry before
+implementation, per the same rule as §10.
+
+### 11.1 Source pattern
+
+```
+Test Execution
+        Playwright Test Suite
+               │
+               ▼
+     Trigger Automation Anywhere Bot
+      (REST API / Command Line)
+               │
+               ▼
+      Automation Anywhere Bot Runs
+               │
+       ┌───────┼────────┐
+       ▼       ▼        ▼
+    Web App  Database  Files
+       ▲       ▲        ▲
+       │       │        │
+     Playwright Validates
+```
+
+This is a **trigger-and-verify** pattern: AURA does not perform the UI
+interaction in this flow — an external Automation Anywhere bot does. AURA's
+job is (a) to trigger that bot deterministically and (b) to independently
+verify the systems the bot touched, so the check isn't just "did the bot
+report success" but "did the web app, database, and files actually end up in
+the expected state."
+
+### 11.2 How this maps onto AURA's existing components
+
+This pattern does not require a new orchestration engine — it slots into
+the existing `CapabilityAdapter` architecture (§8) as a new capability type,
+plus one new adapter:
+
+| Diagram element | AURA implementation |
+|---|---|
+| Playwright Test Suite | The existing `TestSpec`/`RunEngine` harness (§4.1, §8). A spec's steps sequence a `capability_check` (trigger) followed by one or more validation steps. Playwright itself is only invoked for the "Web App" leg of validation (§11.4) — it is not the harness that decides whether to run, that's still `RunEngine`. |
+| Trigger Automation Anywhere Bot (REST API / CLI) | New: `agents/capability/automation_anywhere_adapter.py`, registered as `CapabilityType.AUTOMATION_ANYWHERE` in `orchestrator/capability_adapter.py::default_registry()`. Two trigger modes, mirroring the diagram's "REST API / Command Line" label — REST mode posts to the Control Room bot-deployment endpoint, returning a deployment/activity ID; CLI mode invokes the local AAE CLI/Bot Launcher for on-prem runners with no Control Room reachable. |
+| Automation Anywhere Bot Runs | Opaque to AURA by design — the bot's internal steps are not observed. `automation_anywhere_adapter.py` only polls the Control Room activity-status endpoint (REST mode) or watches the CLI process exit code/log tail (CLI mode) until terminal state (`COMPLETED`/`FAILED`), returning a `CapabilityCheckResult` with the bot's own reported status as evidence and `passed=False` on any non-success terminal state. |
+| Web App | Post-run validation via a Playwright-backed web validator (§11.4) — new, and distinct in purpose from the §10 locator-resolution redesign (see §11.5). |
+| Database | Existing `db_adapter`, used exactly as-is — read-only query against the expected post-bot-run row/state. No changes needed. |
+| Files | Existing `file_adapter` (local + SFTP via paramiko), used exactly as-is — checks for the file the bot was expected to produce/move. No changes needed. |
+| Playwright Validates | The aggregation point: `RunEngine` collects the `CapabilityCheckResult`s from the web/database/file validation steps and rolls them into the same Run Report schema as §4.4 — a bot run is "passed" only if the trigger succeeded and all three validation legs independently confirm the expected end state. |
+
+### 11.3 Data schema — Automation Anywhere trigger step
+
+```json
+{
+  "capability": "automation_anywhere",
+  "target": {
+    "mode": "rest",
+    "control_room_url": "https://<tenant>.my.automationanywhere.digital",
+    "bot_id": "12345",
+    "run_as_user_id": "67890"
+  },
+  "params": {
+    "input_variables": {"invoice_id": "INV-2026-0417"},
+    "poll_interval_seconds": 5,
+    "timeout_seconds": 600
+  },
+  "expected": {"terminal_status": "COMPLETED"}
+}
+```
+
+`CapabilityCheckResult` for this step reuses the §4.2/§8 contract unchanged
+(`capability`, `passed`, `confidence`, `evidence`, `escalate`) — `confidence`
+is `1.0` or `0.0` here (bot terminal status is binary, not a vision
+confidence score), and `evidence` carries the raw Control Room activity
+record or CLI exit log for audit purposes.
+
+### 11.4 Playwright web validator (new, validation-only)
+
+A new `agents/capability/playwright_validator.py`, invoked as the "Web App"
+leg of the diagram once the bot reports a terminal state:
+
+- Launches a headless Playwright browser and navigates to the target
+  page/state the bot was expected to produce (e.g. an updated order-status
+  screen).
+- Resolves and reads back element/state via Playwright's accessibility
+  snapshot (the same primitive as §10's proposed primary action path),
+  asserting against the spec's `expected` block — text content, element
+  presence, visual state. This leg is strictly read-only: no clicking or
+  typing.
+- Returns a `CapabilityCheckResult` alongside the `db_adapter`/`file_adapter`
+  results for the same run.
+
+### 11.5 Explicit reconciliation with §10 (collision noted, resolved)
+
+§10 proposes Playwright as the primary action-execution path — resolving
+and clicking through a Playwright `Locator` — for test steps where AURA's
+own Vision Execution Core is the thing driving the interaction. §11 uses
+Playwright strictly as a read-only validator after an external AA bot has
+already performed the interaction. These are different step types
+(`visual_click`/`visual_type` vs. `capability_check` with
+`capability: automation_anywhere` or a new `capability: web_validation`) and
+both can exist simultaneously without conflict:
+
+- If a `TestSpec` step drives the UI itself, §10's locator-resolution path
+  applies (AURA acts).
+- If a `TestSpec` step triggers an external bot and then checks the result,
+  §11's trigger/validate path applies (AURA only observes and verifies).
+
+Both paths should share the same underlying Playwright browser-context
+management code once §10 lands — one `playwright` dependency, one
+accessibility-snapshot helper — so `playwright_validator.py` becomes a thin
+read-only consumer of whatever browser-session module §10 introduces, rather
+than a second independent Playwright integration.
+
+### 11.6 Non-functional notes
+
+- **Offline-first exception, disclosed:** like the other capability adapters
+  (§9), `automation_anywhere_adapter.py` and `playwright_validator.py` are
+  network-facing by design (Control Room API, headless browser navigation)
+  — consistent with §9's existing carve-out, not a new exception.
+- **No blind trust of bot-reported success:** a `COMPLETED` status from
+  Automation Anywhere alone is not sufficient to mark a run passed — at
+  least one of the web/database/file validation legs must also
+  independently confirm the expected end state, mirroring §5.3's
+  confidence-gating philosophy (never execute or accept blindly) applied to
+  a third-party system's self-report instead of a vision-agent's confidence
+  score.
+- **Self-healing scope:** trigger failures (bot didn't start, auth
+  rejected) route to the existing `cross_modal_diagnoser.py` (§8) exactly
+  like other capability failures. Validation-leg mismatches (bot reported
+  success, but the DB/file/web state disagrees) are a new, higher-severity
+  failure class — flagged for escalation rather than auto-healed, since a
+  disagreement between an RPA bot's self-report and independently observed
+  system state is a correctness signal, not a UI-drift pattern a skill can
+  fix.

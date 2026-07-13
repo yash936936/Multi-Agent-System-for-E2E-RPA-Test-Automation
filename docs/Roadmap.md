@@ -146,3 +146,27 @@ Playwright integration work); 20c–20e are independent, smaller, and can land
 in any order once 20a/20b are done or in parallel with them.
 
 ---
+
+## 7. Phase 21 (proposed, not started) — Automation Anywhere trigger/validate architecture
+
+Full technical design in `docs/TRD.md` §11. Status: **proposed only** —
+nothing in this phase is implemented; adds a distinct execution pattern
+alongside (not replacing) Phases 13–20.
+
+- **21a. `agents/capability/automation_anywhere_adapter.py`** (new) — new
+  `CapabilityType.AUTOMATION_ANYWHERE`, triggers a bot via the Control Room
+  REST API or the local AAE CLI, polls to terminal status.
+- **21b. `agents/capability/playwright_validator.py`** (new) — read-only
+  Playwright-based post-run check against the web app's expected state.
+  Shares its browser-session code with Phase 20a's locator work once that
+  lands, rather than a second independent Playwright integration.
+- **21c. Validation-leg cross-check** — a bot-reported `COMPLETED` status is
+  never sufficient alone; at least one of the web/database/file validation
+  legs (`playwright_validator`, existing `db_adapter`, existing
+  `file_adapter`) must independently confirm the expected end state before
+  `RunEngine` marks the run passed.
+
+Sequencing note: 21b depends on the same Playwright dependency as 20a/20b,
+so 21 is naturally sequenced after or alongside Phase 20, not before it.
+
+---
