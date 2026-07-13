@@ -33,6 +33,31 @@ class ReportAggregator:
         if result.escalate:
             self._escalated_step_ids.add(result.step_id)
 
+    def get_results(self) -> list[VisionActionResult]:
+        """Read-only snapshot of every step result recorded so far."""
+        return list(self._step_results)
+
+    def override_step_result(self, step_id: int, corrected: VisionActionResult) -> None:
+        """
+        Replaces a previously-recorded result for `step_id` with `corrected`.
+        Used by RunEngine's bot-trigger/validation-leg cross-check (TRD
+        §11.6, Roadmap Phase 21c): a CapabilityType.AUTOMATION_ANYWHERE
+        trigger step's result is recorded optimistically as soon as the bot
+        reports success, but the *actual* pass/fail verdict for that step
+        can only be known once its grouped validation-leg steps (which run
+        afterward, per the spec's own step order) have also been checked --
+        so this lets RunEngine go back and correct the earlier record
+        rather than needing to buffer/delay every step's recording.
+        """
+        for i, existing in enumerate(self._step_results):
+            if existing.step_id == step_id:
+                self._step_results[i] = corrected
+                break
+        if corrected.escalate:
+            self._escalated_step_ids.add(step_id)
+        else:
+            self._escalated_step_ids.discard(step_id)
+
     def record_skill_learned(self, skill: SkillRecord) -> None:
         self._skills_learned.append(skill)
 

@@ -147,27 +147,27 @@ in any order once 20a/20b are done or in parallel with them.
 
 ---
 
-## 7. Phase 21 (proposed, not started) — Automation Anywhere trigger/validate architecture
+## 7. Phase 21 (delivered) — Automation Anywhere trigger/validate architecture
 
-Full technical design in `docs/TRD.md` §11. Status: **proposed only** —
-nothing in this phase is implemented; adds a distinct execution pattern
-alongside (not replacing) Phases 13–20.
+Full technical design in `docs/TRD.md` §11. Status: **delivered** — see
+`docs/decisions.md` D-021 (21a/21b) and D-023 (21c).
 
-- **21a. `agents/capability/automation_anywhere_adapter.py`** (new) — new
+- **21a. `agents/capability/automation_anywhere_adapter.py`** (delivered) —
   `CapabilityType.AUTOMATION_ANYWHERE`, triggers a bot via the Control Room
   REST API or the local AAE CLI, polls to terminal status.
-- **21b. `agents/capability/playwright_validator.py`** (new) — read-only
-  Playwright-based post-run check against the web app's expected state.
-  Shares its browser-session code with Phase 20a's locator work once that
-  lands, rather than a second independent Playwright integration.
-- **21c. Validation-leg cross-check** — a bot-reported `COMPLETED` status is
-  never sufficient alone; at least one of the web/database/file validation
-  legs (`playwright_validator`, existing `db_adapter`, existing
-  `file_adapter`) must independently confirm the expected end state before
-  `RunEngine` marks the run passed.
-
-Sequencing note: 21b depends on the same Playwright dependency as 20a/20b,
-so 21 is naturally sequenced after or alongside Phase 20, not before it.
+- **21b. `agents/capability/playwright_validator.py`** (delivered) —
+  read-only Playwright-based post-run check against the web app's expected
+  state (`CapabilityType.WEB_VALIDATION`). Still manages its own browser
+  lifecycle independently of Phase 20a's locator work (`dom_locator.py`) —
+  sharing that code is a legitimate small follow-up, not yet done.
+- **21c. Validation-leg cross-check** (delivered, D-023) — a bot-reported
+  `COMPLETED` status is never sufficient alone. `TestStep.bot_validation_group`
+  links a trigger step to its validation-leg step(s)
+  (`playwright_validator`/`db_adapter`/`file_adapter`); `RunEngine`
+  retroactively downgrades the trigger step's result if none of its
+  grouped legs independently confirm the expected end state before the
+  run is marked passed. Opt-in — specs that don't set the field are
+  unaffected.
 
 ---
 

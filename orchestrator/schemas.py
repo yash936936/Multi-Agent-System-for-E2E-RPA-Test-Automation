@@ -112,6 +112,19 @@ class TestStep(BaseModel):
     # None means "use the configured default" (which itself may be 0,
     # meaning wait indefinitely).
     human_action_timeout_seconds: Optional[int] = None
+    # Phase 21c (TRD §11.6, Roadmap Phase 21c) -- links a
+    # CapabilityType.AUTOMATION_ANYWHERE trigger step to the
+    # WEB_VALIDATION/DATABASE/FILE_SYSTEM step(s) that independently verify
+    # the bot's effect on those systems. All CAPABILITY_CHECK steps sharing
+    # the same non-null bot_validation_group are treated as one logical
+    # "trigger-and-verify" unit (docs/TRD.md §11's diagram): even if the
+    # bot itself reports a terminal COMPLETED status, RunEngine will not
+    # mark that trigger step passed unless at least one grouped validation
+    # step also independently confirms the expected end state -- a bot's
+    # own self-report is never sufficient alone. Steps with no
+    # bot_validation_group (the common case for every other capability
+    # check) are unaffected and behave exactly as before.
+    bot_validation_group: Optional[str] = None
 
     @field_validator("capability_type")
     @classmethod

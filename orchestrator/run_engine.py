@@ -36,6 +36,7 @@ from orchestrator.schemas import (
     ActionType,
     CapabilityCheckInput,
     CapabilityCheckResult,  # Phase 14/18: Updated from CapabilityResult
+    CapabilityType,
     RequirementInput,
     RunReport,
     SkillRecord,
@@ -103,6 +104,99 @@ class RunEngine:
             return self.screenshot_provider(run_id, step_id)
         except NoDisplayError:
             return None
+
+    def _enforce_bot_validation_cross_check(self, spec: TestSpec, aggregator: ReportAggregator) -> None:
+        """
+        TRD §11.6 / Roadmap Phase 21c: "no blind trust of bot-reported
+        success." Groups every CAPABILITY_CHECK step sharing a non-null
+        `bot_validation_group` into one logical trigger-and-verify unit
+        (docs/TRD.md §11's diagram: trigger -> Web App/Database/Files
+        validation legs -> "Playwright Validates" aggregation point) and
+        retroactively corrects the trigger step's own result if the bot
+        reported success but none of its grouped validation legs
+        independently confirmed the expected end state.
+
+        Runs once, after every step in the spec has already executed and
+        been recorded -- by spec convention (matching the diagram's
+        top-to-bottom flow) the trigger step is expected to come before its
+        validation-leg steps, so by the time this runs every result needed
+        is already available in the aggregator.
+        """
+        results_by_step_id = {r.step_id: r for r in aggregator.get_results()}
+        groups: dict[str, dict[str, Any]] = {}
+
+        for step in spec.steps:
+            group = getattr(step, "bot_validation_group", None)
+            if not group:
+                continue
+            result = results_by_step_id.get(step.step_id)
+            if result is None or result.capability_result is None:
+                continue
+
+            entry = groups.setdefault(group, {"trigger": None, "validations": []})
+            cap_type = result.capability_result.capability
+            if cap_type == CapabilityType.AUTOMATION_ANYWHERE:
+                entry["trigger"] = (step, result)
+            elif cap_type in (
+                CapabilityType.WEB_VALIDATION,
+                CapabilityType.DATABASE,
+                CapabilityType.FILE_SYSTEM,
+            ):
+                entry["validations"].append((step, result))
+
+        for group_name, entry in groups.items():
+            trigger = entry["trigger"]
+            if trigger is None:
+                # A validation-leg step tagged with a group that has no
+                # matching trigger step in this spec -- nothing to enforce.
+                continue
+
+            trigger_step, trigger_result = trigger
+            if not trigger_result.capability_result.passed:
+                # The bot itself already failed/timed out -- already
+                # correctly reflected (escalate=True) from the normal
+                # CAPABILITY_CHECK branch above; nothing more to add.
+                continue
+
+            validations = entry["validations"]
+            any_confirmed = any(
+                v_result.capability_result is not None and v_result.capability_result.passed
+                for _, v_result in validations
+            )
+
+            if any_confirmed:
+                continue  # bot succeeded AND at least one leg independently confirmed it -- genuinely passed.
+
+            if not validations:
+                reason = (
+                    f"bot_validation_group '{group_name}' has a trigger step but no "
+                    "validation-leg steps (web_validation/database/file_system) were found "
+                    "in this spec to independently confirm it -- per TRD §11.6, a bot's own "
+                    "reported success is never sufficient alone."
+                )
+            else:
+                reason = (
+                    f"bot_validation_group '{group_name}': the Automation Anywhere bot reported "
+                    "success, but none of the grouped validation-leg steps independently "
+                    "confirmed the expected end state (TRD §11.6 -- 'no blind trust of "
+                    "bot-reported success')."
+                )
+
+            corrected_evidence = dict(trigger_result.capability_result.evidence)
+            corrected_evidence["cross_check_failed"] = reason
+            corrected_cap_result = trigger_result.capability_result.model_copy(
+                update={"passed": False, "evidence": corrected_evidence}
+            )
+            corrected = trigger_result.model_copy(
+                update={
+                    "assertion_passed": False,
+                    "escalate": True,
+                    "capability_result": corrected_cap_result,
+                }
+            )
+            aggregator.override_step_result(trigger_step.step_id, corrected)
+            if self.on_step_result:
+                self.on_step_result(trigger_step.step_id, trigger_step, corrected)
 
     def run(self, requirement_text: str, run_id: str | None = None) -> RunEngineResult:
         run_id = run_id or str(uuid.uuid4())[:8]
@@ -400,6 +494,15 @@ class RunEngine:
                 continue
 
             self.memory.mark_step_complete(run_id, step.step_id)
+
+        # --- Bot-trigger / validation-leg cross-check (TRD §11.6, Roadmap 21c) ---
+        # A CapabilityType.AUTOMATION_ANYWHERE trigger step's own reported
+        # terminal status is never sufficient alone -- this enforces that
+        # at least one grouped WEB_VALIDATION/DATABASE/FILE_SYSTEM step also
+        # independently confirmed the expected end state before the
+        # trigger step (and therefore the run) can be marked passed.
+        if any(getattr(s, "bot_validation_group", None) for s in spec.steps):
+            self._enforce_bot_validation_cross_check(spec, aggregator)
 
         # --- Final spec-level assertions ---
         if spec.assertions:

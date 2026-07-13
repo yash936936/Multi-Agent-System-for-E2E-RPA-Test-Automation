@@ -268,13 +268,13 @@ which have existing test coverage that must keep passing.
 
 ---
 
-## 11. RPA Bot-Trigger & Cross-System Validation Architecture (Automation Anywhere) — proposed / not yet implemented
+## 11. RPA Bot-Trigger & Cross-System Validation Architecture (Automation Anywhere) — delivered
 
-**Status: proposed, supersedes §10 for any test step where the interaction
-itself is performed by an external RPA bot rather than by AURA's own
-Vision Execution Core.** Everything below is "planned," not "current," until
-`docs/STATUS.md` says otherwise. Add a `docs/decisions.md` entry before
-implementation, per the same rule as §10.
+**Status: delivered.** Supersedes §10 for any test step where the
+interaction itself is performed by an external RPA bot rather than by
+AURA's own Vision Execution Core. See `docs/decisions.md` D-021 (11.1–11.5,
+the adapters themselves) and D-023 (11.6's cross-check, enforced by
+`RunEngine`).
 
 ### 11.1 Source pattern
 
@@ -396,7 +396,15 @@ than a second independent Playwright integration.
   independently confirm the expected end state, mirroring §5.3's
   confidence-gating philosophy (never execute or accept blindly) applied to
   a third-party system's self-report instead of a vision-agent's confidence
-  score.
+  score. **Enforced by `RunEngine._enforce_bot_validation_cross_check()`
+  (D-023):** a spec author tags an `AUTOMATION_ANYWHERE` trigger step and
+  its corresponding `WEB_VALIDATION`/`DATABASE`/`FILE_SYSTEM` step(s) with
+  the same `TestStep.bot_validation_group` string; after all steps run,
+  `RunEngine` retroactively downgrades the trigger step's own result to
+  failed/escalated if none of its grouped validation legs independently
+  confirmed the expected end state, adding a `cross_check_failed` note to
+  its evidence. Opt-in — specs that don't set `bot_validation_group` are
+  completely unaffected.
 - **Self-healing scope:** trigger failures (bot didn't start, auth
   rejected) route to the existing `cross_modal_diagnoser.py` (§8) exactly
   like other capability failures. Validation-leg mismatches (bot reported

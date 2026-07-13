@@ -708,3 +708,65 @@ sandbox). After this pass: **321 passing** (10 new tests: 1 in
 `test_run_engine.py`, 3 in the new `test_interact_no_display.py`, 4 in
 `test_preflight.py`, and 2 covered implicitly by existing debug-command
 tests exercising the fixed clean-scan branch) — zero regressions.
+
+## D-023 — Phase 21c closed: RunEngine now enforces the bot-trigger/validation-leg cross-check
+
+Closes the one remaining gap from the Phase 21 (Automation Anywhere)
+architecture review against `docs/TRD.md` §11's diagram: every individual
+box/adapter (trigger, Web App/Database/Files validation legs) already
+existed and worked, but nothing enforced the diagram's actual policy at
+the "Playwright Validates" aggregation point — that a bot's own reported
+`COMPLETED` status is never sufficient alone; at least one validation leg
+must independently confirm the expected end state (TRD §11.6).
+
+**What changed:**
+- `orchestrator/schemas.py::TestStep`: new optional `bot_validation_group:
+  Optional[str]` field. A spec author tags an `AUTOMATION_ANYWHERE` trigger
+  step and its corresponding `WEB_VALIDATION`/`DATABASE`/`FILE_SYSTEM`
+  validation-leg step(s) with the same group string to link them as one
+  logical trigger-and-verify unit. Steps with no group are completely
+  unaffected — this is opt-in, not a behavior change for any existing spec.
+- `orchestrator/report_aggregator.py`: added `get_results()` (read-only
+  snapshot) and `override_step_result(step_id, corrected)` so a
+  previously-recorded step result can be retroactively corrected once
+  later steps in the same run reveal it shouldn't have been accepted at
+  face value.
+- `orchestrator/run_engine.py`: new `RunEngine._enforce_bot_validation_cross_check()`,
+  called once after the main step loop finishes (only when at least one
+  step in the spec has `bot_validation_group` set, so specs that don't use
+  this feature pay zero extra cost). Groups every capability-check result
+  by `bot_validation_group`, and for each group whose trigger step
+  reported `passed=True`: if none of the grouped validation-leg results
+  also reported `passed=True`, the trigger step's own recorded result is
+  corrected to `assertion_passed=False, escalate=True`, with a
+  `cross_check_failed` note added to its evidence explaining why. A group
+  with a trigger but zero validation-leg steps anywhere in the spec is
+  treated the same way (nothing to confirm against == not confirmed).
+  If the bot itself already failed, the cross-check does nothing extra —
+  that case was already handled correctly by the existing
+  `CAPABILITY_CHECK` branch.
+- **Deliberately unchanged:** a validation leg's own pass/fail is still
+  independently escalated on its own merits regardless of the group
+  cross-check outcome — e.g. if the bot succeeds and one of two validation
+  legs independently confirms it (so the trigger step itself correctly
+  stays passed), a *different* validation leg that itself failed still
+  shows up as its own escalated step in the report. The cross-check only
+  ever touches the trigger step's own verdict, never rewrites a validation
+  leg's result.
+- New tests: `tests/test_bot_validation_cross_check.py` (6 tests) —
+  confirmed-pass, unconfirmed-fail (with evidence check), "at least one of
+  multiple legs" partial-confirmation case (verifying the trigger step
+  itself is *not* downgraded), bot-already-failed is unaffected, no-group
+  steps are unaffected, and orphaned-group-with-no-validation-steps is
+  still escalated.
+
+**Verification:** 321 passing before this pass. **327 passing after**
+(6 new), zero regressions across the full suite.
+
+**Not done (explicitly out of scope):** automatically inferring
+`bot_validation_group` from step adjacency/spec structure — this requires
+the spec author to set it explicitly. Also not done: extending the same
+cross-check pattern to any *other* multi-leg validation scenario outside
+Automation Anywhere trigger/validate — TRD §11 only describes this one
+pattern, so the field and enforcement logic are scoped to it rather than
+generalized speculatively.
