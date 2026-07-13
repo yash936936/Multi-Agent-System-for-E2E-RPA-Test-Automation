@@ -554,3 +554,78 @@ registered per D-019's conflict-fix note), so it inherits Phase D's kill
 switch and allowlist automatically; confirm its `params` key for the AA
 Control Room URL is covered by `_URL_PARAM_KEYS` when that phase is
 picked up properly.
+
+## D-021 — Phase E: Automation Anywhere trigger/validate closure
+
+**Context:** D-019's Phase C conflict-fix note recorded that
+`agents/capability/automation_anywhere_adapter.py` and
+`agents/capability/playwright_validator.py` (TRD §11, Roadmap Phase 21a/21b)
+already existed **fully written** in the repo, with `CapabilityType`
+members and registry entries added as a minimal unblock — but flagged that
+this was not a full Phase E pass, and asked for one with its own
+decisions.md depth, CLI/doc coverage, and a registration test in the style
+of `test_16_categories_verification.py`.
+
+**What was actually found on inspection:** both adapters, and
+`tests/test_automation_anywhere.py` (13 tests: registry wiring, REST-mode
+trigger+poll to terminal status, CLI-mode subprocess trigger, the
+Playwright web validator's text/selector/selector-text assertions, and a
+full trigger→validate integration test chaining both), were already
+correct and complete against TRD §11's design — no functional bug found in
+either adapter. TRD §11.2's own table already specifies that "no blind
+trust of bot-reported success" is enforced by `RunEngine`'s existing
+step-sequencing and Run Report aggregation (a spec author sequences a
+`capability_check` trigger step followed by validation steps; the existing
+per-step + spec-level assertion rollup already means the run is only
+"passed" if every step, trigger and validation alike, passed) — this does
+not require new RunEngine code, so no gap there either.
+
+**What Phase E's closure pass actually fixed:**
+1. **Real gap, closed:** Phase D's (D-020) egress-controlled
+   `_URL_PARAM_KEYS` list did not include `control_room_url` — the param
+   name `automation_anywhere_adapter.py`'s REST mode actually uses for the
+   Control Room endpoint (confirmed by reading the adapter's own
+   `_run_rest`). This meant an AA trigger's target host was invisible to
+   both the audit trail and the allowlist. Added `control_room_url` to
+   `orchestrator/capability_router.py::_URL_PARAM_KEYS`.
+2. **CLI mode confirmed correct as-is:** CLI-mode AA triggers are a local
+   subprocess invocation, not a network call, so they correctly have no
+   extractable host (`_extract_egress_host` returns `None`) — `_host_allowed`
+   fails open for that case exactly as it does for other no-host
+   capabilities, with the kill switch remaining the applicable control.
+   Added a test asserting this explicitly rather than leaving it as an
+   untested side effect of the fail-open default.
+3. **Docs:** `docs/WORKFLOW.md`'s capability-check step-type callout listed
+   only `API/DB/Email/File/Excel/PDF/Cloud/Workflow` as examples, silently
+   omitting Azure/GCP/SharePoint/ChatOps/LinkCheck/AutomationAnywhere/
+   WebValidation even though all are registered and tested. Updated the
+   list to mention Automation Anywhere trigger + Playwright web-validation
+   explicitly (with a §11 pointer), since that's the doc a spec author is
+   most likely to read to learn what capability types exist.
+4. **New tests, appended to `tests/test_automation_anywhere.py`** (4):
+   `control_room_url` host extraction, allowlist rejection via the router
+   using `control_room_url`, `web_validation`'s `url` param extraction, and
+   CLI-mode's no-host/kill-switch-only behavior.
+
+**Not done in this pass (genuinely out of scope):**
+- Reusing a shared Playwright browser-context module between
+  `playwright_validator.py` and `agents/vision/dom_locator.py`/
+  `runtime/hooks/browser.py` (TRD §11.5's own reconciliation note flags
+  this as a future consolidation once both exist — both do now, post
+  Phase C, so this is a legitimate small follow-up, but it's a
+  refactor-for-consistency task, not a bug or a missing capability, and
+  wasn't requested as part of this closure pass).
+- Azure/GCP host-allowlisting gap noted in D-020 remains open — unrelated
+  to Automation Anywhere.
+
+**Verification:** ran the full suite before this pass (300/309 passing —
+the 9 pre-existing Phase C Playwright/Chromium sandbox-only failures) to
+confirm no regressions were introduced elsewhere before starting. After
+this pass: **304/313 passing** — identical 9 pre-existing failures, all 4
+new tests plus all 17 tests in `test_automation_anywhere.py` (13 existing
++ 4 new) passing. `pyflakes` clean on every file touched.
+
+**Revisit when:** the shared-Playwright-browser-context consolidation
+(above) is prioritized — it should get its own decisions.md entry since it
+touches both `playwright_validator.py` and the Phase C dom_locator/browser
+modules.

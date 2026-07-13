@@ -9,6 +9,26 @@ project: AURA
 
 ---
 
+## 2026-07-14 (later same day) — Roadmap Phase E: Automation Anywhere trigger/validate closure
+
+**What happened:**
+- Closed out Phase E per D-019's earlier note requesting a full pass (own decisions.md entry, CLI/doc coverage, a registration test). Full detail in `decisions.md` D-021 — this entry is a summary.
+- **Verified, not re-built:** `agents/capability/automation_anywhere_adapter.py` and `agents/capability/playwright_validator.py`, plus `tests/test_automation_anywhere.py`'s existing 13 tests (registry wiring, REST trigger+poll, CLI trigger, web-validator assertions, full trigger→validate integration test), were already correct and complete against TRD §11 — no functional bug found in either adapter on inspection.
+- **Real gap found and fixed:** Phase D's (D-020) egress-controlled `_URL_PARAM_KEYS` list didn't include `control_room_url` — the actual param name the AA REST trigger uses for its Control Room endpoint — so an AA trigger's target host was invisible to both the audit trail and the allowlist. Added it.
+- Confirmed CLI-mode AA triggers (local subprocess, not a network call) correctly have no extractable host and rely on the kill switch alone — added a test making this explicit rather than leaving it as an untested side effect.
+- Updated `docs/WORKFLOW.md`'s capability-check step-type example list, which only named 8 of the now 15 registered capability types, to mention Automation Anywhere trigger + Playwright web-validation explicitly.
+- Added 4 new tests to `tests/test_automation_anywhere.py` (now 17 total in that file).
+- **Verification:** ran the full suite before starting (300/309 passing, the 9 pre-existing Phase-C sandbox-only Chromium failures) to confirm a clean baseline. After this pass: 304/313 passing — identical 9 pre-existing failures, 4 new tests all passing, zero regressions. `pyflakes` clean on every file touched.
+- **All five phases (A/B/C/D/E) of the original remediation roadmap are now complete.**
+
+**What changed:**
+- Automation Anywhere trigger/validate is now fully covered by Phase D's egress controls (kill switch + allowlist), matching every other network-facing capability adapter, and is documented for spec authors in `docs/WORKFLOW.md`.
+
+**What should happen next:**
+- Optional follow-ups, not required by the original roadmap: consolidate `playwright_validator.py` onto the same shared Playwright browser-context module as Phase C's `dom_locator.py`/`browser.py` (TRD §11.5's own reconciliation note); resolve the Azure/GCP host-allowlisting gap noted in D-020/D-021 for those two SDK-based adapters.
+
+---
+
 ## 2026-07-14 — Roadmap Phase D: capability-adapter egress controls
 
 **What happened:**

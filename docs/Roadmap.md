@@ -212,18 +212,30 @@ their technical design, which stays in TRD.md §10/§11.
   `azure_adapter`/`gcp_adapter` authenticate via SDK default-credential
   chains rather than an explicit host param, so their calls can't be
   host-allowlisted yet (kill switch still covers them).
-- **Phase E — Automation Anywhere trigger/validate.** Not started. Same
-  work as §7 Phase 21 above. Deliberately sequenced last — lowest
-  urgency, and 21b depends on Phase C's Playwright session/locator code.
-  Inherits Phase D's kill switch/allowlist automatically once picked up,
-  since it routes through the same `route_capability` chokepoint.
+- **Phase E — Automation Anywhere trigger/validate.** ✅ **DONE,
+  2026-07-14** — see `decisions.md` D-021. Found, on inspection, that both
+  adapters (`automation_anywhere_adapter.py`, `playwright_validator.py`)
+  and their registration were already correct and complete (13 pre-existing
+  tests) from the earlier Phase C conflict-fix; this pass closed the
+  remaining gaps: added the missing `control_room_url` param key to Phase
+  D's egress-controlled `_URL_PARAM_KEYS` (it wasn't covered before),
+  confirmed CLI-mode triggers correctly have no extractable host and rely
+  on the kill switch alone, updated `docs/WORKFLOW.md`'s capability-type
+  example list to mention Automation Anywhere/web-validation explicitly,
+  and added 4 new tests. **All five phases of the original remediation
+  roadmap are now complete.**
 
-**Current status (2026-07-14): A, B, C, and D done; E not started.** Each
-phase gets its own `decisions.md` entry before code changes, and the
-existing test suite is kept green throughout rather than batching
-everything into one untested drop — Phase D added 16 new tests on top of
-the existing suite: **300/309 passing** (the 9 failures are the
-pre-existing Phase C Playwright/Chromium tests, which fail in a sandboxed
-environment only when its own network rules block the one-time Chromium
-binary download — not a Phase D regression; confirmed by running the
-identical 9-failure baseline before touching any Phase D code).
+**Current status (2026-07-14): A, B, C, D, and E all done.** Each phase
+got its own `decisions.md` entry before code changes, and the existing
+test suite was kept green throughout rather than batching everything into
+one untested drop — Phase E added 4 new tests on top of the existing
+suite: **304/313 passing** (the 9 failures are the pre-existing Phase C
+Playwright/Chromium tests, which fail in a sandboxed environment only
+when its own network rules block the one-time Chromium binary download —
+not a regression from any phase in this roadmap).
+
+**Remaining follow-ups noted but not required by the original roadmap:**
+consolidating `playwright_validator.py` onto the same shared browser-context
+module as Phase C's `dom_locator.py`/`browser.py` (a refactor-for-consistency
+item, TRD §11.5), and resolving the Azure/GCP host-allowlisting gap noted
+in D-020/D-021 for those two SDK-based adapters specifically.

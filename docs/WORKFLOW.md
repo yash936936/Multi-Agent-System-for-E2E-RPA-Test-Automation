@@ -72,7 +72,7 @@ For each step in the test spec:
 5. On assertion pass → proceed to next step.
 6. On assertion fail → trigger Step 5.
 
-> **Step type branch (Roadmap Phase 13, delivered):** a step whose `action` is `capability_check` instead of a Vision action type skips 1–4 above entirely and routes through `orchestrator/capability_router.py` to the matching `CapabilityAdapter` (API/DB/Email/File/Excel/PDF/Cloud/Workflow — see TRD §8). On failure, it retries via `agents/planner/cross_modal_diagnoser.py` up to 2 heal attempts before falling into the same Step 5 escalation path described below, rather than the Vision-specific retry.
+> **Step type branch (Roadmap Phase 13, delivered):** a step whose `action` is `capability_check` instead of a Vision action type skips 1–4 above entirely and routes through `orchestrator/capability_router.py` to the matching `CapabilityAdapter` (API/DB/Email/File/Excel/PDF/Cloud/Azure/GCP/SharePoint/ChatOps/LinkCheck/Workflow, plus Automation Anywhere trigger + Playwright web-validation for the §11 bot-trigger/validate pattern — see TRD §8/§11). On failure, it retries via `agents/planner/cross_modal_diagnoser.py` up to 2 heal attempts before falling into the same Step 5 escalation path described below, rather than the Vision-specific retry.
 
 ### Step 5 — Self-Healing Sub-Loop
 1. Orchestrator issues a tool call to `Planner.diagnose` with: failed step, screenshots (before/after), execution logs, and any network trace data.

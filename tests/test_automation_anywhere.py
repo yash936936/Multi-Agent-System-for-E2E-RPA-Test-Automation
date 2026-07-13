@@ -307,3 +307,83 @@ def test_full_trigger_and_validate_pattern_via_registry():
     assert validate_result.passed is True
     run_passed = trigger_result.passed and validate_result.passed
     assert run_passed is True
+
+
+# --------------------------------------------------------------------------
+# Phase E closure (decisions.md D-021): Phase D egress controls must cover
+# the Automation Anywhere REST trigger's control_room_url, not just the
+# generic "url" param key used by other adapters.
+# --------------------------------------------------------------------------
+
+def test_control_room_url_is_covered_by_egress_host_extraction():
+    from orchestrator.capability_router import _extract_egress_host
+
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.AUTOMATION_ANYWHERE,
+        target="bot-12345",
+        params={
+            "mode": "rest",
+            "control_room_url": "https://tenant.my.automationanywhere.digital",
+            "bot_id": "12345",
+        },
+    )
+    assert _extract_egress_host(payload) == "tenant.my.automationanywhere.digital"
+
+
+def test_control_room_url_respects_allowlist_via_router():
+    from config.settings import settings
+    from orchestrator.capability_router import route_capability
+
+    orig = settings.allowed_capability_hosts
+    try:
+        settings.allowed_capability_hosts = ["automationanywhere.digital"]
+        result = route_capability(
+            CapabilityCheckInput(
+                capability=CapabilityType.AUTOMATION_ANYWHERE,
+                target="bot-12345",
+                params={
+                    "mode": "rest",
+                    "control_room_url": "https://evil.other-domain.example",
+                    "bot_id": "12345",
+                },
+            )
+        )
+        assert result.passed is False
+        assert result.evidence.get("rejected") is True
+    finally:
+        settings.allowed_capability_hosts = orig
+
+
+def test_web_validation_url_is_covered_by_egress_host_extraction():
+    from orchestrator.capability_router import _extract_egress_host
+
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.WEB_VALIDATION,
+        target="",
+        params={"url": "https://portal.example.com/order/999"},
+    )
+    assert _extract_egress_host(payload) == "portal.example.com"
+
+
+def test_cli_mode_has_no_host_and_is_not_blocked_by_allowlist():
+    """CLI mode is a local subprocess invocation, not a network call -- it
+    should have no extractable host (fails open against any allowlist),
+    but remains fully covered by the Phase D kill switch."""
+    from config.settings import settings
+    from orchestrator.capability_router import _extract_egress_host, route_capability
+
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.AUTOMATION_ANYWHERE,
+        target="bot-local",
+        params={"mode": "cli", "command": ["true"]},
+    )
+    assert _extract_egress_host(payload) is None
+
+    orig_enabled = settings.capability_adapters_enabled
+    try:
+        settings.capability_adapters_enabled = False
+        result = route_capability(payload)
+        assert result.passed is False
+        assert result.evidence.get("rejected") is True
+    finally:
+        settings.capability_adapters_enabled = orig_enabled
