@@ -9,6 +9,23 @@ project: AURA
 
 ---
 
+## 2026-07-14 (later same day) — Follow-up fix: two more unguarded screenshot-capture sites in explore/ui-audit
+
+**What happened:**
+- After D-022 fixed `run_engine.py`'s 5 unguarded `screenshot_provider(...)` calls and the `mouseinfo`/`SystemExit` root cause behind `aura explore`'s silent failure, re-verified `aura explore` live with genuinely no display connected at all (not just the earlier no-tkinter-under-Xvfb scenario) — it still crashed with a raw, uncaught `NoDisplayError` traceback.
+- Root cause: `orchestrator/autoscan.py::run_autoscan` and `orchestrator/ui_audit_runner.py::_run_click_audit` (the scroll-scan and click-audit engines behind `--scroll-test`/`--ui-audit`/`aura explore`) each call `screenshot_provider(...)` directly with no guard — the same class of bug D-022 fixed, in two files that pass didn't touch. Full detail in `decisions.md` D-024 — this entry is a summary.
+- **Fixed:** both files now catch `NoDisplayError` at every screenshot-capture call site and stop cleanly (keeping whatever was already collected) instead of crashing. Added a `display_unavailable` field to `AutoScanReport` so `execute_cmd.py`/`explore_cmd.py` can print an accurate "no display available" message instead of the misleading "hit the scan limit" they'd have shown before (both conditions previously looked identical: `reached_bottom=False`).
+- Added 3 new regression tests (2 in `tests/test_autoscan.py`, 1 in `tests/test_ui_audit_runner.py`); updated a pre-existing fake report object in `tests/test_explore_cmd.py` that needed the new field to keep passing.
+- **Verification:** confirmed the true before/after via `git stash` rather than assuming — before this pass: 318/327 passing; after: 321/330 passing. Same 9 pre-existing Phase C Playwright/Chromium sandbox-only failures throughout, zero regressions. Live-reproduced the crash and confirmed the fix by re-running `aura explore` with no display: now exits 0 with a valid JSON report instead of a traceback.
+
+**What changed:**
+- `aura explore`, `aura execute --scroll-test`, and `aura execute --ui-audit` no longer crash in a genuinely headless/no-display environment (as opposed to the narrower no-tkinter-under-Xvfb case D-022 fixed) — they now report "no display available" cleanly and exit 0.
+
+**What should happen next:**
+- Optional follow-up, not required by this fix: unify the three separate, identically-named `NoDisplayError` classes across `runtime/hooks/capture.py`/`interact.py`/`browser.py` into one shared exception type (noted in D-024 as a design smell this pass had to work around, not fixed here since it's a broader refactor).
+
+---
+
 ## 2026-07-14 (later same day) — Roadmap Phase E: Automation Anywhere trigger/validate closure
 
 **What happened:**

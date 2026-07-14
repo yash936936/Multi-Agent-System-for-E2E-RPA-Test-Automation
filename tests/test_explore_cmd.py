@@ -28,7 +28,7 @@ def _stub_environment(monkeypatch, tmp_path):
     monkeypatch.setattr("runtime.hooks.capture.capture_screenshot", lambda rid, idx: str(tmp_path / "shot.png"))
     monkeypatch.setattr(
         "orchestrator.autoscan.run_autoscan",
-        lambda provider, run_id: type("R", (), {"all_issues": [], "reached_bottom": True})(),
+        lambda provider, run_id: type("R", (), {"all_issues": [], "reached_bottom": True, "display_unavailable": False})(),
     )
 
 

@@ -770,3 +770,76 @@ cross-check pattern to any *other* multi-leg validation scenario outside
 Automation Anywhere trigger/validate — TRD §11 only describes this one
 pattern, so the field and enforcement logic are scoped to it rather than
 generalized speculatively.
+
+## D-024 — Follow-up: two more unguarded screenshot-capture call sites found in `aura explore`/`--ui-audit`/`--scroll-test`, fixed
+
+**Context:** D-022 fixed `orchestrator/run_engine.py`'s 5 unguarded
+`screenshot_provider(...)` call sites and the `mouseinfo`/`SystemExit`
+root cause behind `aura explore`'s earlier silent failure. Re-verifying
+`aura explore` live after that fix (no CLI flags changed, same repro
+steps as before) showed it now completes cleanly under a real display —
+but running it **with no display connected at all** still crashed with a
+raw, uncaught `NoDisplayError` traceback. Root cause, found by reading
+both modules directly rather than assumed: **`orchestrator/autoscan.py`**
+(the scroll-scan engine behind `--scroll-test` and `aura explore`'s
+page-health pass) and **`orchestrator/ui_audit_runner.py`** (the
+click-audit engine behind `--ui-audit` and `aura explore`'s
+element-clicking pass) each call `screenshot_provider(...)` directly, with
+no guard, at 3 total call sites across the two files — the exact same
+class of bug D-022 fixed in `run_engine.py`, in two files D-022's pass
+didn't touch.
+
+**What changed:**
+1. `orchestrator/autoscan.py::run_autoscan`: the screenshot capture inside
+   the scroll loop is now wrapped in `try/except
+   runtime.hooks.capture.NoDisplayError`, breaking the loop cleanly
+   (keeping whatever steps were already collected) instead of crashing.
+   Added a new `display_unavailable: bool` field to `AutoScanReport` so
+   callers can report *why* the scan stopped short — "no display" and
+   "hit the scan limit without reaching bottom" are different situations
+   that previously looked identical (`reached_bottom=False` either way).
+2. `orchestrator/ui_audit_runner.py::_run_click_audit` (the shared engine
+   behind both `run_ui_audit` and `run_exploration`): the baseline
+   screenshot capture is now guarded, returning a clean, valid, empty
+   `UIAuditReport` (with an explanatory entry in `page_issues`) instead of
+   crashing. The after-click capture inside the per-element loop is also
+   guarded, in case a display disconnects mid-audit rather than being
+   absent from the start — recorded as `clicked=True, state_changed=None`
+   for that element, then the audit stops rather than crashing on the
+   next iteration too.
+3. `aura/cli/execute_cmd.py` and `aura/cli/explore_cmd.py`: both
+   `--scroll-test`/scroll-scan coverage messages now check
+   `autoscan_report.display_unavailable` first and print an accurate
+   "no display available" message instead of the misleading "hit the scan
+   limit" they'd have shown otherwise.
+4. New tests: 2 in `tests/test_autoscan.py` (no-display on the first
+   screenshot; display dropping mid-scan after some steps already
+   collected) and 1 in `tests/test_ui_audit_runner.py` (no-display on the
+   baseline capture). A pre-existing fake report object in
+   `tests/test_explore_cmd.py` (`type("R", (), {...})`) needed the new
+   `display_unavailable` attribute added to keep passing — not a new bug,
+   just a test double that needed updating alongside the dataclass change.
+
+**Verification:** confirmed the true before/after via `git stash` (not
+just re-running after the fact): **before this pass, 318/327 passing**
+(7 failed + 2 errors — the same pre-existing Phase C Playwright/Chromium
+sandbox-only failures noted in every prior entry). **After: 321/330
+passing** — identical 9 pre-existing failures, 3 new tests all passing,
+zero regressions. Live-reproduced the original crash and confirmed the
+fix: `aura explore <url>` with no display connected at all now prints
+"No display available -- page scan skipped..." and "...UI
+audit/exploration skipped..." and exits 0 with a valid JSON report,
+instead of an uncaught traceback and a non-zero exit. `pyflakes` clean on
+every file touched.
+
+**Not done in this pass:** the three separate, identically-named
+`NoDisplayError` classes across `runtime/hooks/capture.py`,
+`runtime/hooks/interact.py`, and `runtime/hooks/browser.py` remain
+distinct classes rather than one shared exception type — a pre-existing
+design smell, noted here because this pass had to explicitly import and
+catch the `capture.py` flavor by name (aliased as `CaptureNoDisplayError`
+where a module already imports `interact.py`'s flavor under the plain
+name) to avoid ambiguity; unifying them into one shared class is a
+reasonable follow-up but is a broader refactor than this bug-fix pass, and
+touches enough call sites across the codebase that it deserves its own
+decision entry rather than being bundled in here.

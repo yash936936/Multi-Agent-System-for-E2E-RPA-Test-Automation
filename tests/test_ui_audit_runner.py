@@ -332,3 +332,22 @@ def test_run_exploration_defaults_link_check_scope_to_all(tmp_path, monkeypatch)
     run_exploration(provider, run_id="explore-run", page_url="https://example.com")
 
     assert captured["scope"] == "all"
+
+
+def test_run_ui_audit_handles_no_display_on_baseline_capture():
+    """Regression test: the baseline screenshot_provider call inside
+    _run_click_audit used to be unguarded, so a NoDisplayError crashed
+    both `aura execute --ui-audit` and `aura explore` with a raw
+    traceback instead of returning a clean, empty report."""
+    from runtime.hooks.capture import NoDisplayError
+
+    def no_display_provider(run_id: str, index: int) -> str:
+        raise NoDisplayError("no display connected")
+
+    report = run_ui_audit(no_display_provider, run_id="r1")
+
+    assert report.has_nav is False
+    assert report.has_hero is False
+    assert report.has_footer is False
+    assert report.checked == []
+    assert any("No display available" in issue for issue in report.page_issues)

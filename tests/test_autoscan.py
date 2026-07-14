@@ -144,3 +144,51 @@ def test_detect_page_issues_never_raises_on_ocr_failure(monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "pytesseract", FailingPytesseract)
 
     assert detect_page_issues("fake.png") == []
+
+
+def test_run_autoscan_handles_no_display_on_first_screenshot():
+    """Regression test: the screenshot_provider call inside run_autoscan's
+    loop used to be unguarded, so a NoDisplayError on the very first
+    iteration (the common case in a headless/no-display environment)
+    crashed both `aura execute --scroll-test` and `aura explore` with a
+    raw traceback instead of stopping cleanly."""
+    from runtime.hooks.capture import NoDisplayError
+
+    def no_display_provider(run_id: str, index: int) -> str:
+        raise NoDisplayError("no display connected")
+
+    report = run_autoscan(no_display_provider, run_id="r1")
+
+    assert report.display_unavailable is True
+    assert report.reached_bottom is False
+    assert report.steps == []
+    assert report.all_issues == []
+
+
+def test_run_autoscan_handles_no_display_mid_scan(tmp_path, monkeypatch):
+    """A display that disconnects partway through the scan should also
+    stop cleanly, keeping whatever steps were already collected."""
+    from runtime.hooks.capture import NoDisplayError
+
+    frames = [b"frame-0", b"frame-1"]
+    calls = {"i": 0}
+
+    def flaky_provider(run_id: str, index: int) -> str:
+        i = calls["i"]
+        calls["i"] += 1
+        if i >= len(frames):
+            raise NoDisplayError("display dropped")
+        path = tmp_path / f"shot_{i}.png"
+        path.write_bytes(frames[i])
+        return str(path)
+
+    import runtime.hooks.interact as real_interact
+
+    monkeypatch.setattr(real_interact, "scroll", lambda amount: None)
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+
+    report = run_autoscan(flaky_provider, run_id="r2")
+
+    assert report.display_unavailable is True
+    assert len(report.steps) == 2
+    assert report.reached_bottom is False

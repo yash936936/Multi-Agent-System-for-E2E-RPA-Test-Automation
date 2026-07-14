@@ -328,7 +328,9 @@ def _run_requirement_text(
 
         console.print("Scanning full page for broken/error content...")
         autoscan_report = run_autoscan(_make_screenshot_provider(live=True), run_id=result.run_id)
-        if autoscan_report.all_issues:
+        if autoscan_report.display_unavailable:
+            console.print("[yellow]No display available -- page scan skipped (headless/no-display environment).[/yellow]")
+        elif autoscan_report.all_issues:
             console.print(f"[yellow]Page scan flagged: {', '.join(autoscan_report.all_issues)}[/yellow]")
         else:
             coverage = "reached the bottom" if autoscan_report.reached_bottom else "hit the scan limit"

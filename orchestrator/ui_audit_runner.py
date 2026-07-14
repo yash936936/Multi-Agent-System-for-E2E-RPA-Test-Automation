@@ -85,8 +85,26 @@ def _run_click_audit(
     from agents.vision.locator import locate_text
     from agents.vision.page_health import detect_page_issues
     from agents.vision.ui_audit import audit_screenshot
+    from runtime.hooks.capture import NoDisplayError as CaptureNoDisplayError
 
-    baseline_path = screenshot_provider(run_id, 8000)
+    try:
+        baseline_path = screenshot_provider(run_id, 8000)
+    except CaptureNoDisplayError:
+        # No display/screenshot capability at all -- every other real
+        # capture site in this pipeline already turns this into a clean
+        # escalation/stop rather than an uncaught traceback; this was the
+        # one call site in the click-audit engine (shared by both
+        # `aura execute --ui-audit` and `aura explore`) that didn't.
+        # Return an empty-but-valid report instead of crashing, so callers
+        # can render "no display available" instead of a stack trace.
+        return UIAuditReport(
+            has_nav=False,
+            has_hero=False,
+            has_footer=False,
+            page_issues=["No display available -- UI audit/exploration skipped (headless/no-display environment)."],
+            requirement_prompt=requirement_prompt,
+        )
+
     landmarks = audit_screenshot(baseline_path)
     baseline_hash = file_hash(baseline_path)
 
@@ -118,7 +136,16 @@ def _run_click_audit(
             report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=False, state_changed=None))
             continue
 
-        after_path = screenshot_provider(run_id, 8100 + i)
+        try:
+            after_path = screenshot_provider(run_id, 8100 + i)
+        except CaptureNoDisplayError:
+            # Display was available for the baseline capture but dropped
+            # partway through the audit (or the click itself somehow
+            # succeeded in a race against a display disconnect) -- record
+            # this element as clicked-but-unverifiable and stop the audit
+            # rather than crashing the whole run on the next iteration too.
+            report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=True, state_changed=None))
+            break
         after_hash = file_hash(after_path)
         state_changed = after_hash != baseline_hash
         report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=True, state_changed=state_changed))
