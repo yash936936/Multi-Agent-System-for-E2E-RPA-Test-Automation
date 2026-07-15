@@ -9,6 +9,18 @@ project: AURA
 
 ---
 
+## 2026-07-16 — Phase N started (Control Room auth + multi-bot/multi-runner trigger); Phases N–Q added to Roadmap.md
+
+**What happened:**
+- Added the full third remediation roadmap (Phases N–Q) to `docs/Roadmap.md` §10, from the plan the person supplied: N (Automation Anywhere adapter completeness), O (data-seeding adapter, new write-path capability), P (Control Room audit-log retrieval + report sync), Q (Playwright native trace files). Only the plan text for O/P/Q was recorded — no code for those three yet.
+- Started and substantially completed Phase N in the same pass: `agents/capability/automation_anywhere_adapter.py`'s REST path now does real Control Room authentication (N1: `/v1/authentication` login, cached token with expiry, transparent re-auth on a 401, `auth_token` override preserved for back-compat) and multi-bot/multi-runner fan-out triggering (N2: `bot_id`/`run_as_user_id` accept a list, per-target deployment-id status map replacing the old `records[0]`-only poll, `all_must_complete`/`any_must_complete` rollup, full per-target evidence breakdown). Full detail in `decisions.md` D-035.
+- New tests: `tests/test_phase_n_automation_anywhere.py` (9 tests). Existing `tests/test_automation_anywhere.py` REST-mode tests re-checked by hand against the new code (still pass: no-credentials/no-override still sends no auth header, single-`bot_id` still gets the original scalar-shaped evidence keys).
+- **Honest gap, not silently worked around:** this sandbox session has no `pytest`/`httpx`/`pydantic` installed and no network to install them, so the new test suite could not actually be run through `pytest`. The same scenarios were re-verified by hand with minimal stdlib-only stand-ins for `pydantic.BaseModel`/`httpx.Client` (see D-035 for the exact method) — confirms the logic runs and produces the intended results, but is **not** a substitute for a real full-suite `pytest` run, so regression-freeness against the rest of the (previously 449-passing) suite is unverified this session.
+
+**What should happen next:**
+- Run `pytest tests/test_automation_anywhere.py tests/test_phase_n_automation_anywhere.py` (and then the full suite) in an environment with the actual dependencies installed, before starting Phase O.
+- Phase O (data-seeding adapter) is next per the roadmap's sequencing — same elevated care level as Phase J/K, since it's AURA's first intentional database write path.
+
 ## 2026-07-16 — Phase L: new capability adapters (accessibility, security headers, performance budget)
 
 **What happened:**

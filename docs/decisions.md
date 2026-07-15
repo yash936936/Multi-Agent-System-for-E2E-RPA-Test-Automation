@@ -1669,3 +1669,90 @@ unrelated to this phase.
 
 **All seven phases of the second remediation roadmap (G/H/I/J/K/L/M) are
 now complete.**
+
+## D-035 — Phase N: Automation Anywhere adapter completeness (Control Room auth + multi-bot/multi-runner trigger)
+
+**Roadmap Phase N** (`Roadmap.md` §10): first phase of the third
+remediation roadmap (Phases N–Q). Both N1 and N2 landed in one pass inside
+`agents/capability/automation_anywhere_adapter.py`'s REST-mode internals,
+per the roadmap's own framing ("one careful pass through that file instead
+of two").
+
+**N1 — Control Room authentication.** Added `AutomationAnywhereAdapter._get_token()`:
+a real login step against `{control_room_url}/v1/authentication`, accepting
+either `username`/`password` or `api_key` in `params`. The returned token
+is cached on the adapter instance, keyed by `control_room_url`, with a
+30-second-early expiry margin computed from the response's `expiresIn`.
+`_run_rest()` fetches a token before the initial deploy call and, on a 401
+from either the deploy or the poll request, calls `_get_token(..., force=True)`
+to bypass the cache and re-authenticate, retrying the failed call once
+rather than failing the whole run. `auth_token` in `params` remains a valid
+override that skips login entirely (checked first, before any cache
+lookup) — purely additive, no existing caller that already supplies its
+own token sees any behavior change. Callers that supply neither an
+override token nor any credentials get the exact pre-Phase-N behavior:
+deploy/poll proceed with no `X-Authorization` header.
+
+**N2 — Multi-bot / multi-runner trigger.** `bot_id` and `run_as_user_id`
+now accept a scalar (unchanged shape) or a list (`_as_list()` normalizes
+both). The deploy request sends `fileId` as the full list when more than
+one bot is named (else the original scalar, for wire-format back-compat
+with whatever Control Room expects for a single-target deploy) and
+`runAsUserIds` as the full list either way. `_extract_deployment_ids()`
+reads either a single `deploymentId`/`automationId` or Control Room's
+documented multi-target `deploymentIds` array out of the deploy response.
+`_poll_rest_status_multi()` replaces the old `_poll_rest_status()`: it
+polls with an `"in"` filter over every still-pending deployment id each
+round (not one `"eq"` filter per target), updates a per-target
+`{status, record}` map as terminal statuses arrive, stops polling a target
+the moment it goes terminal, and marks any target still pending when the
+shared deadline elapses as `TIMED_OUT` independently of its siblings —
+one slow/stuck target can no longer mask a sibling's real, already-known
+result. `expected.rollup` (`all_must_complete`, default, or
+`any_must_complete`) decides the single rolled-up `passed` verdict from
+the per-target outcomes; an unrecognized rollup value fails cleanly with a
+named error rather than silently defaulting. Evidence always includes the
+full `targets` breakdown; for the common single-target case the previous
+top-level `deployment_id`/`terminal_status`/`activity_record` keys are
+also populated unchanged, so existing callers reading those keys directly
+see no shape change — the new `deployment_ids`/multi-target keys only
+appear when there's actually more than one target.
+
+**Egress/router impact: none.** `control_room_url` was already in
+`orchestrator/capability_router.py`'s `_URL_PARAM_KEYS` (added for Phase E
+per D-021) and the new `/v1/authentication` call reuses the same
+`control_room_url` host, so no router or egress-allowlist change was
+needed — confirmed by re-reading `_URL_PARAM_KEYS`, not assumed.
+
+**Verification — honest gap, disclosed rather than silently worked
+around:** this sandbox session has no network egress and no `pytest`,
+`httpx`, or `pydantic` installed, and no path to install them, which is a
+different and more restrictive gap than the "Chromium binary download"
+sandbox limitation noted throughout the rest of this file. The full Phase
+N test suite was written (`tests/test_phase_n_automation_anywhere.py`, 9
+tests covering login + token attach, token-cache reuse, 401 re-auth,
+`auth_token` override back-compat, no-credentials back-compat, multi-bot
+fan-out with `all_must_complete`/`any_must_complete` rollup, an unknown-
+rollup failure path, single-`bot_id` back-compat evidence shape, and
+independent per-target timeout) but could not be executed through `pytest`
+in this environment. In its place, the same scenarios (N1 login/cache/
+re-auth, N2 multi-target rollup pass/fail, N2 independent per-target
+timeout) were re-verified by hand: minimal in-process stand-ins for
+`pydantic.BaseModel` and `httpx.Client` were used to actually import and
+exercise `AutomationAnywhereAdapter` end to end against `unittest.mock`
+(stdlib, present)-driven fake HTTP responses, asserting the same outcomes
+the pytest file asserts. This confirms the implementation runs and
+produces the intended results, but it is not the same as a real `pytest`
+run against the full existing suite (previously 449 passing as of D-034),
+so **regression-freeness against the rest of the suite is unverified in
+this session** — flagged plainly rather than claimed. Whoever picks this
+up next with a working `pytest`/`httpx`/`pydantic` environment should run
+`pytest tests/test_automation_anywhere.py tests/test_phase_n_automation_anywhere.py`
+first, before touching anything else in Phase N/O/P/Q.
+
+**Explicitly out of scope, by design (left for later phases or flagged,
+not silently done here):** Phase O's data-seeding write path, Phase P's
+Control Room audit-log retrieval, and Phase Q's Playwright trace files —
+none of that code was touched in this pass, only `Roadmap.md` §10 was
+updated to record all four phases' plans up front, per the roadmap
+document the person supplied.

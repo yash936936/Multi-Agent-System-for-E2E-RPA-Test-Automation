@@ -339,3 +339,91 @@ documented gap (no plan offered, no fabricated fix).
   available to test against).
 
 **Current status (2026-07-16): G, H, I, J, K, L, and M all done. The entire second remediation roadmap (Phases G–M) is complete — see `docs/decisions.md` D-034 for Phase M's `defect_tracker_adapter.py` (generic REST + field-mapping for Jira/TestRail/Zephyr/Xray-style tools, verified only against a mocked HTTP server, lowest confidence by design).**
+
+## 10. Third remediation roadmap (Phases N–Q)
+
+Continues the same sequencing discipline as Phases A–M above (`decisions.md`
+last used D-034 before this roadmap started): low-risk/read-only work last,
+the one genuinely new write-path capability isolated in its own phase
+(same elevated-care treatment Phase J/K got), and file-touch grouping
+preferred over feature grouping where two items live in the same module.
+
+- **Phase N — Automation Anywhere adapter completeness (auth +
+  multi-trigger).** 🚧 **In progress, started 2026-07-16.** Both items
+  live inside `automation_anywhere_adapter.py`'s request/poll internals —
+  one careful pass through that file instead of two, same reasoning as
+  Phase I grouping browser-engine choice with video recording.
+  - **N1. Control Room authentication.** Add a real login step (calls
+    Control Room's `/v1/authentication` endpoint with username/password
+    or an API key) to acquire a token instead of requiring the caller to
+    pre-supply one. The token is cached with its expiry on the adapter
+    instance and the adapter auto-re-authenticates on a 401 during
+    deploy/poll rather than failing the whole run. `auth_token` remains a
+    valid, optional override for anyone already supplying one directly —
+    additive, not a breaking change to the params contract.
+  - **N2. Multi-bot / multi-runner trigger.** `bot_id` and
+    `run_as_user_id` accept either a scalar (unchanged) or a list, so one
+    request can genuinely fan out to multiple bots and/or multiple Bot
+    Runner VMs. The poll loop tracks every resulting deployment id
+    independently — no longer reads `records[0]` and silently drops the
+    rest — via a per-target status map. `expected.rollup` selects
+    `all_must_complete` (strict, default) or `any_must_complete` (fan-out
+    redundancy use case), since "did the whole trigger succeed" means
+    different things depending on why you fanned out in the first place.
+    Evidence carries a per-target breakdown, not just one aggregate
+    status, so a failing target among several successes stays visible
+    rather than getting swallowed.
+- **Phase O — Data seeding adapter (new capability, its own phase).** Not
+  started. Its own phase because it's the one item here that introduces
+  AURA's first-ever intentional write path to a database — the same
+  elevated care level Phase J (shared state) and Phase K (auth) got.
+  - New `agents/capability/db_seed_adapter.py`, a distinct
+    `CapabilityType.DB_SEED` — not a loosening of `db_adapter.py`'s
+    existing read-only hardening. That adapter stays exactly as strict as
+    it is today.
+  - Structured input only, not raw SQL text: params describe a table
+    plus a values dict (or a list of row-dicts), and the adapter builds a
+    parameterized INSERT itself — this closes off the injection surface a
+    free-text query string would reopen, rather than just re-adding the
+    old denylist-based guard.
+  - Explicit opt-in required at the settings level (off by default, e.g.
+    `settings.allow_db_seeding`), independent of the general
+    `capability_adapters_enabled` kill switch — a second, deliberate gate
+    specifically for the one adapter that writes.
+  - Every seed operation gets its own audit log entry (reusing
+    `orchestrator/audit_logger.py`), including the exact rows written —
+    this is the adapter most worth having a paper trail for.
+  - Only INSERT — explicitly no UPDATE/DELETE/DDL, even structured.
+    Precondition setup means creating rows that didn't exist, not
+    mutating or erasing existing ones.
+- **Phase P — Control Room audit log retrieval + report sync.** Not
+  started. Lower risk than N/O (read-only against Control Room), grouped
+  as one phase since both halves are about the same "data synchronization"
+  arrow in the architecture diagram (docs/TRD.md §11).
+  - **P1.** Fetch Control Room's own audit-log entries for a given
+    deployment ID after the poll reaches a terminal state — a new
+    read-only call, no new write capability.
+  - **P2.** Merge that into AURA's own `RunReport` (a new
+    `report_paths`/evidence key, e.g. `control_room_audit`) so one AURA
+    report actually contains both trails side by side, instead of Control
+    Room's audit history existing only inside AA's own system with
+    nothing on AURA's side to show it.
+- **Phase Q — Playwright native trace files.** Not started. Touches
+  `runtime/hooks/browser.py` again (same file Phase I's video recording
+  lives in), but scoped separately since it's a distinct feature, not a
+  bug fix to I2.
+  - New `settings.record_trace` flag (off by default, same posture as
+    `record_video`).
+  - Wire `context.tracing.start(screenshots=True, snapshots=True)` at
+    session start and `context.tracing.stop(path=...)` at close(),
+    parallel to the existing video-recording lifecycle.
+  - Attach the resulting `.zip` trace path under `report_paths["trace"]`,
+    completing the diagram's "(Screenshots, Videos, Trace files)" label
+    for real, matching what's already true for the other two.
+
+**Current status (2026-07-16): Phase N is in progress (N1 + N2 implemented
+in `automation_anywhere_adapter.py`, see `docs/decisions.md` D-035);
+Phases O, P, and Q are not started, sequenced in that order for the same
+reason G–M were: independent low-risk work first, the one new write-path
+adapter isolated in its own phase, mechanically related file-touches
+batched together.**

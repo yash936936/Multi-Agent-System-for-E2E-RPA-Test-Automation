@@ -47,26 +47,59 @@ on "no blind trust of bot-reported success"). This adapter's `passed` field
 only reflects whether the *trigger and its own execution* reached the
 expected terminal status — it does not and cannot see the downstream
 systems the bot touched.
+
+Roadmap Phase N (docs/Roadmap.md §10, decisions.md D-035) added two things
+to the REST path, both inside this same file per that phase's own framing
+("one careful pass through automation_anywhere_adapter.py's request/poll
+internals instead of two"):
+
+N1. Control Room authentication — a real login step
+    (`{control_room_url}/v1/authentication`) that exchanges a
+    username/password or API key for a bearer token, caches it with its
+    expiry, and transparently re-authenticates on a 401 during deploy or
+    poll instead of failing the whole run. `auth_token` remains a valid,
+    optional override for anyone already supplying one directly — additive,
+    not a breaking change to the params contract.
+N2. Multi-bot / multi-runner trigger — `bot_id` and `run_as_user_id` may
+    now be a list as well as a scalar, one deploy request fans out to
+    every bot/runner combination named, and the poll loop tracks every
+    resulting deployment id independently (a per-target status map, not
+    `records[0]`). `expected.rollup` selects `all_must_complete` (default,
+    strict) or `any_must_complete` (fan-out redundancy), and evidence
+    always carries the full per-target breakdown alongside the rolled-up
+    verdict, so a failing target among several successes stays visible.
 """
 from __future__ import annotations
 
 import shlex
 import subprocess
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
 from orchestrator.schemas import CapabilityCheckInput, CapabilityCheckResult, CapabilityType
+
+_TERMINAL_STATUSES = ("COMPLETED", "FAILED", "STOPPED", "TIMED_OUT")
 
 
 class AutomationAnywhereAdapter:
     """
     Phase 21a: Triggers an Automation Anywhere bot (REST Control Room API or
     local CLI/Bot Launcher) and polls until terminal status.
+
+    Phase N adds real Control Room authentication (N1) and multi-bot/
+    multi-runner fan-out triggering (N2) to the REST path — see the module
+    docstring above for the exact contract.
     """
 
     capability_type: CapabilityType = CapabilityType.AUTOMATION_ANYWHERE
+
+    def __init__(self) -> None:
+        # N1: token cache, keyed by control_room_url so one adapter instance
+        # can safely serve multiple tenants across calls. Each entry is
+        # {"token": str, "expires_at": float (monotonic)}.
+        self._token_cache: Dict[str, Dict[str, Any]] = {}
 
     def run(self, payload: CapabilityCheckInput) -> CapabilityCheckResult:
         params = payload.params or {}
@@ -84,37 +117,104 @@ class AutomationAnywhereAdapter:
             return self._fail(f"Automation Anywhere trigger error: {str(e)}")
 
     # ------------------------------------------------------------------
-    # REST mode — Control Room bot-deployment + activity-status polling
+    # N1 — Control Room authentication
+    # ------------------------------------------------------------------
+    def _get_token(self, client: httpx.Client, control_room_url: str, params: Dict[str, Any],
+                    force: bool = False) -> Optional[str]:
+        """
+        Returns a bearer token for control_room_url, preferring (in order):
+        1. An explicit `auth_token` override in params (back-compat, never
+           cached/refreshed by us -- the caller owns its lifecycle).
+        2. A cached, unexpired token from a prior real login on this adapter
+           instance.
+        3. A fresh login against Control Room's authentication endpoint,
+           using `username`/`password` or `api_key` from params.
+        `force=True` bypasses the cache (used to re-authenticate on a 401).
+        """
+        override = params.get("auth_token")
+        if override:
+            return override
+
+        cache_key = control_room_url
+        if not force:
+            cached = self._token_cache.get(cache_key)
+            if cached and cached["expires_at"] > time.monotonic():
+                return cached["token"]
+
+        username = params.get("username")
+        password = params.get("password")
+        api_key = params.get("api_key")
+        if not (api_key or (username and password)):
+            # No credentials supplied at all and no override token --
+            # proceed unauthenticated (existing pre-Phase-N behavior); the
+            # deploy/poll calls will simply be sent without a token and
+            # Control Room will reject them if it requires one.
+            return None
+
+        auth_url = f"{control_room_url.rstrip('/')}/v1/authentication"
+        body = {"apiKey": api_key} if api_key else {"username": username, "password": password}
+        auth_response = client.post(auth_url, json=body)
+        if auth_response.status_code != 200:
+            return None
+        auth_body = auth_response.json() if auth_response.content else {}
+        token = auth_body.get("token")
+        if not token:
+            return None
+
+        expires_in = auth_body.get("expiresIn", 3600)
+        try:
+            expires_in = float(expires_in)
+        except (TypeError, ValueError):
+            expires_in = 3600.0
+        # Refresh a little early rather than racing an exact expiry.
+        self._token_cache[cache_key] = {
+            "token": token,
+            "expires_at": time.monotonic() + max(expires_in - 30.0, 0.0),
+        }
+        return token
+
+    # ------------------------------------------------------------------
+    # REST mode -- Control Room bot-deployment + activity-status polling
     # ------------------------------------------------------------------
     def _run_rest(self, params: Dict[str, Any], expected: Dict[str, Any]) -> CapabilityCheckResult:
         control_room_url = params.get("control_room_url")
-        bot_id = params.get("bot_id")
-        run_as_user_id = params.get("run_as_user_id")
-        auth_token = params.get("auth_token")
+        bot_ids = self._as_list(params.get("bot_id"))
+        run_as_user_ids = self._as_list(params.get("run_as_user_id"))
 
         if not control_room_url:
             return self._fail("Missing 'control_room_url' for REST mode")
-        if not bot_id:
+        if not bot_ids:
             return self._fail("Missing 'bot_id' for REST mode")
 
         input_variables = params.get("input_variables", {})
         poll_interval_seconds = params.get("poll_interval_seconds", 5)
         timeout_seconds = params.get("timeout_seconds", 600)
+        rollup = (expected.get("rollup") or "all_must_complete").lower()
+        if rollup not in ("all_must_complete", "any_must_complete"):
+            return self._fail(f"Unknown rollup '{rollup}' (expected 'all_must_complete' or 'any_must_complete')")
 
-        headers = {"X-Authorization": auth_token} if auth_token else {}
         deploy_url = f"{control_room_url.rstrip('/')}/v4/automations/deploy"
-        status_url_template = f"{control_room_url.rstrip('/')}/v3/activity/list"
+        status_url = f"{control_room_url.rstrip('/')}/v3/activity/list"
 
         with httpx.Client(timeout=30.0) as client:
-            deploy_response = client.post(
-                deploy_url,
-                headers=headers,
-                json={
-                    "fileId": bot_id,
-                    "runAsUserIds": [run_as_user_id] if run_as_user_id else [],
+            token = self._get_token(client, control_room_url, params)
+            headers = {"X-Authorization": token} if token else {}
+
+            def _deploy_body():
+                return {
+                    "fileId": bot_ids if len(bot_ids) > 1 else bot_ids[0],
+                    "runAsUserIds": run_as_user_ids,
                     "botParameter": {"inputParameters": input_variables},
-                },
-            )
+                }
+
+            deploy_response = client.post(deploy_url, headers=headers, json=_deploy_body())
+            if deploy_response.status_code == 401:
+                # N1: transparent re-authentication on a 401, one retry,
+                # rather than failing the whole run.
+                token = self._get_token(client, control_room_url, params, force=True)
+                headers = {"X-Authorization": token} if token else {}
+                deploy_response = client.post(deploy_url, headers=headers, json=_deploy_body())
+
             if deploy_response.status_code not in (200, 201, 202):
                 return self._fail(
                     f"Bot deployment request failed with status {deploy_response.status_code}",
@@ -123,64 +223,137 @@ class AutomationAnywhereAdapter:
                 )
 
             deploy_body = deploy_response.json() if deploy_response.content else {}
-            deployment_id = deploy_body.get("deploymentId") or deploy_body.get("automationId")
-            if not deployment_id:
+            deployment_ids = self._extract_deployment_ids(deploy_body)
+            if not deployment_ids:
                 return self._fail(
                     "Deployment response did not contain a deploymentId/automationId",
                     evidence={"deploy_response": deploy_body},
                 )
 
-            terminal_status, activity_record = self._poll_rest_status(
-                client, status_url_template, headers, deployment_id,
-                poll_interval_seconds, timeout_seconds,
+            target_status = self._poll_rest_status_multi(
+                client, status_url, headers, control_room_url, params,
+                deployment_ids, poll_interval_seconds, timeout_seconds,
             )
 
         expected_status = expected.get("terminal_status", "COMPLETED")
-        passed = terminal_status == expected_status
+        per_target = {
+            dep_id: {
+                "terminal_status": info["status"],
+                "expected_status": expected_status,
+                "passed": info["status"] == expected_status,
+                "activity_record": info["record"],
+            }
+            for dep_id, info in target_status.items()
+        }
+        outcomes = [t["passed"] for t in per_target.values()]
+        passed = any(outcomes) if rollup == "any_must_complete" else all(outcomes)
+
+        evidence: Dict[str, Any] = {
+            "mode": "rest",
+            "rollup": rollup,
+            "expected_status": expected_status,
+            "targets": per_target,
+        }
+        # Back-compat single-target fields -- unchanged shape for the
+        # common (still-scalar) case so existing callers reading these keys
+        # directly don't break.
+        if len(deployment_ids) == 1:
+            only = per_target[deployment_ids[0]]
+            evidence["deployment_id"] = deployment_ids[0]
+            evidence["terminal_status"] = only["terminal_status"]
+            evidence["activity_record"] = only["activity_record"]
+        else:
+            evidence["deployment_ids"] = deployment_ids
 
         return CapabilityCheckResult(
             capability=self.capability_type,
             passed=passed,
             confidence=1.0,
-            evidence={
-                "mode": "rest",
-                "deployment_id": deployment_id,
-                "terminal_status": terminal_status,
-                "expected_status": expected_status,
-                "activity_record": activity_record,
-            },
+            evidence=evidence,
             escalate=not passed,
         )
 
-    def _poll_rest_status(
+    @staticmethod
+    def _as_list(value: Any) -> List[Any]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [v for v in value if v is not None]
+        return [value]
+
+    @staticmethod
+    def _extract_deployment_ids(deploy_body: Dict[str, Any]) -> List[str]:
+        """
+        N2: a fan-out deploy can come back either as a single id
+        (`deploymentId`/`automationId`) or a list under `deploymentIds`
+        (Control Room's documented shape for multi-target deploys).
+        """
+        if not isinstance(deploy_body, dict):
+            return []
+        multi = deploy_body.get("deploymentIds")
+        if isinstance(multi, list) and multi:
+            return [str(d) for d in multi if d]
+        single = deploy_body.get("deploymentId") or deploy_body.get("automationId")
+        return [str(single)] if single else []
+
+    def _poll_rest_status_multi(
         self,
         client: httpx.Client,
         status_url: str,
         headers: Dict[str, str],
-        deployment_id: str,
+        control_room_url: str,
+        params: Dict[str, Any],
+        deployment_ids: List[str],
         poll_interval_seconds: float,
         timeout_seconds: float,
-    ) -> tuple[str, Dict[str, Any]]:
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        N2: tracks every deployment id independently in a per-target status
+        map instead of reading only records[0] and dropping the rest. Stops
+        polling a target as soon as it reaches a terminal status; keeps
+        polling the remaining ones until all are terminal or the shared
+        deadline elapses (each still-pending target then reports TIMED_OUT).
+        """
         deadline = time.monotonic() + timeout_seconds
-        last_record: Dict[str, Any] = {}
+        state: Dict[str, Dict[str, Any]] = {
+            dep_id: {"status": None, "record": {}} for dep_id in deployment_ids
+        }
 
         while time.monotonic() < deadline:
+            pending = [d for d, s in state.items() if s["status"] is None]
+            if not pending:
+                break
+
             status_response = client.post(
                 status_url,
                 headers=headers,
-                json={"filter": {"operator": "eq", "field": "deploymentId", "value": deployment_id}},
+                json={"filter": {"operator": "in", "field": "deploymentId", "value": pending}},
             )
+            if status_response.status_code == 401:
+                token = self._get_token(client, control_room_url, params, force=True)
+                headers["X-Authorization"] = token or ""
+                continue
+
             if status_response.status_code == 200:
                 body = status_response.json()
                 records = body.get("list", []) if isinstance(body, dict) else []
-                if records:
-                    last_record = records[0]
-                    status = str(last_record.get("status", "")).upper()
-                    if status in ("COMPLETED", "FAILED", "STOPPED", "TIMED_OUT"):
-                        return status, last_record
-            time.sleep(poll_interval_seconds)
+                for record in records:
+                    dep_id = str(record.get("deploymentId", ""))
+                    if dep_id not in state:
+                        continue
+                    status = str(record.get("status", "")).upper()
+                    state[dep_id]["record"] = record
+                    if status in _TERMINAL_STATUSES:
+                        state[dep_id]["status"] = status
 
-        return "TIMED_OUT", last_record
+            if any(s["status"] is None for s in state.values()):
+                time.sleep(poll_interval_seconds)
+
+        for s in state.values():
+            if s["status"] is None:
+                s["status"] = "TIMED_OUT"
+
+        return state
 
     # ------------------------------------------------------------------
     # CLI mode — local AAE CLI / Bot Launcher, on-prem runners
