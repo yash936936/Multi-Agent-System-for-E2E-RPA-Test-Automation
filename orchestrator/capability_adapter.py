@@ -78,6 +78,9 @@ def default_registry() -> CapabilityAdapterRegistry:
     from agents.capability.link_checker import LinkCheckAdapter
     from agents.capability.automation_anywhere_adapter import AutomationAnywhereAdapter
     from agents.capability.playwright_validator import PlaywrightValidator
+    from agents.capability.accessibility_adapter import AccessibilityAdapter
+    from agents.capability.security_headers_adapter import SecurityHeadersAdapter
+    from agents.capability.performance_adapter import PerformanceAdapter
 
     registry = CapabilityAdapterRegistry()
     registry.register(FakeAdapter())
@@ -96,4 +99,7 @@ def default_registry() -> CapabilityAdapterRegistry:
     registry.register(ChatOpsAdapter())
     registry.register(AutomationAnywhereAdapter())
     registry.register(PlaywrightValidator())
+    registry.register(AccessibilityAdapter())
+    registry.register(SecurityHeadersAdapter())
+    registry.register(PerformanceAdapter())
     return registry

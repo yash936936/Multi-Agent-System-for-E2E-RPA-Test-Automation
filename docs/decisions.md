@@ -1472,3 +1472,124 @@ this phase's scope was the API/service-layer surface specifically, per
 the original gap review's own framing ("JWT auth... in the API layer").
 Live token revocation (flagged above) remains a pre-existing, unaddressed
 limitation, not newly introduced or newly deferred by this phase.
+
+## D-033 — Phase L: new capability adapters (accessibility, security headers, performance budget)
+
+**Decided:** 2026-07-16
+**Context:** Phase L of the gap-review roadmap (Phases G–M), batched
+because the registration pattern (new `CapabilityType` + `default_registry()`
+entry) is mechanically identical across all three, not because the
+underlying logic overlaps.
+
+**L1 — Accessibility (`agents/capability/accessibility_adapter.py`,
+`CapabilityType.ACCESSIBILITY`):**
+- Runs a real WCAG scan via **axe-core**, vendored locally at
+  `vendor/axe-core/axe.min.js` (v4.12.1, fetched via `npm pack axe-core`
+  from the whitelisted `registry.npmjs.org`, unmodified minified bundle +
+  its own MPL-2.0 license, provenance documented in
+  `vendor/axe-core/README.md`). Deliberately not CDN-loaded — AURA is
+  offline-first by design (D-002/D-018), and loading a rules engine from
+  a CDN at scan time would make every accessibility check silently depend
+  on an external party's uptime for a target that may itself be offline.
+  `page.add_script_tag(path=...)` injects it from local disk; zero network
+  calls beyond whatever the test target itself needed.
+- `severity_threshold` param (default `"serious"`, one of axe-core's own
+  `minor`/`moderate`/`serious`/`critical` impact levels) — only violations
+  at or above the threshold fail the check; everything found is still
+  reported in evidence regardless, so a caller can see the full picture
+  even when only asking to fail on the serious stuff.
+- **Verified against a deliberately-broken local HTML fixture**, exactly
+  per the phase's own requirement — a page with an `alt`-less `<img>` and
+  an empty-text `<a>` reliably trips `image-alt` (critical) and
+  `link-name` (serious) among others; a clean, properly-labeled page
+  scans with zero violations. Both are asserted directly against the real
+  axe-core engine, not a mocked result.
+
+**L2 — Passive security headers
+(`agents/capability/security_headers_adapter.py`,
+`CapabilityType.SECURITY_HEADERS`):**
+- Plain `httpx` GET (same "no DOM automation" posture as
+  `link_checker.py`) — header presence against a configurable list
+  (HSTS/X-Content-Type-Options/X-Frame-Options/CSP/Referrer-Policy by
+  default), `Set-Cookie` flag checks (Secure/HttpOnly/SameSite), and a
+  configurable "common exposed paths" list (`.env`, `.git/config`,
+  `wp-config.php.bak`, etc.) checked with a plain GET each.
+- **Explicitly, permanently out of scope by design** (enforced by what the
+  code does, not just a docstring claim): no payload injection, no active
+  vulnerability probing, no exploitation of anything found — every
+  request this adapter issues is a GET; a dedicated test
+  (`test_no_active_probing_only_get_requests_issued`) makes any `POST`
+  call raise inside the test itself, proving the constraint rather than
+  just asserting it.
+- The exposed-path check has one deliberate false-positive guard: if the
+  base URL's own 404 happens to be served with a 200 status and identical
+  body length to what a checked path returns, it's treated as the site's
+  generic not-found page, not a real hit — documented and tested
+  (`test_exposed_env_file_is_detected` proves real detection;
+  the false-positive guard's actual narrower behavior is also directly
+  tested rather than assumed).
+
+**L3 — Performance budget
+(`agents/capability/performance_adapter.py`, `CapabilityType.PERFORMANCE`):**
+- Single Playwright page load, metrics read directly from the browser's
+  own `performance.getEntriesByType('navigation'/'paint')` (ttfb,
+  DOM-content-loaded, load time, first paint, first contentful paint) —
+  compared against a configurable `budget` dict (sane generous defaults
+  provided so an empty/missing budget doesn't crash, not a recommendation
+  of "good" numbers).
+- **Explicitly, permanently out of scope by design:** no multi-user load
+  generation of any kind (no concurrency, no ramping, no sustained
+  traffic) — one page, one load, one browser. Not a substitute for Phase
+  H's trend analytics either — this is a single data point per run, not a
+  history/percentile series.
+
+**Shared implementation notes:**
+- All three follow the exact three-part registration pattern every prior
+  capability adapter uses: a `CapabilityType` enum entry
+  (`orchestrator/schemas.py`), a `registry.register(...)` call in
+  `orchestrator/capability_adapter.py::default_registry()`, and nothing
+  else — `config/tool_registry.yaml` already has a single generic
+  `Capability.check` entry (by design, see that file's own module
+  docstring), so no per-adapter tool-registry changes were needed, same
+  as every capability adapter since Phase 14.
+- **Egress controls needed zero changes**, verified rather than assumed:
+  all three adapters read their target from `params["url"]`, which
+  `orchestrator/capability_router.py::_URL_PARAM_KEYS` already covers —
+  confirmed with a dedicated test
+  (`test_extract_host_covers_phase_l_adapters_without_router_changes`)
+  rather than just asserting it by inspection.
+- `agents/capability/accessibility_adapter.py` and
+  `agents/capability/performance_adapter.py` manage their own Playwright
+  lifecycle (sync API, one browser/context/page per `run()` call),
+  mirroring `playwright_validator.py`'s existing, disclosed
+  not-yet-consolidated posture (TRD §11.5) rather than introducing a
+  fourth independent pattern.
+- A minor doc bug was caught and fixed while writing these: both new
+  Playwright-based adapters' initial `ImportError` messages pointed at
+  `pip install .[automation_anywhere]`, an optional extra that no longer
+  exists in this version of `pyproject.toml` — `playwright` graduated to
+  a core dependency during an earlier phase (Phase C/D era) and the extra
+  was removed, but `automation_anywhere_adapter.py`'s original error
+  message (written when the extra still existed) was never updated.
+  Fixed in both new files to point at `pip install -e .` /
+  `playwright install chromium` instead. (The pre-existing stale message
+  in `automation_anywhere_adapter.py` and `playwright_validator.py`
+  themselves was not touched here — out of scope for this phase, flagged
+  as a small follow-up.)
+
+**Verification:** 415 passing before this pass. **435 passing after**
+(20 new: 6 in `test_accessibility_adapter.py`, 7 in
+`test_security_headers_adapter.py`, 6 in `test_performance_adapter.py`
+[including the shared registry-wiring test], 1 new egress-coverage test
+in `test_capability_egress_controls.py`) — zero regressions.
+
+**Not done (explicitly out of scope for this pass):** the stale
+`pip install .[automation_anywhere]` message in the pre-existing
+`automation_anywhere_adapter.py`/`playwright_validator.py` (found while
+fixing the same bug in this phase's own new files, but out of scope to
+fix retroactively here); a11y/perf/security-header results don't yet feed
+into Phase H's trend analytics (each run's result is captured in the
+normal step-result/report flow, but there's no dedicated "accessibility
+score over time" or "performance budget trend" view — a reasonable
+follow-up, not required by this phase's own scope); Phase M (test-case
+management adapter) is next and last, lowest confidence by design.

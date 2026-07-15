@@ -9,6 +9,29 @@ project: AURA
 
 ---
 
+## 2026-07-16 — Phase L: new capability adapters (accessibility, security headers, performance budget)
+
+**What happened:**
+- Worked through Phase L of the second remediation roadmap (Phases G–M) — three new capability adapters, batched together since the registration pattern (not the logic) is what's shared. Full detail in `decisions.md` D-033.
+- **L1 (accessibility):** `agents/capability/accessibility_adapter.py`, `CapabilityType.ACCESSIBILITY`. Vendored axe-core v4.12.1 locally at `vendor/axe-core/axe.min.js` (fetched via `npm pack axe-core`, unmodified minified bundle + its MPL-2.0 license, provenance in `vendor/axe-core/README.md`) rather than loading it from a CDN — matches AURA's offline-first posture. Injects it into a headless Playwright page via `page.add_script_tag(path=...)`, runs `axe.run()`, filters violations by a configurable `severity_threshold` (default `"serious"`). Verified against a deliberately-broken local HTML fixture (an `alt`-less `<img>`, an empty-text `<a>`) that reliably trips real axe-core violations (`image-alt` at `critical`, `link-name` at `serious`, among others), plus a clean, properly-labeled page that scans clean.
+- **L2 (security headers):** `agents/capability/security_headers_adapter.py`, `CapabilityType.SECURITY_HEADERS`. Passive-only: a single `httpx` GET, checking header presence (HSTS/X-Content-Type-Options/X-Frame-Options/CSP/Referrer-Policy by default, configurable), `Set-Cookie` flag checks (Secure/HttpOnly/SameSite), and a configurable "commonly exposed paths" list (`.env`, `.git/config`, `wp-config.php.bak`, etc.), each checked with its own plain GET. Explicitly, permanently no payload injection or active probing of any kind — enforced by a dedicated test that raises inside the test itself if the adapter ever calls `httpx.Client.post`, not just documented as a design intent.
+- **L3 (performance budget):** `agents/capability/performance_adapter.py`, `CapabilityType.PERFORMANCE`. One Playwright page load, metrics read directly from the browser's own `performance.getEntriesByType('navigation'/'paint')` API (TTFB, DOM-content-loaded, load time, first paint, first contentful paint), compared against a configurable `budget` dict. Explicitly not multi-user load generation and not a trend/percentile series — one data point per run.
+- All three follow the exact registration pattern every capability adapter has used since Phase 14: a `CapabilityType` enum entry + a `registry.register(...)` call in `default_registry()`. Verified (not just assumed) that `config/tool_registry.yaml`'s single generic `Capability.check` entry needed zero changes, and that the egress-control host-allowlist logic (`orchestrator/capability_router.py::_URL_PARAM_KEYS`) already covers all three via the same `params["url"]` key every other URL-based adapter uses — both confirmed with dedicated tests rather than just inspection.
+- **Bug caught and fixed while writing these:** both new Playwright-based adapters' initial `ImportError` messages pointed at `pip install .[automation_anywhere]`, an optional extra that no longer exists in this version of `pyproject.toml` (playwright graduated to a core dependency during the Phase C/D era, and the extra was removed then, but the *original* adapters' error message — written back when the extra still existed — was never updated to match). Fixed in both of this phase's new files to point at `pip install -e .` / `playwright install chromium` instead.
+- New tests: `tests/test_accessibility_adapter.py` (6), `tests/test_security_headers_adapter.py` (7), `tests/test_performance_adapter.py` (6, including a shared three-adapter registry-wiring check), plus 1 new egress-coverage test in `tests/test_capability_egress_controls.py`.
+- Full suite: **435/435 passing** (415 before this pass + 20 new), zero regressions.
+- Updated `docs/Roadmap.md` §9 (Phase L marked done, corrected the "three-way registration" description to the two-way it actually turned out to be) and `docs/STATUS.md`.
+
+**What changed:**
+- Three genuinely new, tested capabilities — no partial/undocumented surprises this time, same clean pattern as Phase I/J/K.
+
+**Known limitations carried forward:**
+- The same stale `pip install .[automation_anywhere]` message still exists in the *original* `automation_anywhere_adapter.py`/`playwright_validator.py` files (found while fixing the same bug in this phase's own new files) — not retroactively fixed here, flagged as a small follow-up.
+- Accessibility/security-header/performance results don't yet feed into Phase H's trend analytics — each run's result lands in the normal step-result/report flow, but there's no dedicated "score over time" view for any of these three yet.
+- Phase M (test-case-management adapter) is next and last in the Phases G–M roadmap — lowest confidence by design, will be verified only against a mocked HTTP server per the original plan (no real Jira/TestRail/Zephyr/Xray account available to test against here).
+
+---
+
 ---
 
 ## 2026-07-15 — Phase K: multi-tenant / fine-grained RBAC (project-tag permission matrix)

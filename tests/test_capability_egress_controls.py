@@ -101,6 +101,21 @@ def test_extract_host_returns_none_when_unresolvable():
     assert _extract_egress_host(payload) is None
 
 
+def test_extract_host_covers_phase_l_adapters_without_router_changes():
+    """
+    Phase L (accessibility/security_headers/performance) all use the same
+    generic 'url' params key every other URL-based adapter already uses --
+    confirms no capability_router.py changes were needed for egress
+    coverage, per the three-way registration pattern (enum + default_registry()
+    + this existing generic extraction, not a fourth per-adapter special case).
+    """
+    for capability in (CapabilityType.ACCESSIBILITY, CapabilityType.SECURITY_HEADERS, CapabilityType.PERFORMANCE):
+        payload = CapabilityCheckInput(
+            capability=capability, target="", params={"url": "https://app.example.com/dashboard"}
+        )
+        assert _extract_egress_host(payload) == "app.example.com"
+
+
 # --------------------------------------------------------------------------
 # Allowlist matching
 # --------------------------------------------------------------------------

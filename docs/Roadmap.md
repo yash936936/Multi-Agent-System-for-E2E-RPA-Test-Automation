@@ -312,17 +312,24 @@ documented gap (no plan offered, no fabricated fix).
   behave exactly as before). New admin-only
   `PUT /api/v1/users/{username}/project-tags` endpoint, enforced at both
   the run-creation write path and the run-listing/detail read paths.
-- **Phase L — New capability adapters (batched).** Not started. L1:
-  accessibility (`agents/capability/accessibility_adapter.py`, axe-core via
-  Playwright injection). L2: passive security headers
+- **Phase L — New capability adapters (batched).** ✅ **DONE, 2026-07-16**
+  — see `decisions.md` D-033. L1: accessibility
+  (`agents/capability/accessibility_adapter.py`, real axe-core scan,
+  vendored locally at `vendor/axe-core/` — not CDN-loaded, matching AURA's
+  offline-first posture). L2: passive security headers
   (`agents/capability/security_headers_adapter.py` — header presence,
   cookie flags, common exposed-path checks; explicitly no payload
-  injection/active probing). L3: performance budget
+  injection/active probing, enforced by a dedicated test that fails if any
+  non-GET request is issued). L3: performance budget
   (`agents/capability/performance_adapter.py` — single-page Navigation
   Timing metrics against a configurable budget; explicitly not multi-user
   load generation). Batched because the registration pattern (new
-  `CapabilityType` + `default_registry()` + `tool_registry.yaml`
-  three-way registration) is what's repeated, not the underlying logic.
+  `CapabilityType` enum entry + `default_registry()` registration) is
+  what's repeated, not the underlying logic — turned out to be a two-way
+  registration in practice, not three: `config/tool_registry.yaml` already
+  has a single generic `Capability.check` entry shared by every capability
+  adapter since Phase 14, so no per-adapter tool-registry changes were
+  ever needed here (or for any capability adapter before it).
 - **Phase M — Test-case-management adapter.** Not started. Lowest
   confidence, last on purpose:
   `agents/capability/defect_tracker_adapter.py`, generic REST +

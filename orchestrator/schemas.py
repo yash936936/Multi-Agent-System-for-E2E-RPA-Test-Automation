@@ -75,6 +75,9 @@ class CapabilityType(str, Enum):
     LINK_CHECK = "link_check"  # Real HTTP-status link validation (footer/nav/all <a href> targets)
     AUTOMATION_ANYWHERE = "automation_anywhere"  # Phase 21a — TRD §11 trigger/poll adapter
     WEB_VALIDATION = "web_validation"  # Phase 21a — TRD §11 read-only Playwright post-run validator
+    ACCESSIBILITY = "accessibility"  # Phase L1 — axe-core WCAG violation scan
+    SECURITY_HEADERS = "security_headers"  # Phase L2 — passive header/cookie/exposed-path checks
+    PERFORMANCE = "performance"  # Phase L3 — single-page Navigation Timing budget check
 
 # --------------------------------------------------------------------------
 # 4.1 Test Spec (Planner output)
