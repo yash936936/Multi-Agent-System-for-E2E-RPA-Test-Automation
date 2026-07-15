@@ -1593,3 +1593,79 @@ normal step-result/report flow, but there's no dedicated "accessibility
 score over time" or "performance budget trend" view — a reasonable
 follow-up, not required by this phase's own scope); Phase M (test-case
 management adapter) is next and last, lowest confidence by design.
+
+## D-034 — Phase M: test-case-management adapter (generic REST + field-mapping)
+
+**Roadmap Phase M** (`Roadmap.md` §9): the fifth and last phase of the second
+remediation roadmap (Phases G–M), deliberately last and lowest-confidence
+by the roadmap's own framing.
+
+**What was built:** `agents/capability/defect_tracker_adapter.py`
+(`CapabilityType.DEFECT_TRACKER`) — one generic REST adapter for
+Jira/TestRail/Zephyr/Xray-style test-case-management and defect-tracking
+tools, not a per-vendor SDK. The tool-agnostic part is a `field_mapping`
+config supplied per call: a flat dict of generic field names
+(`title`/`status`/`priority`/etc.) is written into whatever nested (Jira:
+`fields.summary`, `fields.priority.name`) or flat (TestRail: `title`,
+`status_id`) JSON shape the target tool expects, via a small
+`_set_nested()` dotted-path helper. A matching `_get_nested()` helper reads
+fields back out of a response body via `response_field_mapping`, so an
+`action="get"` (or a create/update's own response) can be verified against
+caller-supplied `expected_fields` — pass/fail is "the HTTP call succeeded
+AND the fields I asked to check match," not just a status code.
+
+Three actions: `create` (POST), `update` (PUT, against `base_url` +
+`record_id`), `get` (GET). Method is overridable per call
+(`params["method"]`) for tools with nonstandard verbs (e.g. a
+Zephyr-style PUT-based execution update). Same registration pattern as
+every capability adapter since Phase 14: one `CapabilityType` enum entry,
+one `registry.register(...)` call in
+`capability_adapter.py::default_registry()` — `config/tool_registry.yaml`
+needed no changes (same generic `Capability.check` entry).
+
+**One actual router change, unlike Phase L:** this adapter's primary URL
+param is `base_url` (matching how Jira/TestRail/Zephyr/Xray REST clients
+are conventionally configured), not the generic `url` key every prior
+URL-based adapter used. `orchestrator/capability_router.py`'s
+`_URL_PARAM_KEYS` didn't cover it, so egress-allowlist matching and audit
+logging would have silently resolved `host=None` for every call — added
+`"base_url"` to `_URL_PARAM_KEYS`, confirmed (not assumed) with a
+dedicated test (`test_extract_host_covers_phase_m_defect_tracker_base_url`
+in `test_capability_egress_controls.py`), the same way Phase L's own
+"needed zero router changes" claim was verified rather than assumed.
+
+**Honest confidence note (per the roadmap's own framing for this phase):**
+verified only against a local mocked HTTP server in this sandbox (a tiny
+`http.server`-based stand-in that records requests and replies with a
+configurable status/body) — covering Jira-style nested mapping,
+TestRail-style flat mapping, update-by-record-id, get+field-verification,
+field-mismatch detection, unsupported-action/missing-base_url/connection-
+error failure paths, and registry wiring. There is no real Jira/TestRail/
+Zephyr/Xray account available to test against in this environment, so
+live-integration correctness with any specific real vendor's actual API
+shape, auth flow, or rate limits is unverified. This mirrors the exact
+caveat the roadmap itself calls for ("will be verified only against a
+mocked HTTP server... live-integration correctness is unverified").
+
+**Explicitly out of scope, by design:** vendor-specific auth flows (OAuth
+dance, session cookies) — the caller supplies `headers`, same posture as
+`workflow_adapter.py`; bidirectional sync/webhooks; any hardcoded vendor
+field shape inside this file (if a real vendor turns out not to be
+representable via a flat field_mapping, that's a scope decision to flag
+later, not something to route around silently here).
+
+**Verification:** 435 passing before this pass. **449 passing after**
+(14 new: 13 in `test_defect_tracker_adapter.py`, 1 in
+`test_capability_egress_controls.py`) — zero regressions. The 19
+failing/2 erroring tests in this pass's full run are the same
+pre-existing Chromium-binary-download sandbox gap documented throughout
+this file (this session's sandbox additionally lacks the binary for
+Phase L/I's Playwright-based adapters and Phase C's DOM path, which were
+previously green in sandboxes where the one-time download succeeded) —
+none touch this phase's own code paths (`agents/capability/
+defect_tracker_adapter.py`, `orchestrator/capability_router.py`,
+`orchestrator/capability_adapter.py`, `orchestrator/schemas.py`), and are
+unrelated to this phase.
+
+**All seven phases of the second remediation roadmap (G/H/I/J/K/L/M) are
+now complete.**

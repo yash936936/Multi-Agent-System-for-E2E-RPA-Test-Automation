@@ -116,6 +116,22 @@ def test_extract_host_covers_phase_l_adapters_without_router_changes():
         assert _extract_egress_host(payload) == "app.example.com"
 
 
+def test_extract_host_covers_phase_m_defect_tracker_base_url():
+    """
+    Phase M's defect_tracker_adapter uses 'base_url' (matching Jira/
+    TestRail/Zephyr/Xray-style REST client conventions) rather than the
+    generic 'url' key every prior URL-based adapter used -- this required
+    one addition to _URL_PARAM_KEYS (unlike Phase L, which needed none),
+    confirmed here rather than assumed.
+    """
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.DEFECT_TRACKER,
+        target="",
+        params={"base_url": "https://mytracker.example.com/rest/api/2/issue"},
+    )
+    assert _extract_egress_host(payload) == "mytracker.example.com"
+
+
 # --------------------------------------------------------------------------
 # Allowlist matching
 # --------------------------------------------------------------------------

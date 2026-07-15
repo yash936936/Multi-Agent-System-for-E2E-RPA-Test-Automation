@@ -32,7 +32,7 @@ _registry: CapabilityAdapterRegistry | None = None
 # reach out to. Verified against each adapter's own `params.get(...)` calls
 # (agents/capability/*.py) rather than assumed -- see decisions.md D-020 for
 # the per-adapter audit this list is drawn from.
-_URL_PARAM_KEYS = ("url", "webhook_url", "account_url", "endpoint", "control_room_url")
+_URL_PARAM_KEYS = ("url", "webhook_url", "account_url", "endpoint", "control_room_url", "base_url")
 _CONN_STRING_PARAM_KEYS = ("connection_string", "conn_str")
 _BARE_HOST_PARAM_KEYS = ("smtp_server", "imap_server", "host")
 

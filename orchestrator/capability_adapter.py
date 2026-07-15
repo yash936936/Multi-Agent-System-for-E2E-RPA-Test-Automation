@@ -81,6 +81,7 @@ def default_registry() -> CapabilityAdapterRegistry:
     from agents.capability.accessibility_adapter import AccessibilityAdapter
     from agents.capability.security_headers_adapter import SecurityHeadersAdapter
     from agents.capability.performance_adapter import PerformanceAdapter
+    from agents.capability.defect_tracker_adapter import DefectTrackerAdapter
 
     registry = CapabilityAdapterRegistry()
     registry.register(FakeAdapter())
@@ -102,4 +103,5 @@ def default_registry() -> CapabilityAdapterRegistry:
     registry.register(AccessibilityAdapter())
     registry.register(SecurityHeadersAdapter())
     registry.register(PerformanceAdapter())
+    registry.register(DefectTrackerAdapter())
     return registry

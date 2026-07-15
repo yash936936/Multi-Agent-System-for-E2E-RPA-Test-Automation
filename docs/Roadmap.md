@@ -338,4 +338,4 @@ documented gap (no plan offered, no fabricated fix).
   plainly that live-integration correctness is unverified (no real account
   available to test against).
 
-**Current status (2026-07-15): G, H, I, J, and K all done. L and M not started.**
+**Current status (2026-07-16): G, H, I, J, K, L, and M all done. The entire second remediation roadmap (Phases G–M) is complete — see `docs/decisions.md` D-034 for Phase M's `defect_tracker_adapter.py` (generic REST + field-mapping for Jira/TestRail/Zephyr/Xray-style tools, verified only against a mocked HTTP server, lowest confidence by design).**

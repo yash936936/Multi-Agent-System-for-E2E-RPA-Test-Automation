@@ -78,6 +78,7 @@ class CapabilityType(str, Enum):
     ACCESSIBILITY = "accessibility"  # Phase L1 — axe-core WCAG violation scan
     SECURITY_HEADERS = "security_headers"  # Phase L2 — passive header/cookie/exposed-path checks
     PERFORMANCE = "performance"  # Phase L3 — single-page Navigation Timing budget check
+    DEFECT_TRACKER = "defect_tracker"  # Phase M — generic REST + field-mapping (Jira/TestRail/Zephyr/Xray-style)
 
 # --------------------------------------------------------------------------
 # 4.1 Test Spec (Planner output)
