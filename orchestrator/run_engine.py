@@ -254,6 +254,11 @@ class RunEngine:
         self.memory.start_run(run_id, spec.test_id)
 
         aggregator = ReportAggregator(run_id=run_id, total_steps=len(spec.steps))
+        slideshow_recorder = None
+        if settings.record_video:
+            from runtime.hooks.video_recorder import SlideshowRecorder
+
+            slideshow_recorder = SlideshowRecorder()
         healing_loop = HealingLoop(
             guardrail=guardrail,
             skill_store=self.skill_store,
@@ -453,6 +458,9 @@ class RunEngine:
                     self.on_step_result(step.step_id, step, result)
                 continue
 
+            if slideshow_recorder is not None:
+                slideshow_recorder.add_frame(screenshot_path, step.step_id)
+
             # Step 3: skill pre-check
             hint = None
             target_text = step.target_description or step.field_description or ""
@@ -567,5 +575,32 @@ class RunEngine:
             browser_hook.close()
         except Exception:
             pass
+
+        # Phase I2 (decisions.md D-030): video/slideshow path is only known
+        # for certain *after* browser_hook.close() finalizes the recording
+        # to disk (Playwright only writes the video file once its page is
+        # closed) -- so this has to happen after teardown above, then get
+        # stitched into the report that's already been written. A real
+        # Playwright video takes priority over the slideshow manifest when
+        # both exist (e.g. a spec that started on the DOM path).
+        if settings.record_video:
+            video_path = None
+            try:
+                from runtime.hooks import browser as browser_hook
+
+                video_path = browser_hook.get_last_video_path()
+            except Exception:
+                pass
+
+            if video_path:
+                report.report_paths["video"] = video_path
+            elif slideshow_recorder is not None:
+                slideshow_path = slideshow_recorder.finalize(run_id)
+                if slideshow_path:
+                    report.report_paths["video_slideshow"] = slideshow_path
+
+            if "video" in report.report_paths or "video_slideshow" in report.report_paths:
+                report_json_path = aggregator.run_dir / "report.json"
+                report_json_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
 
         return RunEngineResult(run_id=run_id, spec=spec, report=report)

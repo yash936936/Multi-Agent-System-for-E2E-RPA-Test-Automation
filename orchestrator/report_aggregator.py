@@ -71,7 +71,7 @@ class ReportAggregator:
             return RunStatus.PASSED_WITH_HEALING
         return RunStatus.PASSED
 
-    def finalize(self) -> RunReport:
+    def finalize(self, extra_report_paths: dict[str, str] | None = None) -> RunReport:
         duration = time.time() - self._started_at
         raw_path = self.run_dir / "raw_results.json"
         raw_path.write_text(
@@ -85,6 +85,10 @@ class ReportAggregator:
             encoding="utf-8",
         )
 
+        report_paths = {"raw_json": str(raw_path)}  # html/pdf keys added in Phase 6
+        if extra_report_paths:
+            report_paths.update(extra_report_paths)
+
         report = RunReport(
             run_id=self.run_id,
             status=self._determine_status(),
@@ -92,7 +96,7 @@ class ReportAggregator:
             self_healed_steps=len(self._skills_learned),
             escalated_steps=len(self._escalated_step_ids),
             duration_seconds=round(duration, 2),
-            report_paths={"raw_json": str(raw_path)},  # html/pdf keys added in Phase 6
+            report_paths=report_paths,
         )
 
         report_path = self.run_dir / "report.json"

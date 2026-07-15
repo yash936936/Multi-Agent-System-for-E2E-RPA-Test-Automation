@@ -11,6 +11,26 @@ project: AURA
 
 ---
 
+## 2026-07-15 — Phase I: cross-browser support + video recording
+
+**What happened:**
+- Worked through Phase I of the second remediation roadmap (Phases G–M), the browser-coverage phase. Full detail in `decisions.md` D-030.
+- **I1 (cross-browser):** `config/settings.py` gained `playwright_browser` (`chromium`/`firefox`/`webkit`, default unchanged) and a shared `PLAYWRIGHT_BROWSER_CHOICES` constant. `runtime/hooks/browser.py` now launches whichever engine is configured via `getattr(playwright, engine_name)` instead of a hardcoded `.chromium`, with a clear `NoDisplayError` (listing valid choices) if the value is invalid, checked before Playwright is even touched. New `--browser` flag on `aura execute` and `aura explore`.
+- **I2 (video recording):** new `settings.record_video` (off by default) + `--record-video` on `aura execute`. When on and the DOM/Playwright path is active, the browser context records a real video natively (`record_video_dir`); `runtime/hooks/browser.py::close()` now captures the finalized video path *before* the rest of teardown, since Playwright only writes the file once the page is closed. **Found and fixed a real bug while writing tests:** the session's `_last_video_path` field wasn't reset between runs, so a recording-off run immediately after a recording-on run incorrectly reported the *previous* run's video path — fixed by clearing it unconditionally at the top of `close()`. For the OS/pixel fallback path (no live Playwright page — native desktop targets), new `runtime/hooks/video_recorder.py::SlideshowRecorder` writes an honestly-labeled step-boundary manifest (`"kind": "slideshow"`, explicit "not continuous video" note) instead of pretending to be a real recording. `orchestrator/report_aggregator.py::finalize()` gained an `extra_report_paths` param so `orchestrator/run_engine.py::run_spec()` can attach whichever artifact actually got produced under `report_paths["video"]` or `report_paths["video_slideshow"]` (never both — real video wins if somehow both exist).
+- New tests: `tests/test_cross_browser.py` (6 — live Chromium baseline, invalid-engine-name handling, mocked-dispatch proof that firefox is actually requested via `getattr`, live confirmation that an uninstalled firefox binary fails as a clean `NoDisplayError`, plus the two video on/off behavior tests), `tests/test_slideshow_recorder.py` (2, manifest correctness), `tests/test_run_engine_video.py` (2, full `RunEngine.run_spec()` integration proving a real video file lands in the finalized report).
+- Full suite: **393/393 passing** (383 before this pass + 10 new), zero regressions. Notably, every test passed in this session's sandbox, including the 9 that earlier phases (D, E, and others) documented as failing only when Chromium's binary can't be downloaded — this session's sandbox has a working Chromium binary, so that particular environment-dependent gap simply doesn't reproduce here. It remains real and disclosed for whichever environment runs this next, not something this pass silently fixed.
+- Updated `docs/Roadmap.md` (new §9, the full Phases G–M plan with G/H/I marked done and J–M's scope recorded ahead of time) and `docs/PHASES.md` (pointer note, since that file's own scope is the original 6-phase MVP plan only).
+
+**What changed:**
+- Two genuinely new, tested capabilities (`--browser`, `--record-video`) rather than partial/undocumented ones this time — no "found already written but undocumented" surprises like earlier phases in this same roadmap.
+
+**Known limitations carried forward:**
+- Firefox/WebKit engine selection is verified via dispatch-logic tests (mocked Playwright) plus one real live failure-path test, not full three-engine live parametrization of the existing Phase C DOM-path suite — that would require an environment where those binaries can actually be downloaded.
+- No video/slideshow viewer added to `reports/render.py`'s HTML report yet — the paths are real and populated in `RunReport.report_paths`, but rendering them nicely in the report itself is a small follow-up, not required by this phase's own scope.
+- `--record-video` is scoped to `aura execute`/`aura explore` only, not to Automation Anywhere trigger/validate runs (Phase 21) — recording a bot-triggered run wouldn't capture anything meaningful since AURA itself isn't driving the UI in that flow.
+
+---
+
 ## 2026-07-15 — Phases H1–H2: cross-run trend analytics, flaky-test detection + quarantine
 
 **What happened:**

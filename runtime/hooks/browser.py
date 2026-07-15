@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import time
 
+from config.settings import PLAYWRIGHT_BROWSER_CHOICES, settings
+
 
 class NoDisplayError(RuntimeError):
     """Raised when a browser can't be launched (no display / no browser found)."""
@@ -62,6 +64,7 @@ class _BrowserSession:
         self._browser = None
         self._context = None
         self._page = None
+        self._last_video_path: str | None = None
 
     def get_page(self):
         if self._page is not None:
@@ -72,23 +75,65 @@ class _BrowserSession:
         except Exception as e:  # pragma: no cover - exercised only without the package
             raise NoDisplayError(f"Playwright is not installed: {e}") from e
 
+        engine_name = settings.playwright_browser
+        if engine_name not in PLAYWRIGHT_BROWSER_CHOICES:
+            raise NoDisplayError(
+                f"settings.playwright_browser is '{engine_name}', which isn't a valid Playwright "
+                f"engine. Valid choices: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)}."
+            )
+
         try:
             if self._playwright is None:
                 self._playwright = sync_playwright().start()
             if self._browser is None:
-                self._browser = self._playwright.chromium.launch(headless=True)
+                engine = getattr(self._playwright, engine_name)
+                self._browser = engine.launch(headless=True)
             if self._context is None:
-                self._context = self._browser.new_context()
+                context_kwargs = {}
+                if settings.record_video:
+                    # Phase I2 (decisions.md D-030): Playwright records the
+                    # whole context's video natively -- no per-action code
+                    # needed beyond passing this dir. The file is only
+                    # finalized on disk once the page/context is closed
+                    # (see get_last_video_path()).
+                    settings.videos_dir.mkdir(parents=True, exist_ok=True)
+                    context_kwargs["record_video_dir"] = str(settings.videos_dir)
+                self._context = self._browser.new_context(**context_kwargs)
             self._page = self._context.new_page()
             return self._page
+        except NoDisplayError:
+            raise
         except Exception as e:  # pragma: no cover - exercised only without a browser binary
             self.close()
-            raise NoDisplayError(f"Could not launch a Playwright browser: {e}") from e
+            raise NoDisplayError(f"Could not launch a Playwright {engine_name} browser: {e}") from e
 
     def has_active_page(self) -> bool:
         return self._page is not None
 
+    def get_last_video_path(self) -> str | None:
+        """Path to the most recently finalized video file, if any (set by close())."""
+        return self._last_video_path
+
     def close(self) -> None:
+        # Always clear first -- a stale path from a *previous* session
+        # (e.g. an earlier run that had recording on) must not leak into
+        # this one's answer just because the field was never overwritten.
+        self._last_video_path = None
+
+        # Capture the video path (if recording) before the page object is
+        # closed and dereferenced -- Playwright only finalizes the video
+        # file to disk once its owning page is closed, and page.video is
+        # None afterward, so this has to happen in this exact order.
+        if settings.record_video and self._page is not None:
+            try:
+                video = self._page.video
+                if video is not None:
+                    self._page.close()
+                    self._last_video_path = str(video.path())
+                    self._page = None
+            except Exception:
+                pass  # advisory only -- never let video bookkeeping break teardown
+
         for obj, closer in (
             (self._page, "close"),
             (self._context, "close"),
@@ -125,6 +170,11 @@ def get_page(new: bool = False):
 def has_active_page() -> bool:
     """True once a Playwright page has been successfully created this run."""
     return _session.has_active_page()
+
+
+def get_last_video_path() -> str | None:
+    """Path to the most recently finalized Playwright-recorded video, if settings.record_video was on."""
+    return _session.get_last_video_path()
 
 
 def close() -> None:

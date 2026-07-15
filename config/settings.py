@@ -93,6 +93,12 @@ def _resolve_env_files(profile: str | None, base_env_file: Path = None) -> tuple
 _INITIAL_ENV_PROFILE = os.environ.get("AURA_ENV") or None
 
 
+# Phase I1 (decisions.md D-030): valid Playwright browser engine choices,
+# shared between Settings.playwright_browser's default/validation and
+# aura/main.py's --browser CLI option so the two never drift apart.
+PLAYWRIGHT_BROWSER_CHOICES = ("chromium", "firefox", "webkit")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="AURA_",
@@ -132,6 +138,14 @@ class Settings(BaseSettings):
         # it's local generated state, not source -- same category as
         # screenshots/data_cache, gitignored the same way.
         return self.runtime_dir / "baselines"
+
+    @property
+    def videos_dir(self) -> Path:
+        # Phase I2 (docs/decisions.md D-030): Playwright-recorded videos for
+        # the DOM path, and slideshow manifests for the OS/pixel path, both
+        # land here. Same category as baselines_dir/screenshots_dir --
+        # local generated run state, gitignored, not source.
+        return self.runtime_dir / "videos"
 
     @property
     def reports_dir(self) -> Path:
@@ -212,6 +226,26 @@ class Settings(BaseSettings):
     # Non-network capabilities (local file_system/excel/pdf_ocr targets,
     # and FAKE) are exempt from host matching -- there is no host to check.
     allowed_capability_hosts: list[str] | None = None
+
+    # --- Phase I1: cross-browser support (decisions.md D-030) ---
+    # Which Playwright browser engine runtime/hooks/browser.py launches.
+    # "chromium" (default, unchanged behavior) | "firefox" | "webkit".
+    # Validated in the model_validator below rather than a Literal type so
+    # an invalid value degrades to a clear settings-level error instead of
+    # a cryptic AttributeError deep inside browser.py's getattr() lookup.
+    playwright_browser: str = "chromium"
+
+    # --- Phase I2: video recording (decisions.md D-030) ---
+    # Off by default -- opt-in, since video files are meaningfully larger
+    # than screenshots and most runs don't need them. When True and the
+    # DOM/Playwright path is active, runtime/hooks/browser.py records a
+    # real video via Playwright's native `record_video_dir`. When the
+    # OS/pixel fallback path is active instead (no live accessibility
+    # tree -- native desktop targets), runtime/hooks/video_recorder.py
+    # produces an honestly-labeled step-boundary "slideshow" (a manifest
+    # referencing each step's already-captured screenshot in order), never
+    # claimed to be continuous video.
+    record_video: bool = False
 
     # --- OCR engine (optional override) ---
     # If pytesseract can't find the `tesseract` binary on PATH (common on

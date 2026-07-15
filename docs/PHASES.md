@@ -135,3 +135,17 @@ Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
 ```
 
 Say **"start phase 1"** (or just "next") when ready and I'll begin execution.
+
+---
+
+## Later phases (7 onward) — tracked in Roadmap.md, not here
+
+This file covers the original 6-phase MVP build plan only. Every phase
+after that (the "universal platform" backend, Phases 13–19/20/21, and the
+two gap-analysis-derived remediation roadmaps, Phases A–E and G–M) is
+tracked in `docs/Roadmap.md` §3/§6/§7/§8/§9 and `docs/decisions.md`
+instead, per `context.md`'s own doc-purpose split (`PHASES.md` = detail
+for *this* roadmap's phases; later re-sequencing lives directly in
+`Roadmap.md` alongside its own "what's real today" table). See
+`docs/Roadmap.md` §9 for the current phase (Phase I, delivered
+2026-07-15) and what's still ahead (Phases J–M).

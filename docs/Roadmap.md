@@ -247,3 +247,82 @@ consolidating `playwright_validator.py` onto the same shared browser-context
 module as Phase C's `dom_locator.py`/`browser.py` (a refactor-for-consistency
 item, TRD §11.5), and resolving the Azure/GCP host-allowlisting gap noted
 in D-020/D-021 for those two SDK-based adapters specifically.
+
+## 9. Second remediation roadmap (Phases G–M) — gap-analysis-derived, against a full-featured autonomous QA agent checklist
+
+Continues the same numbering/sequencing discipline as Phases A–E above
+(`decisions.md` last used D-024 before this roadmap started, `STATUS.md`
+last used "Phase F" for the bug-hunt pass) — low-risk/independent work
+first, shared-state-sensitive work isolated in its own phase, mechanically
+similar new capability adapters batched together at the end. Each phase
+gets its own `decisions.md` entry; the test suite stays green throughout;
+not a phase: native desktop/mainframe automation stays an explicitly
+documented gap (no plan offered, no fabricated fix).
+
+- **Phase G — Foundational, zero-shared-state additions.** ✅ **DONE,
+  2026-07-14** — see `decisions.md` D-025 (G1)/D-026 (G2)/D-027 (G3). G1:
+  environment-profile management (`AURA_ENV`/`--env`, layered
+  `.env.<profile>` over base `.env`). G2: CI/CD-native mode (`--junit-out`,
+  documented 0/1/2 exit-code convention). G3: real Pillow-based pixel-diff
+  visual regression (replacing the SHA-256 hash-only check), baseline image
+  storage, diff-image panel in the report.
+- **Phase H — Cross-run analytics.** ✅ **DONE, 2026-07-15** — see
+  `decisions.md` D-028 (H1)/D-029 (H2). H1: trend analytics (pass-rate over
+  time, per-test history) built on `api/run_store.py`'s existing SQLite
+  data, new API routes + dashboard chart. H2: flaky-test detection
+  (`get_flaky_candidates()`, outcome-transition-based) + opt-in quarantine
+  (`aura skills quarantine <test_id>`, `--all` skips by default,
+  `--include-quarantined` overrides). H2 depends on H1's query layer, kept
+  as one phase.
+- **Phase I — Browser coverage.** ✅ **DONE, 2026-07-15** — see
+  `decisions.md` D-030. I1: cross-browser support — `settings.playwright_browser`
+  (`chromium`/`firefox`/`webkit`), `--browser` flag on `aura execute`/`aura
+  explore`, `runtime/hooks/browser.py` launches the configured engine
+  instead of hardcoded Chromium. I2: video recording — `settings.record_video`
+  (off by default) + `--record-video` flag; the DOM/Playwright path records
+  a real video natively via `record_video_dir`; the OS/pixel fallback path
+  produces an honestly-labeled step-boundary **slideshow**
+  (`runtime/hooks/video_recorder.py`), never claimed as continuous
+  recording. Grouped I1+I2 because both touch `runtime/hooks/browser.py`'s
+  session setup directly. **Known gap, disclosed rather than silently
+  skipped:** the existing Phase C Playwright test suite has not been
+  parametrized to actually run against real Firefox/WebKit binaries in
+  this environment — only Chromium's binary is downloaded here (a
+  sandbox network-egress restriction, same class of gap noted throughout
+  this roadmap for Chromium itself in earlier phases), so Phase I's new
+  tests verify the engine-selection *dispatch logic* directly (a mocked
+  Playwright instance proves the correct engine is requested) plus a real,
+  live failure-path test confirming an uninstalled engine fails as a clean
+  `NoDisplayError` rather than a crash — not a full three-engine live
+  parametrization of every existing Phase C test.
+- **Phase J — Parallel execution.** Not started. Its own phase because it
+  touches genuinely shared state (same care level as D-017's secrets
+  split): remove the API layer's `RunEngine` singleton
+  (`api/routers/runs.py`); fix `LoopGuardrail._states` to key on
+  `(run_id, step_id)` instead of just `step_id` so concurrent runs can't
+  corrupt each other's guardrail state; add `aura execute --all --parallel N`
+  using `ThreadPoolExecutor` (I/O-bound work, threads are correct here, not
+  multiprocessing).
+- **Phase K — Multi-tenant / fine-grained RBAC.** Not started. Its own
+  phase because it touches auth (same care level as Phase J): extend
+  `api/security.py`/`api/user_store.py`'s role model to a project-tag
+  permission matrix, additive and backward-compatible (untagged
+  specs/users behave exactly as today).
+- **Phase L — New capability adapters (batched).** Not started. L1:
+  accessibility (`agents/capability/accessibility_adapter.py`, axe-core via
+  Playwright injection). L2: passive security headers
+  (`agents/capability/security_headers_adapter.py` — header presence,
+  cookie flags, common exposed-path checks; explicitly no payload
+  injection/active probing). L3: performance budget
+  (`agents/capability/performance_adapter.py` — single-page Navigation
+  Timing metrics against a configurable budget; explicitly not multi-user
+  load generation). Batched because the registration pattern (new
+  `CapabilityType` + `default_registry()` + `tool_registry.yaml`
+  three-way registration) is what's repeated, not the underlying logic.
+- **Phase M — Test-case-management adapter.** Not started. Lowest
+  confidence, last on purpose:
+  `agents/capability/defect_tracker_adapter.py`, generic REST +
+  field-mapping config for Jira/TestRail/Zephyr/Xray-style tools. Will be
+  verified only against a mocked HTTP server — `decisions.md` will state
+  plainly that live-integration correctness is unverified (no real account
+  available to test against).

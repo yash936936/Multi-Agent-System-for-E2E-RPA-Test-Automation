@@ -1153,3 +1153,114 @@ CLI smoke test (`aura skills quarantine` → `aura execute --all` actually
 skipping the quarantined spec with the documented message → `aura skills
 unquarantine` restoring it). Full suite: 374 passing, zero regressions
 (same run as D-028's verification, both landed in one pass).
+
+## D-030 — Phase I: cross-browser support (I1) + video recording (I2)
+
+**Decided:** 2026-07-15
+**Context:** Phase I of the gap-review roadmap (Phases G–M), grouped
+because both items touch `runtime/hooks/browser.py`'s session setup
+directly — one careful pass through that file instead of two.
+
+**I1 — cross-browser support:**
+- `config/settings.py`: new `playwright_browser: str = "chromium"` field
+  plus a module-level `PLAYWRIGHT_BROWSER_CHOICES = ("chromium", "firefox",
+  "webkit")` constant, shared between the settings default and the CLI's
+  `--browser` option so the two lists can't drift apart.
+- `runtime/hooks/browser.py::_BrowserSession.get_page()`: now does
+  `getattr(self._playwright, settings.playwright_browser).launch(...)`
+  instead of the hardcoded `self._playwright.chromium.launch(...)`. An
+  invalid engine name is checked *before* touching Playwright at all and
+  raises a clear `NoDisplayError` listing the valid choices, rather than a
+  bare `AttributeError` surfacing from inside the try block.
+- `aura/main.py`: new `--browser` option on both `aura execute` and `aura
+  explore`, validated against `PLAYWRIGHT_BROWSER_CHOICES` with a clean
+  exit-1 message on an invalid value, then applied via
+  `settings.playwright_browser = browser` before `preflight.run_preflight_or_exit()`.
+- **Verified, not just wired:** in this environment only the Chromium
+  browser binary is actually downloaded (the same sandbox network-egress
+  restriction noted for Chromium itself throughout this file in earlier
+  phases) — Firefox/WebKit binaries are absent. So `tests/test_cross_browser.py`
+  covers three things independently: (1) the real, live default (Chromium)
+  path still works end-to-end against a local server; (2) the actual
+  engine-*selection* dispatch logic, proven with a mocked Playwright
+  instance so it doesn't depend on a binary being present — confirms
+  `firefox` is requested via `getattr`, not silently falling back to
+  Chromium; (3) a real, live confirmation that selecting `firefox` for
+  real in this environment fails as a clean `NoDisplayError` (not a raw
+  crash), proving the existing catch-and-wrap behavior still covers the
+  new code path. This is an honest substitute for full three-engine live
+  parametrization, which isn't possible here — flagged, not silently
+  skipped.
+
+**I2 — video recording:**
+- `config/settings.py`: new `record_video: bool = False` (off by default —
+  video files are meaningfully larger than screenshots, most runs don't
+  need them) and a `videos_dir` property (`runtime/videos/`, same
+  gitignored-generated-state category as `screenshots_dir`/`baselines_dir`).
+- `runtime/hooks/browser.py`: when `settings.record_video` is on, the
+  browser context is created with `record_video_dir=str(settings.videos_dir)`
+  — Playwright records natively, no per-action code needed. Playwright
+  only finalizes the video file to disk once its owning page is closed
+  (`page.video` becomes `None` after), so `_BrowserSession.close()` now
+  captures the video path via `self._page.video.path()` *before* closing
+  the page, in that exact order — getting this order wrong was the most
+  likely bug here, so it's covered directly by
+  `test_record_video_produces_a_real_video_file_on_close` (asserts a
+  real, non-empty file exists on disk after `close()`).
+- **Bug found and fixed while writing tests:** `_last_video_path` is a
+  session-singleton field that isn't reset between runs; a run with
+  recording off, immediately after a run with recording on, was returning
+  the *previous* run's stale video path instead of `None`. Fixed by
+  clearing `_last_video_path = None` unconditionally at the top of
+  `close()`, only re-populating it if this session actually recorded.
+  Caught by `test_record_video_off_by_default_produces_no_video_path`.
+- `runtime/hooks/video_recorder.py` (new): `SlideshowRecorder` — the
+  OS/pixel-path fallback for targets with no live Playwright page (native
+  desktop, no accessibility tree). Not a video encoder: it writes a JSON
+  manifest referencing each step's already-captured screenshot in order,
+  explicitly labeled `"kind": "slideshow"` with a note stating plainly
+  that it is "not continuous video" — this was a hard requirement from
+  the plan itself, not an implementation nicety, since silently presenting
+  a slideshow as if it were a real recording would be misleading.
+- `orchestrator/report_aggregator.py::finalize()`: new optional
+  `extra_report_paths` param, merged into `report_paths` — reused the
+  existing `report_paths` dict contract (already holding keys like
+  `raw_json`) rather than adding a new schema field to `RunReport`.
+- `orchestrator/run_engine.py::run_spec()`: instantiates a
+  `SlideshowRecorder` up front when `settings.record_video` is on, feeds
+  it every successfully-captured step screenshot as the main vision
+  branch runs. At run end, *after* `browser_hook.close()` finalizes any
+  real video to disk: if a real video path exists, it wins and is attached
+  under `report_paths["video"]`; otherwise, if the slideshow recorder
+  collected any frames, its manifest is attached under
+  `report_paths["video_slideshow"]` — the two keys are named differently
+  on purpose so a report renderer (or a human reading raw JSON) can never
+  mistake one for the other.
+- New tests: `tests/test_slideshow_recorder.py` (2, unit-level manifest
+  correctness), `tests/test_run_engine_video.py` (2, full `RunEngine.run_spec()`
+  integration — proves a real video file lands in the finalized
+  `RunReport.report_paths` end-to-end, and that recording-off runs carry
+  neither key).
+
+**Verification:** 383 passing before this pass. **393 passing after**
+(10 new: 6 in `test_cross_browser.py`, 2 in `test_slideshow_recorder.py`,
+2 in `test_run_engine_video.py`) — zero regressions. Notably, all 393 pass
+in this environment including what earlier phases documented as "9
+pre-existing sandbox-only Chromium failures" — this session's sandbox
+does have a working Chromium binary, so that pre-existing gap doesn't
+reproduce here; it remains a real, disclosed environment-dependent
+limitation for whichever environment run this next, not something this
+pass silently fixed.
+
+**Not done (explicitly out of scope for this pass):** live parametrization
+of the existing Phase C DOM-path test suite across all three engines (only
+possible in an environment where Firefox/WebKit binaries can actually be
+downloaded); `--record-video` was not added as a capability-adapter-level
+concept (Automation Anywhere trigger/validate runs, Phase 21, don't record
+video — recording is scoped to `aura execute`/`aura explore`'s own
+vision-execution runs only, where it's actually meaningful); no video
+playback/slideshow viewer was added to the HTML report renderer itself
+(`reports/render.py`) — `report_paths["video"]`/`["video_slideshow"]` are
+populated and real, but surfacing them nicely in the rendered report is
+left as a small follow-up, not required by the phase's own scope
+("record", not "render nicely").

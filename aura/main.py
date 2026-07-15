@@ -20,7 +20,7 @@ from rich.console import Console
 
 from agents.planner.spec_generator import infer_test_id
 from aura.cli import debug_cmd, execute_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd
-from config.settings import settings
+from config.settings import PLAYWRIGHT_BROWSER_CHOICES, settings
 from orchestrator import quarantine_store
 from orchestrator.schemas import RunReport, RunStatus
 from reports.junit import render_junit_suites
@@ -100,6 +100,8 @@ def execute(
     timeout: int = typer.Option(0, "--timeout", help="Only used with --interactive: give up after this many seconds if nothing changes. 0 (default) means wait indefinitely."),
     junit_out: str = typer.Option(None, "--junit-out", help="Write results as JUnit XML to this path (for CI test-report consumption). With --all, every spec's outcome becomes one <testsuite> in a single combined file."),
     include_quarantined: bool = typer.Option(False, "--include-quarantined", help="Phase H2: with --all, also run specs quarantined via `aura skills quarantine <test_id>` (skipped by default)."),
+    browser: str = typer.Option("chromium", "--browser", help=f"Phase I1: Playwright browser engine for DOM-path targets. One of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)}."),
+    record_video: bool = typer.Option(False, "--record-video", help="Phase I2: record a video of the run (DOM path: real Playwright video; OS/pixel path: an honestly-labeled step-boundary slideshow, not continuous video). Off by default."),
 ) -> None:
     """Execute a test: approval checkpoint -> live vision-execution loop -> report.
 
@@ -112,6 +114,12 @@ def execute(
     exit via Python's own default traceback-and-exit-1 behavior, which
     external tooling (CI) already treats the same as "this step failed."
     """
+    if browser not in PLAYWRIGHT_BROWSER_CHOICES:
+        console.print(f"[red]--browser must be one of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)} (got '{browser}').[/red]")
+        raise typer.Exit(code=1)
+    settings.playwright_browser = browser
+    settings.record_video = record_video
+
     preflight.run_preflight_or_exit()
     auto_approve = yes or autonomous
 
@@ -185,6 +193,7 @@ def explore(
     no_scroll_scan: bool = typer.Option(False, "--no-scroll-scan", help="Skip the full-page scroll/error scan before clicking elements."),
     check_links: bool = typer.Option(False, "--check-links", help="Also run a real HTTP-level link check (actual status codes, not just click-and-diff). Off by default -- opt in explicitly."),
     link_scope: str = typer.Option("all", "--link-scope", help='Only used with --check-links. Which links get checked: "all" (default -- every navigable link on the page), "footer", or "nav".'),
+    browser: str = typer.Option("chromium", "--browser", help=f"Phase I1: Playwright browser engine. One of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)}."),
 ) -> None:
     """
     Fully autonomous exploration: give it a URL, nothing else. AURA
@@ -192,6 +201,11 @@ def explore(
     element via OCR, clicks each one, checks nothing broke, and reports
     back -- no spec file, no --prompt required, zero human input.
     """
+    if browser not in PLAYWRIGHT_BROWSER_CHOICES:
+        console.print(f"[red]--browser must be one of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)} (got '{browser}').[/red]")
+        raise typer.Exit(code=1)
+    settings.playwright_browser = browser
+
     preflight.run_preflight_or_exit()
     explore_cmd.explore(url, max_elements=max_elements, prompt=prompt, scroll_scan=not no_scroll_scan, check_links=check_links, link_scope=link_scope)
 

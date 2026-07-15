@@ -209,6 +209,8 @@ aura execute --interactive --url https://example.com --prompt "click the submit 
 aura execute --interactive --url https://example.com --prompt "click the submit button" --timeout 120 # same, but gives up after 2 minutes
 aura execute --all --junit-out results.xml                       # CI mode: JUnit XML output, one <testsuite> per spec, exits 1 if anything failed
 aura execute --all --include-quarantined                         # also run specs quarantined via `aura skills quarantine` (skipped by default)
+aura execute <test_id_or_path> --browser firefox                 # Phase I1: run against Firefox instead of the default Chromium
+aura execute <test_id_or_path> --record-video                    # Phase I2: record a real video (DOM path) or a step-boundary slideshow (OS/pixel path)
 ```
 
 `<test_id_or_path>` can be:
@@ -224,6 +226,10 @@ aura execute --all --include-quarantined                         # also run spec
 **CI/CD (`--junit-out <path>`):** writes a standard JUnit XML report — with `--all`, every spec becomes its own `<testsuite>` in one combined file. Exit codes: `0` if every spec run PASSED or PASSED_WITH_HEALING, `1` if anything FAILED/ESCALATED or the invocation couldn't start a run at all. `--interactive` mode has no exit-code contract (it's a live human-wait flow, not something a CI pipeline runs).
 
 **Visual regression (opt-in, per step):** a `TestStep` can set `visual_baseline_key` to get a real pixel-diff comparison (not just OCR text matching) against a persisted baseline image, in addition to whatever else the step already checks. First run for a given key creates the baseline; later runs compare against it and fail if more than `visual_diff_tolerance` (default 2%) of pixels differ. Baselines live in `runtime\baselines\` and, unlike screenshots, **are meant to be committed to the repo** — a baseline that isn't shared across machines/CI defeats the point. On a failing comparison, an amplified diff image is saved alongside the baseline and shown in the HTML report.
+
+**Cross-browser (`--browser chromium|firefox|webkit`, Phase I1):** which Playwright engine `runtime/hooks/browser.py` launches for DOM-path targets. Defaults to `chromium` (unchanged behavior if you never pass this). An invalid value exits 1 with a clear message rather than a stack trace. Note: Firefox/WebKit require their own Playwright browser binaries to be installed (`playwright install firefox webkit`) — if the one you pick isn't installed, you'll get a clear `NoDisplayError`-style message, not a crash.
+
+**Video recording (`--record-video`, Phase I2):** off by default (video files are meaningfully larger than screenshots). When on: if the run uses the DOM/Playwright path, you get a real, native video file (`runtime\videos\<hash>.webm`) referenced in the report under `report_paths["video"]`. If the run uses the OS/pixel fallback path instead (native desktop targets with no live accessibility tree), you get an honestly-labeled step-boundary **slideshow** manifest (`runtime\videos\slideshow_<run_id>\manifest.json`, `report_paths["video_slideshow"]`) — a JSON list of each step's already-captured screenshot in order, explicitly *not* claimed to be continuous video.
 
 ### `aura explore` (new)
 
