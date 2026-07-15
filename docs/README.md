@@ -207,6 +207,7 @@ aura execute --url https://example.com --scroll-test             # after the mai
 aura execute <test_id_or_path> --autonomous                      # same as --yes -- explicit name for "no human input at all"
 aura execute --interactive --url https://example.com --prompt "click the submit button"              # human-in-the-loop: waits for you, no timeout
 aura execute --interactive --url https://example.com --prompt "click the submit button" --timeout 120 # same, but gives up after 2 minutes
+aura execute --all --junit-out results.xml                       # CI mode: JUnit XML output, one <testsuite> per spec, exits 1 if anything failed
 ```
 
 `<test_id_or_path>` can be:
@@ -218,6 +219,10 @@ aura execute --interactive --url https://example.com --prompt "click the submit 
 - **`--yes` / `--autonomous` (unattended)** — auto-approves all of the above. Use this for scheduled/CI runs where no one is watching. Both flags do the same thing; `--autonomous` exists as an explicit, self-documenting name.
 - **`--prompt` (unattended by design)** — describe what to test in plain English instead of writing a spec file. No approval checkpoint, since there's no step list to review ahead of time.
 - **`--interactive` (human-in-the-loop)** — AURA doesn't act at all; it opens `--url` and waits, polling the screen, until you perform the `--prompt`-described action yourself, then verifies. No timeout by default. See "Autonomy modes" above for the full explanation and the `WAIT_FOR_HUMAN_ACTION` step type behind it.
+
+**CI/CD (`--junit-out <path>`):** writes a standard JUnit XML report — with `--all`, every spec becomes its own `<testsuite>` in one combined file. Exit codes: `0` if every spec run PASSED or PASSED_WITH_HEALING, `1` if anything FAILED/ESCALATED or the invocation couldn't start a run at all. `--interactive` mode has no exit-code contract (it's a live human-wait flow, not something a CI pipeline runs).
+
+**Visual regression (opt-in, per step):** a `TestStep` can set `visual_baseline_key` to get a real pixel-diff comparison (not just OCR text matching) against a persisted baseline image, in addition to whatever else the step already checks. First run for a given key creates the baseline; later runs compare against it and fail if more than `visual_diff_tolerance` (default 2%) of pixels differ. Baselines live in `runtime\baselines\` and, unlike screenshots, **are meant to be committed to the repo** — a baseline that isn't shared across machines/CI defeats the point. On a failing comparison, an amplified diff image is saved alongside the baseline and shown in the HTML report.
 
 ### `aura explore` (new)
 
@@ -331,6 +336,29 @@ All settings live in `config\settings.py` and can be overridden via a `.env` fil
 | `AURA_PLANNER_BACKEND` | `heuristic` | `heuristic` \| `local_llm` — see [Local LLM backend](#local-llm-planner-backend-optional-offline) below |
 | `AURA_LOCAL_LLM_MODEL_PATH` | *(none)* | Path to a local `.gguf` model file, required if `planner_backend=local_llm` |
 | `AURA_PROJECT_ROOT` | repo root | Override where AURA looks for/writes `runtime\`, `reports\`, etc. |
+| `AURA_ENV` | *(none)* | Environment profile name (e.g. `staging`, `prod`) — see [Environment profiles](#environment-profiles-devstagingprod) below |
+| `AURA_CAPABILITY_ADAPTERS_ENABLED` | `true` | Hard kill switch for **all** capability adapters (API/DB/Email/File/Excel/PDF/Cloud/Workflow/SharePoint/Automation Anywhere) at once, for a fully air-gapped deployment. Vision/Playwright/Planner are unaffected — this only gates the intentionally network-or-filesystem-facing adapters. |
+| `AURA_ALLOWED_CAPABILITY_HOSTS` | *(unset = no restriction)* | Comma-separated host allowlist restricting API/webhook/cloud adapters to known targets. Enforced at `orchestrator/capability_router.py`'s single chokepoint. Note: `azure_adapter`/`gcp_adapter` use SDK default-credential auth with no explicit host param, so they can't be host-allowlisted yet — the kill switch above still covers them. |
+
+### Environment profiles (dev/staging/prod)
+
+If you test against more than one environment (e.g. staging vs. prod URLs/credentials), you don't need separate copies of the whole `.env` file:
+
+```powershell
+# One-time: scaffold a starting profile file with every base-.env key as a commented-out placeholder
+aura init --env staging
+
+# Edit .env.staging, uncomment/set only the keys that differ from base .env
+
+# Use it for a single command...
+aura --env staging execute --all
+
+# ...or set it once for a whole shell session
+$env:AURA_ENV = "staging"
+aura execute --all
+```
+
+`.env` always loads first; `.env.<profile>` (if present) loads second and only overrides the specific keys it sets — everything else still comes from the base file. A profile name with no matching `.env.<profile>` file isn't an error, it just means nothing gets overridden (check `aura --env typo execute ...`'s behavior is identical to no `--env` at all if you're debugging a typo).
 
 Example `.env`:
 ```

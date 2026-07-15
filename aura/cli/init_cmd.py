@@ -9,6 +9,7 @@ Writes answers to config/local_config.json (gitignored) so later commands
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from rich.console import Console
 
@@ -36,8 +37,47 @@ def save_local_config(config: dict) -> None:
     path.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
 
-def run_init_wizard(non_interactive: bool = False) -> dict:
+def _profile_env_path(profile: str) -> Path:
+    return settings.project_root / f".env.{profile}"
+
+
+def scaffold_env_profile(profile: str) -> Path:
+    """
+    Phase G1 (decisions.md D-025): `aura init --env <name>` writes a
+    starting .env.<name> file the operator then fills in -- copies the
+    current base .env's keys as commented-out placeholders (so it's
+    obvious which settings *can* be overridden here) rather than either
+    an empty file (no guidance) or a full copy (silently duplicates
+    secrets like AURA_TESSERACT_CMD into a second file people forget
+    exists). Does not overwrite an existing profile file.
+    """
+    path = _profile_env_path(profile)
+    if path.exists():
+        return path
+
+    base_env = settings.project_root / ".env"
+    lines = [f"# AURA environment profile: {profile}", f"# Only keys you uncomment here override {base_env.name}.", ""]
+    if base_env.exists():
+        for line in base_env.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            key = stripped.split("=", 1)[0]
+            lines.append(f"# {key}=")
+    else:
+        lines.append("# AURA_TESSERACT_CMD=")
+        lines.append("# AURA_PLANNER_BACKEND=")
+
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def run_init_wizard(non_interactive: bool = False, env_profile: str | None = None) -> dict:
     settings.ensure_dirs()
+
+    if env_profile:
+        profile_path = scaffold_env_profile(env_profile)
+        console.print(f"[green]Environment profile scaffold written to {profile_path}[/green]")
 
     if non_interactive:
         config = {

@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from agents.vision.assertions import check_assertion
+from agents.vision.visual_regression import compare_to_baseline
 from config.settings import settings
 from orchestrator.guardrails import LoopGuardrail
 from orchestrator.healing_loop import HealingLoop
@@ -485,6 +486,36 @@ class RunEngine:
                 else:
                     passed = check_assertion(assertion_screenshot, step.expected_state)
                     result = result.model_copy(update={"assertion_passed": passed})
+
+            # Phase G3 (decisions.md D-027): opt-in real pixel-diff visual
+            # regression, independent of and additive to the OCR
+            # expected_state check above. Only runs when the spec author
+            # set visual_baseline_key -- every step/spec that doesn't use
+            # it is completely unaffected. Combining rule: if the OCR
+            # assertion above already failed (assertion_passed is False),
+            # a passing visual diff doesn't revive it back to True; if OCR
+            # wasn't configured or passed, the visual diff's own verdict
+            # becomes (or further gates) assertion_passed. Deliberately
+            # does NOT force escalate=True on a failing diff -- matches
+            # the OCR expected_state path above, which also reports a
+            # failed assertion without auto-escalating for human review;
+            # only the "couldn't even capture a screenshot" case escalates,
+            # since that's an infra failure, not an assertion failure.
+            if step.visual_baseline_key and not result.escalate:
+                visual_screenshot = self._safe_screenshot(run_id, step.step_id)
+                if visual_screenshot is None:
+                    result = result.model_copy(update={"assertion_passed": False, "escalate": True})
+                else:
+                    diff_result = compare_to_baseline(
+                        visual_screenshot, step.visual_baseline_key, tolerance=step.visual_diff_tolerance
+                    )
+                    combined_passed = diff_result.passed if result.assertion_passed is not False else False
+                    result = result.model_copy(update={
+                        "assertion_passed": combined_passed,
+                        "visual_diff_ratio": diff_result.diff_ratio,
+                        "visual_diff_image_ref": diff_result.diff_image_path,
+                        "visual_baseline_created": diff_result.baseline_created,
+                    })
 
             aggregator.record_step_result(result)
             if self.on_step_result:

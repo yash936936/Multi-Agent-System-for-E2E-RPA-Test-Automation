@@ -39,6 +39,40 @@ def test_init_non_interactive_writes_config(isolated_project: Path):
     assert config_path.exists()
 
 
+def test_init_env_scaffolds_profile_file(isolated_project: Path):
+    result = runner.invoke(app, ["init", "--yes", "--env", "staging"])
+    assert result.exit_code == 0
+
+    profile_path = isolated_project / ".env.staging"
+    assert profile_path.exists()
+    assert "AURA environment profile: staging" in profile_path.read_text()
+
+
+def test_init_env_does_not_overwrite_existing_profile(isolated_project: Path):
+    profile_path = isolated_project / ".env.staging"
+    profile_path.write_text("AURA_COMPRESSION_MODE=balanced\n")
+
+    result = runner.invoke(app, ["init", "--yes", "--env", "staging"])
+    assert result.exit_code == 0
+    # Untouched -- scaffolding never clobbers a profile someone already edited.
+    assert profile_path.read_text() == "AURA_COMPRESSION_MODE=balanced\n"
+
+
+def test_top_level_env_flag_applies_profile_before_subcommand_runs(isolated_project: Path):
+    (isolated_project / ".env.staging").write_text("AURA_COMPRESSION_MODE=balanced\n")
+
+    result = runner.invoke(app, ["--env", "staging", "skills", "list"])
+    assert result.exit_code == 0
+
+    from config.settings import settings as global_settings
+
+    assert global_settings.env == "staging"
+    assert global_settings.compression_mode == "balanced"
+
+    # Clean up so this doesn't leak into other tests sharing the process-wide singleton.
+    global_settings.reload_profile(None)
+
+
 def test_skills_list_empty(isolated_project: Path):
     result = runner.invoke(app, ["skills", "list"])
     assert result.exit_code == 0
@@ -109,10 +143,12 @@ def test_execute_prompt_runs_fully_unattended(monkeypatch, tmp_path):
 
     calls = {}
 
-    def fake_run(requirement_text, display_source, auto_approve, refresh_data, export_pdf, scroll_test=False, ui_audit=False):
+    def fake_run(requirement_text, display_source, auto_approve, refresh_data, export_pdf, scroll_test=False, ui_audit=False, junit_out=None, junit_suite_collector=None):
         calls["requirement_text"] = requirement_text
         calls["auto_approve"] = auto_approve
         calls["scroll_test"] = scroll_test
+        calls["junit_out"] = junit_out
+        return None  # execute_prompt just forwards this return value; real callers get a RunReport
 
     monkeypatch.setattr(execute_cmd, "_run_requirement_text", fake_run)
 
@@ -122,3 +158,20 @@ def test_execute_prompt_runs_fully_unattended(monkeypatch, tmp_path):
     assert "navigate to https://example.com" in calls["requirement_text"]
     assert "Check the homepage loads correctly" in calls["requirement_text"]
     assert calls["scroll_test"] is True
+    assert calls["junit_out"] is None
+
+
+def test_execute_prompt_forwards_junit_out(monkeypatch):
+    # Phase G2 (decisions.md D-026): confirm --junit-out actually reaches
+    # _run_requirement_text rather than being silently dropped anywhere
+    # along execute_prompt's forwarding chain.
+    from aura.cli import execute_cmd
+
+    calls = {}
+
+    def fake_run(requirement_text, display_source, auto_approve, refresh_data, export_pdf, scroll_test=False, ui_audit=False, junit_out=None, junit_suite_collector=None):
+        calls["junit_out"] = junit_out
+
+    monkeypatch.setattr(execute_cmd, "_run_requirement_text", fake_run)
+    execute_cmd.execute_prompt("Check the homepage loads correctly", junit_out="/tmp/results.xml")
+    assert calls["junit_out"] == "/tmp/results.xml"

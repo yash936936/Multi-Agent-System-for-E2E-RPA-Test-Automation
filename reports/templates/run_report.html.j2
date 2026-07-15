@@ -67,6 +67,18 @@
   {% if r.assertion_passed is not none %}
     <div class="muted">assertion: {{ 'passed ✓' if r.assertion_passed else 'failed ✗' }}</div>
   {% endif %}
+  {% if r.visual_diff_ratio is not none %}
+    {% if r.visual_baseline_created %}
+    <div class="muted">visual regression: baseline created (first run for this key)</div>
+    {% else %}
+    <div class="muted">visual regression: {{ 'passed ✓' if r.visual_diff_ratio is not none and not r.visual_diff_image_ref else 'diff detected ✗' }} ({{ '%.2f' % (r.visual_diff_ratio * 100) }}% of pixels differ)</div>
+    {% endif %}
+    {% if r.visual_diff_image_ref %}
+    <div class="screens">
+      <img src="{{ r.visual_diff_image_ref }}" alt="step {{ r.step_id }} visual diff (amplified)">
+    </div>
+    {% endif %}
+  {% endif %}
   {% if r.screenshot_ref %}
   <div class="screens">
     <img src="{{ r.screenshot_ref }}" alt="step {{ r.step_id }} screenshot">

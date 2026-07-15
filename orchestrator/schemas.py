@@ -125,6 +125,15 @@ class TestStep(BaseModel):
     # bot_validation_group (the common case for every other capability
     # check) are unaffected and behave exactly as before.
     bot_validation_group: Optional[str] = None
+    # Phase G3 (decisions.md D-027) -- opt-in real pixel-diff visual
+    # regression, independent of and additive to the existing OCR-text
+    # `expected_state` assertion. When set, RunEngine compares this step's
+    # post-action screenshot against the persisted baseline for this key
+    # (agents/vision/visual_regression.py) after the step's normal action
+    # completes. None (the default) means "not checked" -- every existing
+    # step/spec is completely unaffected.
+    visual_baseline_key: Optional[str] = None
+    visual_diff_tolerance: float = 0.02
 
     @field_validator("capability_type")
     @classmethod
@@ -196,6 +205,13 @@ class VisionActionResult(BaseModel):
     # ReportAggregator's raw_results.json without ReportAggregator itself
     # needing to know about adapters yet.
     capability_result: Optional[CapabilityCheckResult] = None
+    # Phase G3 (decisions.md D-027) -- populated only when the originating
+    # TestStep had visual_baseline_key set. None means "not checked,"
+    # matching capability_result's own "only populated when relevant"
+    # convention above.
+    visual_diff_ratio: Optional[float] = None
+    visual_diff_image_ref: Optional[str] = None
+    visual_baseline_created: Optional[bool] = None
 
 
 # --------------------------------------------------------------------------

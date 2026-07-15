@@ -843,3 +843,198 @@ name) to avoid ambiguity; unifying them into one shared class is a
 reasonable follow-up but is a broader refactor than this bug-fix pass, and
 touches enough call sites across the codebase that it deserves its own
 decision entry rather than being bundled in here.
+
+## D-025 — Phase G1: environment-profile management
+
+**Decided:** 2026-07-14
+**Context:** part of the gap-review-derived remediation plan (Phases G–M),
+G1 covers "environment-profile management (dev/staging/prod configs)" —
+`config/settings.py` previously had no concept of named environments, only
+one flat `.env` per process.
+**Note on how this entry came to be written:** the actual G1 implementation
+(`config/settings.py`'s `_resolve_env_files`/`reload_profile`,
+`aura/main.py`'s `--env` callback, `aura/cli/init_cmd.py`'s
+`scaffold_env_profile`, and `tests/test_env_profiles.py`/`tests/test_settings.py`,
+13 passing tests) was found already written and working in the codebase,
+complete with in-code comments referencing "Phase G1" and this decision
+number — but this decisions.md entry, and the corresponding STATUS.md/
+progress.md updates, had never actually been written. Per `docs/debug.md`'s
+own rule against letting docs drift from code, this entry closes that gap
+rather than re-implementing already-correct work. Re-verified by reading
+the actual code and re-running its tests before writing this entry, not by
+trusting the in-code comments' claims at face value.
+**What it does:**
+- `.env` always loads first (base config); `.env.<profile>` (if it exists)
+  loads second and overrides on any key it also sets — pydantic-settings'
+  own later-file-wins semantics, not custom merge logic.
+- `AURA_ENV` env var or `aura --env <name> <command>` selects the active
+  profile. A profile with no matching `.env.<profile>` file is not an
+  error — it's treated as "nothing to override," so a typo in the profile
+  name degrades gracefully rather than crashing (and is debuggable via
+  `settings.env`, which reports which profile actually got applied).
+- `Settings.reload_profile()` mutates the existing module-level `settings`
+  singleton's fields in place, rather than rebinding the module attribute
+  to a new object — necessary because dozens of modules already did
+  `from config.settings import settings` at their own import time, binding
+  a reference to the original object; rebinding the module attribute alone
+  wouldn't reach any of those already-bound references.
+- `aura init --env <name>` scaffolds a starting `.env.<name>` file with
+  every base-`.env` key present as a commented-out placeholder (guidance on
+  what *can* be overridden) rather than either an empty file or a full
+  live copy (which would silently duplicate secrets like
+  `AURA_TESSERACT_CMD` into a second file people forget exists).
+**Verification (this pass):** re-ran `tests/test_env_profiles.py` +
+`tests/test_settings.py` (13/13 passing) and did a live smoke test —
+`python -m aura.main init --yes --env smoketest` — confirmed it writes a
+correct placeholder file and doesn't touch the base `.env`.
+**Not done:** README.md's Configuration section doesn't yet document
+`--env`/`AURA_ENV`/`.env.<profile>` — fixed in this same pass alongside
+this entry (see progress.md).
+
+## D-026 — Phase G2: CI/CD-native mode (JUnit XML output, documented exit codes)
+
+**Decided:** 2026-07-14
+**Context:** "no CI/CD-native mode" gap from the same remediation review as
+G1 -- no structured test-report format for CI consumption, no documented
+exit-code contract.
+**Note on how this entry came to be written:** `reports/junit.py` (the
+core render module -- `build_testsuite_element`, `render_junit`,
+`render_junit_suites`) was already written, complete, and referencing this
+decision number in its own comments, but was never actually wired into
+the CLI (no `--junit-out` flag existed anywhere), had zero test coverage,
+and this decision entry didn't exist. This pass finished the wiring, wrote
+the missing tests, and found (and fixed) a real latent bug in the
+already-written module while doing so -- see below.
+**What it does:**
+- `aura execute <test_id|--all|--url|--prompt> --junit-out <path>` writes
+  a standard JUnit XML `<testsuites>/<testsuite>/<testcase>` structure.
+  One `<testcase>` per step; a step is a JUnit failure if
+  `assertion_passed is False` or it was escalated with no resolution.
+  Steps with no assertion configured (`assertion_passed is None`) are not
+  failures on their own.
+- `--all` produces one combined file: each spec contributes its own
+  `<testsuite>` element (via `build_testsuite_element`), collected across
+  the batch loop and written once at the end via `render_junit_suites` --
+  not one file per spec silently overwriting the same `--junit-out` path
+  in turn.
+- **Exit-code convention, now actually documented and enforced** (was
+  previously undefined -- `aura execute` always exited 0 regardless of run
+  outcome, confirmed by reading the code before this pass): 0 = every spec
+  run this invocation PASSED or PASSED_WITH_HEALING; 1 = at least one spec
+  FAILED or was ESCALATED, or the invocation couldn't start a run at all.
+  `execute_test`/`execute_prompt`/`execute_url` now return the `RunReport`
+  instead of `None` so `aura/main.py`'s `_exit_nonzero_if_failed()` can
+  check it. `--interactive` mode is explicitly excluded from this (it's a
+  live human-wait flow, not a CI-suitable one) -- not an oversight.
+- Real bug found and fixed while adding test coverage: the pre-existing
+  `build_testsuite_element` checked `step.get("healed_via", "")` to decide
+  whether to note a step as self-healed, but `VisionActionResult` (the
+  actual schema every entry in `step_results` is built from) has no
+  `healed_via` field at all, and `ReportAggregator` doesn't thread which
+  specific `step_id` a learned skill corrected into `step_results` either
+  -- this branch could never fire, ever, on real data; it silently read
+  the `""` default every single time. Fixed by removing the false
+  per-step attribution and instead noting self-healing honestly at the
+  `<testsuite>` level via `RunReport.self_healed_steps`, the one place
+  this count is actually tracked correctly. This is the same class of bug
+  as D-017's `db_adapter`/`cross_modal_diagnoser` finding: a field
+  referenced by name in one module that was never actually populated by
+  the module that was supposed to produce it -- a contract mismatch
+  invisible to either file's own internal logic.
+**Verification:** 10 new tests in `tests/test_junit.py` (unit-level,
+against real on-disk `raw_results.json` fixtures matching
+`report_aggregator.py`'s actual output shape, not a mocked-away version of
+it) plus 2 live end-to-end CLI runs against the real example spec --
+single-spec `--junit-out` and `--all --junit-out` combined-suite mode both
+confirmed to produce valid, correctly-structured XML and the documented
+exit code (1, since the live run escalated for the same pre-existing
+sandbox reason noted throughout this log -- no Chromium binary reachable
+here). Full suite: 351 passing (up from 343), same pre-existing 9
+sandbox-only Playwright/Chromium failures, zero new regressions.
+**Not done:** the documented GitHub Actions example workflow template
+(`.github/workflows/aura-example.yml`) from the original Phase G plan
+wasn't added this pass -- the JUnit output itself (the part CI actually
+consumes) was the higher-value item to land and verify first. Flagged as
+a small, low-risk follow-up, not silently dropped.
+
+## D-027 — Phase G3: real pixel-diff visual regression testing
+
+**Decided:** 2026-07-14
+**Context:** "visual regression is a hash-diff, not a real diff" gap --
+`runtime/hooks/capture.py`'s `file_hash` only ever answered "did the
+screen change" (boolean), with no quantified diff, no baseline
+versioning, no diff visualization. Built from scratch this pass (unlike
+G1/G2, no prior partial implementation existed for this one).
+**What it does:**
+- New `agents/vision/visual_regression.py::compare_to_baseline()` --
+  Pillow `ImageChops.difference` + a numpy-vectorized pixel count (numpy
+  isn't a declared direct dependency, but is a hard transitive dependency
+  of `opencv-python-headless`, which is declared, so it's guaranteed
+  present; a pure-Python per-pixel loop would be too slow on a real
+  1080p+ screenshot). Returns a real `diff_ratio` (fraction of pixels that
+  differ in any RGB channel), not just a boolean.
+- **Deliberately separate from, not a replacement for**,
+  `capture.py`'s `file_hash` (still used exactly as before for the
+  `WAIT_FOR_HUMAN_ACTION` polling loop, where a cheap boolean is genuinely
+  the right tool) and `assertions.py`'s OCR text matching (a different
+  question -- "does this text appear" vs. "does this look the same as
+  last time"). Three mechanisms, three different questions, none
+  redundant with the others.
+- **Persisted baselines, deliberately NOT gitignored.** `runtime/baselines/`
+  is the one subdirectory of `runtime/` that is meant to be committed --
+  a visual-regression baseline that isn't shared across machines/CI
+  defeats the entire point (every fresh checkout would see "no baseline
+  yet" and silently treat the first run as automatically passing,
+  catching nothing). `.gitignore` was deliberately left unchanged for
+  this directory (only a `.gitkeep` added); `screenshots/`/`data_cache/`
+  remain gitignored as before since those genuinely are per-run ephemeral
+  state, not shared fixtures.
+- **New, additive-only schema fields** -- `TestStep.visual_baseline_key`
+  (`Optional[str] = None`) and `TestStep.visual_diff_tolerance`
+  (`float = 0.02` default), `VisionActionResult.visual_diff_ratio`/
+  `visual_diff_image_ref`/`visual_baseline_created`. Every existing
+  spec/step/test is completely unaffected -- the feature is entirely
+  opt-in per step.
+- **Wired into `orchestrator/run_engine.py`** immediately after the
+  existing OCR `expected_state` check, with an explicit combining rule: if
+  the OCR assertion already failed, a passing visual diff doesn't revive
+  `assertion_passed` back to `True`; otherwise the visual diff's own
+  verdict decides it. A failing visual diff does **not** force
+  `escalate=True` (matches the existing OCR-assertion-failure path's own
+  behavior -- only a failed screenshot *capture* escalates, since that's
+  an infra failure, not an assertion failure).
+- First comparison for a given `visual_baseline_key` creates the baseline
+  and reports success with `baseline_created=True` -- never fabricates a
+  pass/fail verdict against a baseline that doesn't exist yet, matching
+  `cloud_adapter.py`'s established honesty convention (D-017).
+- Dimension mismatch (baseline and current screenshot are different
+  sizes) is reported as a full failure (`diff_ratio=1.0`,
+  `dimension_mismatch=True`), not silently resized/padded to compare
+  anyway -- resizing would paper over a potentially real, meaningful
+  layout change.
+- Persisted diff-highlight image (`runtime/baselines/<key>_diff_latest.png`,
+  amplified 8x so a real but visually subtle pixel delta is actually
+  visible to a human, not near-black and easy to miss) is only written on
+  a failing comparison, matching the "don't clutter storage with evidence
+  for the common case" pattern `capture.py` already uses for its own hash
+  check.
+- `reports/templates/run_report.html.j2` gets a new conditional panel per
+  step showing the diff percentage and, on failure, the amplified diff
+  image -- alongside the existing screenshot panel, not replacing it.
+**Verification:** 7 unit tests (`tests/test_visual_regression.py`,
+synthetic Pillow images with deliberate, known pixel changes -- identical
+image, small change under tolerance, large change over tolerance,
+dimension mismatch, baseline-key filesystem sanitization) plus 2 real
+end-to-end integration tests through `RunEngine.run_spec()`
+(`tests/test_run_engine.py`) proving `TestStep.visual_baseline_key`
+actually reaches `compare_to_baseline()` through the full pipeline, not
+just as an isolated unit. Full suite: 351 passing, zero regressions (same
+run as D-026's verification, both landed in one pass).
+**Not done:** a per-channel/perceptual difference threshold (vs. the
+current "any channel differs at all" strict comparison) -- flagged in the
+module's own docstring as a reasonable future refinement, not implemented
+here. No CLI command for reviewing/approving a new baseline when a
+legitimate UI change causes an expected diff (today, deleting the file
+under `runtime/baselines/` and re-running is the only way to reset one) --
+a `aura baselines approve <key>` command would be a natural, small
+follow-up.

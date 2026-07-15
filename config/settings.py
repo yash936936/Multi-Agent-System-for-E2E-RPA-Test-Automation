@@ -7,6 +7,7 @@ values already specified in the design docs (TRD.md, PRD.md).
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -54,13 +55,58 @@ class GuardrailSettings(BaseSettings):
 _PROJECT_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 
+def _resolve_env_files(profile: str | None, base_env_file: Path = None) -> tuple[Path, ...]:
+    """
+    Phase G1 (decisions.md D-025): environment-profile support. Base `.env`
+    always loads first; `.env.<profile>` (if it exists) loads second and
+    wins on any key it also sets -- pydantic-settings applies later files
+    in `env_file` with higher priority, so this is a genuine override
+    layer, not a full replacement of the base file. A profile with no
+    matching `.env.<profile>` file is not an error -- it just means
+    "nothing to override," so a typo in the profile name silently falls
+    back to base-only behavior rather than crashing. (Documented, not
+    hidden: `Settings.env_profile` below reports which profile, if any,
+    was actually applied, so `aura --env typo ...` is debuggable.)
+
+    base_env_file defaults to the fixed project-root .env (used at class
+    definition time, before any Settings instance -- and therefore no
+    project_root override -- exists yet). Settings.reload_profile() passes
+    self.project_root / ".env" explicitly instead, so a project_root
+    overridden in tests (or via AURA_PROJECT_ROOT) is respected on reload
+    too, rather than reload always looking next to this source file.
+    """
+    base = base_env_file if base_env_file is not None else _PROJECT_ENV_FILE
+    files: list[Path] = [base]
+    if profile:
+        profile_file = base.parent / f".env.{profile}"
+        if profile_file.exists():
+            files.append(profile_file)
+    return tuple(files)
+
+
+# Read AURA_ENV directly from the process environment (not via a pydantic
+# field) at *module import time*, because pydantic-settings needs the
+# env_file list decided before the Settings class is even defined --
+# there's no way to make env_file itself depend on a field of the class
+# it configures. Settings.env below still exposes this normally as a
+# regular field for introspection/consistency once the class exists.
+_INITIAL_ENV_PROFILE = os.environ.get("AURA_ENV") or None
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="AURA_",
-        env_file=str(_PROJECT_ENV_FILE),
+        env_file=_resolve_env_files(_INITIAL_ENV_PROFILE),
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    # --- environment profile (Phase G1, decisions.md D-025) ---
+    # Maps to AURA_ENV. Populated from whichever profile was actually
+    # resolved at construction time (see _resolve_env_files) -- exposed as
+    # a real field so `aura --env staging ...`/settings.env_profile is
+    # introspectable rather than only living in a module-level variable.
+    env: str | None = Field(default=None)
 
 
     # --- root paths ---
@@ -77,6 +123,15 @@ class Settings(BaseSettings):
     @property
     def data_cache_dir(self) -> Path:
         return self.runtime_dir / "data_cache"
+
+    @property
+    def baselines_dir(self) -> Path:
+        # Phase G3 (decisions.md D-027): stored visual-regression baseline
+        # images, one per baseline_key, persisted across runs (unlike
+        # screenshots_dir, which is per-run). Lives under runtime/ since
+        # it's local generated state, not source -- same category as
+        # screenshots/data_cache, gitignored the same way.
+        return self.runtime_dir / "baselines"
 
     @property
     def reports_dir(self) -> Path:
@@ -220,6 +275,34 @@ class Settings(BaseSettings):
             if bundled is not None:
                 self.local_llm_model_path = str(bundled)
         return self
+
+    def reload_profile(self, profile: str | None) -> None:
+        """
+        Phase G1 (decisions.md D-025): switches the active environment
+        profile *after* the module-level `settings` singleton already
+        exists -- used by `aura --env <name> <command>` (aura/main.py's
+        top-level callback runs before any subcommand). Deliberately
+        mutates every field on `self` in place rather than reassigning
+        the module-level `settings` name to a new object: dozens of
+        modules already did `from config.settings import settings` at
+        their own import time, which binds a reference to this exact
+        object -- rebinding the module attribute wouldn't update any of
+        those already-bound references, but mutating the object every
+        one of them points to does.
+        """
+        os.environ["AURA_ENV"] = profile or ""
+        if not profile:
+            os.environ.pop("AURA_ENV", None)
+
+        type(self).model_config = SettingsConfigDict(
+            env_prefix="AURA_",
+            env_file=_resolve_env_files(profile, self.project_root / ".env"),
+            env_file_encoding="utf-8",
+            extra="ignore",
+        )
+        fresh = Settings(project_root=self.project_root)
+        for field_name in type(self).model_fields:
+            setattr(self, field_name, getattr(fresh, field_name))
 
     def ensure_dirs(self) -> None:
         """Create all runtime/output directories if they don't exist yet."""

@@ -111,12 +111,15 @@ Two things from AURA's original design should carry through every phase above, n
 
 ---
 
-## 6. Phase 20 (proposed, not started) — Navigation redesign + observability, from external reference research
+## 6. Phase 20 (delivered as Phase C, 2026-07-14) — Navigation redesign + observability, from external reference research
 
 Backed by verified research across 18 external repos, 6 batches, documented
-in full in `docs/external_repos.md`. Status: **proposed only** — nothing in
-this phase is implemented. See `docs/TRD.md` §10 for the full technical
-design.
+in full in `docs/external_repos.md`. **Status: delivered.** Implemented as
+"Phase C" in the A–E remediation roadmap (§8 below) — see `docs/decisions.md`
+D-019 for the actual implementation record. `docs/TRD.md` §10 documents the
+technical design this phase implemented (note: as of this Roadmap.md pass,
+TRD.md §10's own status line is a known separate staleness gap, still
+reading "proposed" — flagged for a follow-up doc pass, not yet fixed here).
 
 - **20a. Playwright-first element resolution + Scrapling-style DOM self-heal**
   for browser targets, UI-TARS-style coordinate normalization retained as the
@@ -194,9 +197,14 @@ their technical design, which stays in TRD.md §10/§11.
   **DONE, 2026-07-13** — see `decisions.md` D-018. `AnthropicBackend` and
   `settings.allow_network_calls` removed entirely (not disabled). The
   Planner now has exactly two backends: `heuristic` and `local_llm`.
-- **Phase C — Playwright interaction layer.** Not started. Same work as
-  §6 Phase 20 above (20a/20b specifically). This is now the largest
-  remaining item in this roadmap.
+- **Phase C — Playwright interaction layer.** ✅ **DONE, 2026-07-14** — see
+  `decisions.md` D-019. Same work as §6 Phase 20 above (20a/20b). Playwright
+  is now the primary interaction/self-heal path for browser targets
+  (`runtime/hooks/browser.py`, `agents/vision/dom_locator.py`,
+  `runtime/hooks/interact.py`'s `dom_*` primitives), with the OCR/pixel
+  pipeline retained as the fallback for non-browser targets.
+  `link_checker.py` gained a Playwright-render fallback for client-rendered
+  pages.
 - **Phase D — Offline hardening & API boundary.** ✅ **DONE, 2026-07-14**
   — see `decisions.md` D-020. Added the hard kill-switch
   (`settings.capability_adapters_enabled`) and egress allowlist

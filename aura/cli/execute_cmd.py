@@ -29,8 +29,9 @@ from aura.tui import live_view
 from config.settings import settings
 from orchestrator.memory import RunMemoryStore
 from orchestrator.run_engine import RunEngine
-from orchestrator.schemas import RequirementInput, TestStep, VisionActionResult
+from orchestrator.schemas import RequirementInput, RunReport, TestStep, VisionActionResult
 from orchestrator.skill_store import SkillStore
+from reports.junit import render_junit
 from reports.render import render_html, render_pdf
 from runtime.hooks.browser import normalize_url
 
@@ -98,7 +99,8 @@ def execute_prompt(
     export_pdf: bool = False,
     scroll_test: bool = False,
     ui_audit: bool = False,
-) -> None:
+    junit_out: str | None = None,
+) -> "RunReport":
     """
     `aura execute --prompt "<plain English>"` -- fully unattended: the
     person described intent, not a step-by-step spec, so there's no
@@ -109,7 +111,7 @@ def execute_prompt(
     requirement_text = prompt
     if url:
         requirement_text = f"Given: navigate to {normalize_url(url)}\n\n" + requirement_text
-    _run_requirement_text(
+    return _run_requirement_text(
         requirement_text,
         display_source="(prompt)",
         auto_approve=True,
@@ -117,6 +119,7 @@ def execute_prompt(
         export_pdf=export_pdf,
         scroll_test=scroll_test,
         ui_audit=ui_audit,
+        junit_out=junit_out,
     )
 
 
@@ -127,7 +130,8 @@ def execute_url(
     export_pdf: bool = False,
     scroll_test: bool = False,
     ui_audit: bool = False,
-) -> None:
+    junit_out: str | None = None,
+) -> "RunReport":
     """
     `aura execute --url <url>` with no test_id/spec file: the "just give
     me a target URL and run a QA test" fast path. Synthesizes a minimal
@@ -136,7 +140,7 @@ def execute_url(
     downstream behavior (healing, skills, reporting) is special-cased.
     """
     requirement_text = _build_url_smoke_requirement(url)
-    _run_requirement_text(
+    return _run_requirement_text(
         requirement_text,
         display_source=f"(auto-generated smoke test for {url})",
         auto_approve=auto_approve,
@@ -144,6 +148,7 @@ def execute_url(
         export_pdf=export_pdf,
         scroll_test=scroll_test,
         ui_audit=ui_audit,
+        junit_out=junit_out,
     )
 
 
@@ -226,7 +231,9 @@ def execute_test(
     url: str | None = None,
     scroll_test: bool = False,
     ui_audit: bool = False,
-) -> None:
+    junit_out: str | None = None,
+    junit_suite_collector: list | None = None,
+) -> RunReport:
     # --- §2.2: ingest requirement, generate spec for preview ---
     req_path = _find_requirement_file(test_id)
     requirement_text = req_path.read_text(encoding="utf-8")
@@ -238,7 +245,7 @@ def execute_test(
         # Same scheme-normalization as _build_url_smoke_requirement: a
         # bare domain here would silently fail to match _NAVIGATE_PATTERNS.
         requirement_text = f"Given: navigate to {normalize_url(url)}\n\n" + requirement_text
-    _run_requirement_text(
+    return _run_requirement_text(
         requirement_text,
         display_source=str(req_path),
         auto_approve=auto_approve,
@@ -246,6 +253,8 @@ def execute_test(
         export_pdf=export_pdf,
         scroll_test=scroll_test,
         ui_audit=ui_audit,
+        junit_out=junit_out,
+        junit_suite_collector=junit_suite_collector,
     )
 
 
@@ -257,7 +266,9 @@ def _run_requirement_text(
     export_pdf: bool = False,
     scroll_test: bool = False,
     ui_audit: bool = False,
-) -> None:
+    junit_out: str | None = None,
+    junit_suite_collector: list | None = None,
+) -> RunReport:
     console = live_view.console
 
     spec = planner_generate_spec(RequirementInput(requirement_text=requirement_text))
@@ -374,6 +385,23 @@ def _run_requirement_text(
         except RuntimeError as e:
             console.print(f"[yellow]{e}[/yellow]")
 
+    # Phase G2 (decisions.md D-026): JUnit XML output for CI consumption.
+    # result.report.report_paths["raw_json"] is already populated by
+    # ReportAggregator.finalize() (called inside engine.run() above, before
+    # this point) -- render_junit doesn't need to wait for render_html.
+    # `junit_suite_collector` (set only by `aura execute --all`) takes
+    # priority over `junit_out`: in batch mode each spec contributes one
+    # <testsuite> element to a single combined file written once after the
+    # whole loop, rather than each spec silently overwriting the same
+    # `--junit-out` path in turn.
+    if junit_suite_collector is not None:
+        from reports.junit import build_testsuite_element
+
+        junit_suite_collector.append(build_testsuite_element(result.report, suite_name=display_source))
+    elif junit_out:
+        junit_path = render_junit(result.report, out_path=junit_out)
+        console.print(f"JUnit XML: {junit_path}")
+
     live_view.render_run_summary(result.report)
 
     # --- §2.7: surface any new escalations ---
@@ -381,3 +409,5 @@ def _run_requirement_text(
     if pending:
         console.print()
         live_view.render_escalation_queue(pending)
+
+    return result.report

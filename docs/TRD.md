@@ -210,14 +210,17 @@ Beyond the vision-only flow above, a `TestStep` may carry `action: "capability_c
 
 The offline-first posture in §7 applies to the original Vision/Planner/DataSynth path. The capability adapters above are, by design, network- or filesystem-facing (that's their purpose) — each one is explicit about what it connects to via `params`, and none defaults to acting without a configured target. `db_adapter` and `cloud_adapter` default to read/detect-only operations rather than mutating the systems they check.
 
-## 10. Proposed: Navigation & Self-Healing Redesign from External Reference Research
+## 10. Delivered: Navigation & Self-Healing Redesign from External Reference Research
 
-**Status: proposed / not yet implemented.** This section documents a design
-direction backed by verified research into external repos
-(`docs/external_repos.md`, all 6 batches), to be implemented against Task 3
-of the doc-reorg/research work. Nothing in this section is live code yet —
-treat every claim below as "planned," not "current," until `docs/STATUS.md`
-says otherwise.
+**Status: delivered, 2026-07-14.** This section originally documented a
+proposed design direction backed by verified research into external repos
+(`docs/external_repos.md`, all 6 batches); it was implemented as "Phase C"
+of the A–E remediation roadmap — see `docs/decisions.md` D-019 and
+`docs/Roadmap.md` §6/§8 for the implementation record. The design below is
+now current, not aspirational (found stale — still reading "proposed" —
+during a `docs/debug.md`-motivated documentation consistency pass on
+2026-07-14, well after the actual implementation had already landed and
+been recorded elsewhere in `decisions.md`/`STATUS.md`; fixed here to match).
 
 **Finding:** three independent external projects — Playwright/playwright-mcp
 (`browser_snapshot`/`browser_click`), `vercel-labs/agent-browser` (`@eN`

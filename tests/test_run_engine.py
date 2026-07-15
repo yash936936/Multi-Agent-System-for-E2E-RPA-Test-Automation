@@ -9,6 +9,7 @@ pipeline, not just as isolated unit-tested pieces.
 """
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -88,7 +89,75 @@ def test_run_engine_persists_resumable_run_state(tmp_dir: Path):
     assert resume_point == 4  # last step completed
 
 
-def test_run_engine_escalates_when_target_never_appears(tmp_dir: Path):
+def test_run_engine_visual_regression_first_run_creates_baseline(tmp_dir: Path, monkeypatch):
+    # Phase G3 (decisions.md D-027): end-to-end proof that
+    # TestStep.visual_baseline_key actually reaches
+    # agents/vision/visual_regression.compare_to_baseline via RunEngine,
+    # not just a unit test of the module in isolation.
+    from config.settings import settings
+    from orchestrator.schemas import ActionType, TestSpec, TestStep
+
+    monkeypatch.setattr(settings, "project_root", tmp_dir)
+
+    spec = TestSpec(
+        test_id="TC-VISUAL-001",
+        requirement_ref="visual regression smoke test",
+        steps=[
+            TestStep(
+                step_id=1, action=ActionType.VISUAL_CLICK,
+                target_description="Login button",
+                visual_baseline_key="login_screen_g3_test",
+            ),
+        ],
+    )
+    skill_store = SkillStore(db_path=tmp_dir / "skills.db")
+    memory = RunMemoryStore(db_path=tmp_dir / "memory.db")
+    engine = RunEngine(screenshot_provider=make_provider(tmp_dir), skill_store=skill_store, memory=memory)
+
+    result = engine.run_spec(spec, run_id="visual_regression_run")
+
+    raw_results = json.loads(Path(result.report.report_paths["raw_json"]).read_text())
+    step_1 = raw_results["step_results"][0]
+    assert step_1["visual_baseline_created"] is True
+    assert step_1["visual_diff_ratio"] == 0.0
+    assert (settings.baselines_dir / "login_screen_g3_test.png").exists()
+
+
+def test_run_engine_visual_regression_second_run_compares_against_baseline(tmp_dir: Path, monkeypatch):
+    from config.settings import settings
+    from orchestrator.schemas import ActionType, TestSpec, TestStep
+
+    monkeypatch.setattr(settings, "project_root", tmp_dir)
+
+    spec = TestSpec(
+        test_id="TC-VISUAL-002",
+        requirement_ref="visual regression smoke test",
+        steps=[
+            TestStep(
+                step_id=1, action=ActionType.VISUAL_CLICK,
+                target_description="Login button",
+                visual_baseline_key="login_screen_g3_test_2",
+            ),
+        ],
+    )
+    skill_store = SkillStore(db_path=tmp_dir / "skills.db")
+    memory = RunMemoryStore(db_path=tmp_dir / "memory.db")
+    provider = make_provider(tmp_dir)
+    engine = RunEngine(screenshot_provider=provider, skill_store=skill_store, memory=memory)
+
+    # First run creates the baseline from whatever screen the provider shows at step 1 ("initial").
+    engine.run_spec(spec, run_id="visual_run_a")
+
+    # Second run against the exact same screenshot -- should compare clean, zero diff.
+    result_b = engine.run_spec(spec, run_id="visual_run_b")
+    raw_results_b = json.loads(Path(result_b.report.report_paths["raw_json"]).read_text())
+    step_1_b = raw_results_b["step_results"][0]
+    assert step_1_b["visual_baseline_created"] is False
+    assert step_1_b["visual_diff_ratio"] == 0.0
+    assert step_1_b["assertion_passed"] is not False  # a clean visual match shouldn't fail the step
+
+
+
     """
     If the screenshot provider never shows the expected UI (simulating a
     genuinely broken app), every step should escalate through the healing

@@ -9,6 +9,35 @@ project: AURA
 
 ---
 
+## 2026-07-14 (later same day) — Phases G1–G3: environment profiles, CI/CD JUnit output, real visual regression
+
+**What happened:**
+- Worked through the first three phases of the second remediation roadmap (Phases G–M, derived from a code-verified gap analysis against a full-featured autonomous QA agent checklist). Full detail in `decisions.md` D-025 (G1), D-026 (G2), D-027 (G3).
+- **G1 (environment profiles) and G2 (CI/CD JUnit output)** were found already partially/fully implemented from earlier in this same work session, but undocumented — and for G2, not actually wired into the CLI, with zero test coverage. Verified G1's existing code and tests were genuinely correct (13/13 passing, live `aura init --env` smoke test), then wrote the two missing `decisions.md` entries.
+- **G2** needed real finishing work: added `--junit-out` to `aura execute` (single-spec and `--all` combined-suite modes), threaded `RunReport` return values back through `execute_test`/`execute_prompt`/`execute_url` (previously all returned `None`), and gave `aura execute` its first-ever documented, enforced exit-code convention (0 = all passed, 1 = any failed/escalated — previously the CLI always exited 0 no matter what happened). Wrote 10 new tests for the previously-untested `reports/junit.py`, and while writing them, **found a real bug**: the module's self-heal detection read `step.get("healed_via", "")`, but `VisionActionResult` has no such field — that branch was permanently dead code on real data. Fixed by reporting self-healing honestly at the `<testsuite>` level via `RunReport.self_healed_steps` (the field that's actually populated correctly) instead of falsely attributing it to one testcase.
+- **G3 (real pixel-diff visual regression)** built from scratch: `agents/vision/visual_regression.py::compare_to_baseline()`, using Pillow + a numpy-vectorized diff (numpy is a guaranteed transitive dependency of the already-declared `opencv-python-headless`). New opt-in `TestStep.visual_baseline_key`/`visual_diff_tolerance` fields, new `VisionActionResult.visual_diff_ratio`/`visual_diff_image_ref`/`visual_baseline_created` fields, wired into `run_engine.py` right after the existing OCR assertion check with an explicit AND-style combining rule. Baselines persist under `runtime/baselines/` — deliberately **not** gitignored (unlike `screenshots/`/`data_cache/`), since a visual-regression baseline that isn't shared across machines/CI defeats the entire point of the feature. Report template gained a diff panel.
+- Both phases verified end-to-end, not just unit-tested: live CLI runs (`--junit-out`, `--all --junit-out`) against the real example spec, and two full `RunEngine.run_spec()` integration tests proving `visual_baseline_key` actually reaches the diff module through the real pipeline.
+- Full suite: **351/360 passing** (20 new tests this pass), same 9 pre-existing Playwright/Chromium sandbox-only failures throughout this log, zero new regressions.
+
+**What changed:**
+- `config/settings.py` — `baselines_dir` property added; G1's env-profile machinery documented (already present).
+- `aura/main.py` — `--junit-out` flag, `_exit_nonzero_if_failed()` exit-code enforcement.
+- `aura/cli/execute_cmd.py` — `junit_out`/`junit_suite_collector` params threaded through all entry points; all now return `RunReport`.
+- `reports/junit.py` — self-heal detection bug fixed (see above); otherwise unchanged from its pre-existing implementation.
+- `orchestrator/schemas.py` — `TestStep.visual_baseline_key`/`visual_diff_tolerance`, `VisionActionResult.visual_diff_ratio`/`visual_diff_image_ref`/`visual_baseline_created` (all additive/optional).
+- `orchestrator/run_engine.py` — visual regression check wired in after the OCR assertion block.
+- `agents/vision/visual_regression.py` — new module.
+- `reports/templates/run_report.html.j2` — visual diff panel added.
+- `runtime/baselines/.gitkeep` — new directory, deliberately not gitignored.
+- `tests/test_junit.py` (new, 10 tests), `tests/test_visual_regression.py` (new, 7 tests), `tests/test_run_engine.py` (+2 integration tests), `tests/test_cli.py` (+1 test, 1 existing test's stub fixture updated for the new return-value/kwarg contract).
+- `docs/decisions.md` — D-025, D-026, D-027 added. `docs/README.md` — `--env`/`AURA_ENV` documented (G1 doc gap closed).
+
+**What should happen next:**
+- Remaining Phase G item not done: the example GitHub Actions workflow template — small, low-risk, explicitly flagged rather than silently dropped.
+- Phase H (cross-run trend analytics + flaky-test detection) is next in the roadmap's own sequencing — builds directly on `api/run_store.py`'s existing data, no live external target needed.
+
+---
+
 ## 2026-07-14 (later same day) — Follow-up fix: two more unguarded screenshot-capture sites in explore/ui-audit
 
 **What happened:**
