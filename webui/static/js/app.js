@@ -47,7 +47,7 @@ function toast(message, isError = false) {
 // ---------- Icon injection ----------
 function paintIcons() {
   const map = {
-    dashboard: 'dashboard', runs: 'runs', adapters: 'adapters', commands: 'commands', settings: 'settings',
+    dashboard: 'dashboard', runs: 'runs', adapters: 'adapters', analytics: 'trend', commands: 'commands', settings: 'settings',
   };
   document.querySelectorAll('.nav-item[data-view]').forEach(a => {
     const view = a.dataset.view;
@@ -88,6 +88,7 @@ const VIEW_META = {
   dashboard: { title: 'Dashboard', subtitle: "Real-time visibility into every run, adapter, and capability check." },
   runs: { title: 'Test Runs', subtitle: 'Every run this tenant has queued, executed, or healed.' },
   adapters: { title: 'Adapters', subtitle: "The capability adapters this orchestrator can currently route to." },
+  analytics: { title: 'Analytics', subtitle: 'Pass-rate trends and flaky-test candidates, built on real run history.' },
   commands: { title: 'Commands', subtitle: 'Everything AURA can do from a terminal, in one place.' },
   settings: { title: 'Settings', subtitle: 'Your account and this workspace, at a glance.' },
 };
@@ -102,6 +103,7 @@ function setView(view) {
   location.hash = view;
   if (view === 'runs') loadAllRuns();
   if (view === 'adapters') loadAdapters();
+  if (view === 'analytics') loadAnalytics();
   if (view === 'settings') loadSettings();
   if (view === 'commands') loadCommands();
   if (view === 'dashboard') loadDashboard();
@@ -238,6 +240,41 @@ async function loadAdapters() {
 
 // ---------- Settings ----------
 function loadSettings() { paintUser(); }
+
+// ---------- Analytics (Phase H1/H2) ----------
+async function loadAnalytics() {
+  try {
+    const [flakyData, testsData] = await Promise.all([
+      api('/test-runs/analytics/flaky'),
+      api('/test-runs/analytics/tests'),
+    ]);
+
+    const flaky = flakyData.candidates || [];
+    document.getElementById('flaky-grid').innerHTML = flaky.length
+      ? flaky.map((c, i) => `
+        <div class="card reveal reveal-${(i % 4) + 1}" style="cursor:default;">
+          <div class="badge badge-failed"><span class="dot"></span>flaky</div>
+          <div class="card-title">${escapeHtml(c.test_key)}</div>
+          <div class="card-meta">${c.transitions} pass/fail flips across ${c.total_runs} runs • ${(c.pass_rate * 100).toFixed(0)}% pass rate</div>
+        </div>`).join('')
+      : emptyState('No flaky candidates', 'Tests need a few runs with alternating outcomes before they show up here.');
+
+    const tests = testsData.tests || [];
+    if (!tests.length) {
+      document.getElementById('trend-grid').innerHTML = emptyState('No tracked tests yet', 'Runs submitted with a stable test_id/test_name will show their trend here.');
+      return;
+    }
+    const trends = await Promise.all(tests.map(t => api(`/test-runs/analytics/tests/${encodeURIComponent(t)}`).catch(() => null)));
+    document.getElementById('trend-grid').innerHTML = trends.filter(Boolean).map((t, i) => `
+      <div class="card reveal reveal-${(i % 4) + 1}" style="cursor:default;">
+        <div class="badge ${t.overall_pass_rate === 1 ? 'badge-passed' : t.overall_pass_rate === 0 ? 'badge-failed' : 'badge-running'}"><span class="dot"></span>${(t.overall_pass_rate * 100).toFixed(0)}% pass rate</div>
+        <div class="card-title">${escapeHtml(t.test_key)}</div>
+        <div class="card-meta">${t.total_runs} run${t.total_runs === 1 ? '' : 's'} tracked</div>
+      </div>`).join('');
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
 
 // ---------- Commands reference ----------
 const CLI_COMMANDS = [

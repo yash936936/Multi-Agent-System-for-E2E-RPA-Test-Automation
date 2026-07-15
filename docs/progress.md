@@ -9,6 +9,28 @@ project: AURA
 
 ---
 
+---
+
+## 2026-07-15 — Phases H1–H2: cross-run trend analytics, flaky-test detection + quarantine
+
+**What happened:**
+- Worked through Phases H1/H2 of the second remediation roadmap (Phases G–M). Full detail in `decisions.md` D-028 (H1), D-029 (H2).
+- **H1:** added a `test_key` column to `api/run_store.py`'s `api_runs` SQLite table (with an in-place migration for pre-existing DB files, verified against a hand-built legacy-schema fixture, not just a fresh install), extracted from `spec.test_id`/`spec.test_name` at run-creation time. New `test_history()`, `pass_rate_series()`, `list_tracked_tests()` query methods. New `GET /api/v1/test-runs/analytics/tests` and `GET /api/v1/test-runs/analytics/tests/{test_key}` routes — registered *before* the pre-existing `/{run_id}` catch-all route, since FastAPI matches in registration order and `/analytics/...` would otherwise be swallowed as a bogus run-id lookup (caught this with a dedicated regression test before it could ship broken). New **Analytics** view in the web dashboard (`webui/templates/index.html` + `app.js`), reusing existing card/badge CSS tokens; one new hand-drawn `trend` icon added to `icons.js` in the same iconsax-Linear style as the rest of the set.
+- **H2:** `get_flaky_candidates()` on `ApiRunStore`, built on H1's query layer per the original phase plan. Deliberately transition-based, not just low-pass-rate: wrote and passed dedicated tests proving a consistently-failing test and a test with a single clean regression are both correctly *excluded* from the flaky list (they're "broken" and "regressed," not "flaky"). New `GET /api/v1/test-runs/analytics/flaky` route (`min_runs`/`min_transitions` query params), same route-ordering care as H1.
+- New local `orchestrator/quarantine_store.py` (JSON file, not SQLite — a short, human-readable, rarely-written list) + `aura skills quarantine/unquarantine/quarantined` CLI commands. `aura execute --all` now peeks each requirement doc's test_id via a newly-extracted `agents/planner/spec_generator.py::infer_test_id()` (pulled out of `LocalHeuristicBackend._infer_test_id` so the skip-check and the Planner share one implementation instead of two that could drift) and skips quarantined specs with a visible message; new `--include-quarantined` flag overrides it. If every doc ends up skipped, `--all` now exits 1 with an explicit "nothing ran" message instead of silently reporting success on zero runs.
+- Live end-to-end smoke test: `aura skills quarantine TC-LOGIN-FLOW-001 --reason "flaky demo"` → `aura skills quarantined` (shows it) → `aura execute --all --yes` (skips it, prints the reason, exits 1 since it was the only doc) → `aura skills unquarantine` (removes it) → confirmed clean.
+
+**Tests:** 23 new (`tests/test_run_store_analytics.py` ×11, `tests/test_analytics_api.py` ×5, `tests/test_quarantine.py` ×7). Full suite: **374/383 passing** (was 351 at the start of this pass), same pre-existing 9 sandbox-only Playwright/Chromium failures, zero regressions.
+
+**Docs touched:** `docs/decisions.md` (D-028, D-029), `docs/STATUS.md` (rewritten "where things stand" section), `docs/README.md` (`aura execute --include-quarantined`, `aura skills quarantine/unquarantine/quarantined`, new Analytics API endpoints documented).
+
+**Not done, flagged not silently dropped:**
+- No API/dashboard way to quarantine a test directly (quarantine is CLI-only for now); a human sees a flaky candidate in the Analytics view but has to go run a CLI command to act on it.
+- CLI-side (`aura execute`) trend analytics is a separate, unaddressed gap — `orchestrator/memory.py`'s `run_state` table only retains the latest status per test_id (keyed by `run_id`, overwritten in place), not history across repeated local runs. This pass's analytics is scoped to the API/service-layer surface, which already has the right data shape (fresh `run_id` per submission).
+- Quarantine entries never expire or prompt for re-review.
+
+---
+
 ## 2026-07-14 (later same day) — Phases G1–G3: environment profiles, CI/CD JUnit output, real visual regression
 
 **What happened:**

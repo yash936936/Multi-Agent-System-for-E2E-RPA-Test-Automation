@@ -13,9 +13,40 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
+from orchestrator import quarantine_store
 from orchestrator.skill_store import SkillStore
 
 console = Console()
+
+
+def quarantine_test(test_id: str, reason: str | None = None) -> None:
+    """`aura skills quarantine <test_id>` -- Phase H2. Opt-in only; nothing
+    in this codebase quarantines a test automatically."""
+    quarantine_store.quarantine(test_id, reason=reason)
+    console.print(f"[yellow]Quarantined {test_id}[/yellow]" + (f" -- {reason}" if reason else ""))
+    console.print("[dim]`aura execute --all` will skip it until `aura skills unquarantine` or --include-quarantined.[/dim]")
+
+
+def unquarantine_test(test_id: str) -> None:
+    removed = quarantine_store.unquarantine(test_id)
+    if removed:
+        console.print(f"[green]Unquarantined {test_id}[/green]")
+    else:
+        console.print(f"[dim]{test_id} wasn't quarantined.[/dim]")
+
+
+def list_quarantined() -> None:
+    entries = quarantine_store.list_quarantined()
+    if not entries:
+        console.print("[dim]No tests are quarantined.[/dim]")
+        return
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Test ID")
+    table.add_column("Reason")
+    table.add_column("Quarantined at")
+    for test_id, meta in entries.items():
+        table.add_row(test_id, meta.get("reason") or "-", meta.get("quarantined_at", "-"))
+    console.print(table)
 
 
 def list_skills(app_id: str | None = None) -> None:

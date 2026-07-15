@@ -45,6 +45,25 @@ from orchestrator.schemas import (
 )
 
 
+def infer_test_id(text: str) -> str:
+    """
+    Derives a TC-<SLUG>-001 test_id from a requirement doc's first `#`
+    heading (falling back to "GENERATED"/"FLOW" if none is found).
+
+    Module-level (not just a backend-internal method) so callers that need
+    to know a doc's test_id *without* running the full spec-generation
+    pipeline -- e.g. Phase H2's `aura execute --all` quarantine skip-check,
+    which needs the id before deciding whether to generate a spec at all --
+    can reuse this exact logic instead of re-deriving it with a
+    hand-copied regex that could silently drift out of sync over time.
+    """
+    heading_match = re.search(r"^#+\s*(.+)$", text, re.MULTILINE)
+    base = heading_match.group(1) if heading_match else "GENERATED"
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", base).strip("-").upper()
+    slug = slug[:24] if slug else "FLOW"
+    return f"TC-{slug}-001"
+
+
 class SpecBackend(Protocol):
     def generate(self, requirement_text: str) -> dict:
         """Return a dict shaped like TestSpec (pre-validation)."""
@@ -171,11 +190,7 @@ class LocalHeuristicBackend:
         }
 
     def _infer_test_id(self, text: str) -> str:
-        heading_match = re.search(r"^#+\s*(.+)$", text, re.MULTILINE)
-        base = heading_match.group(1) if heading_match else "GENERATED"
-        slug = re.sub(r"[^A-Za-z0-9]+", "-", base).strip("-").upper()
-        slug = slug[:24] if slug else "FLOW"
-        return f"TC-{slug}-001"
+        return infer_test_id(text)
 
     def _extract_preconditions(self, lines: list[str]) -> list[str]:
         out = []

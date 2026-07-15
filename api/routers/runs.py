@@ -234,6 +234,40 @@ async def list_runs(user: TokenPayload = Depends(get_current_user)):
     return run_store.list(user.tenant_id)
 
 
+# --- Phase H1/H2: trend analytics + flaky-test detection --------------------
+# Registered ahead of the /{run_id} catch-all below -- FastAPI matches routes
+# in registration order, so "/analytics/..." would otherwise be swallowed as
+# a run_id lookup and always 404.
+
+@router.get("/analytics/tests", dependencies=[Depends(require_role(["admin", "executor", "viewer"]))])
+async def list_tracked_tests(user: TokenPayload = Depends(get_current_user)):
+    """Every test_key with at least one completed run, for this tenant."""
+    return {"tests": run_store.list_tracked_tests(user.tenant_id)}
+
+
+@router.get("/analytics/flaky", dependencies=[Depends(require_role(["admin", "executor", "viewer"]))])
+async def flaky_candidates(
+    min_runs: int = 3,
+    min_transitions: int = 2,
+    user: TokenPayload = Depends(get_current_user),
+):
+    """
+    Flaky-test *candidates* (Phase H2) -- surfaced for a human to review,
+    never auto-quarantined. Pair with `aura skills quarantine <test_id>`
+    to act on one.
+    """
+    return {"candidates": run_store.get_flaky_candidates(user.tenant_id, min_runs=min_runs, min_transitions=min_transitions)}
+
+
+@router.get("/analytics/tests/{test_key}", dependencies=[Depends(require_role(["admin", "executor", "viewer"]))])
+async def test_trend(test_key: str, limit: int = 100, user: TokenPayload = Depends(get_current_user)):
+    """Pass-rate-over-time + per-run history for one test_key (Phase H1)."""
+    result = run_store.pass_rate_series(user.tenant_id, test_key, limit=limit)
+    if result["total_runs"] == 0:
+        raise HTTPException(status_code=404, detail=f"No completed runs found for test_key '{test_key}'")
+    return result
+
+
 @router.get("/{run_id}", dependencies=[Depends(require_role(["admin", "executor", "viewer"]))])
 async def get_run(run_id: str, user: TokenPayload = Depends(get_current_user)):
     run = run_store.get(user.tenant_id, run_id)

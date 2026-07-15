@@ -23,6 +23,7 @@
         <a href="#" class="nav-item active" data-view="dashboard"><span class="nav-icon"></span><span class="nav-label">Dashboard</span></a>
         <a href="#" class="nav-item" data-view="runs"><span class="nav-icon"></span><span class="nav-label">Test Runs</span></a>
         <a href="#" class="nav-item" data-view="adapters"><span class="nav-icon"></span><span class="nav-label">Adapters</span></a>
+        <a href="#" class="nav-item" data-view="analytics"><span class="nav-icon"></span><span class="nav-label">Analytics</span></a>
         <a href="#" class="nav-item" data-view="commands"><span class="nav-icon"></span><span class="nav-label">Commands</span></a>
         <a href="#" class="nav-item" data-view="settings"><span class="nav-icon"></span><span class="nav-label">Settings</span></a>
       </nav>
@@ -90,6 +91,21 @@
           <div class="section-meta">Live from the orchestrator's adapter registry</div>
         </div>
         <div class="grid" id="adapters-grid"></div>
+      </section>
+
+      <!-- Analytics (Phase H1/H2) -->
+      <section id="view-analytics" class="view hidden">
+        <div class="section-row">
+          <h2 class="section-title">Flaky Test Candidates</h2>
+          <div class="section-meta">Surfaced, never auto-quarantined -- use `aura skills quarantine &lt;test_id&gt;`</div>
+        </div>
+        <div class="grid" id="flaky-grid"></div>
+
+        <div class="section-row">
+          <h2 class="section-title">Tracked Tests</h2>
+          <div class="section-meta">Pass rate over time, per test_id</div>
+        </div>
+        <div class="grid" id="trend-grid"></div>
       </section>
 
       <!-- Commands -->

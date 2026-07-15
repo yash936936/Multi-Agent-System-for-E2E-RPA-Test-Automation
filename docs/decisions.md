@@ -1038,3 +1038,118 @@ legitimate UI change causes an expected diff (today, deleting the file
 under `runtime/baselines/` and re-running is the only way to reset one) --
 a `aura baselines approve <key>` command would be a natural, small
 follow-up.
+
+## D-028 — Phase H1: cross-run trend analytics (pass-rate over time, per-test history)
+
+**Decided:** 2026-07-15
+**Context:** Phase H of the gap-review roadmap (Phases G–M) — "trend
+reporting" was entirely missing: `api/run_store.py`'s SQLite `api_runs`
+table persisted every run, but had no notion of "the same test run
+multiple times" and no query surface for history/pass-rate over time.
+**What it does:**
+- New `test_key` column on `api_runs` (migrated in-place on an existing
+  `api_runs.db` via a guarded `ALTER TABLE`, not just on fresh installs),
+  populated at `create()` time from `spec.get("test_id")` (guided mode) or
+  `spec.get("test_name")` (autonomous mode). A run submitted with neither
+  field has no stable identity and is deliberately excluded from
+  trend/flaky queries rather than lumped under a shared placeholder key —
+  a one-off run isn't "a test" in the trend-tracking sense.
+- `ApiRunStore.test_history()` / `pass_rate_series()` / `list_tracked_tests()`
+  — chronological per-test history, a cumulative pass-rate series, and the
+  set of tracked test_keys for a tenant. Only terminal-status runs
+  (`passed`/`passed_with_healing`/`failed`/`escalated`) count; a
+  still-`running`/`queued` row isn't a pass or fail yet.
+- New API routes, registered **ahead of** the pre-existing `/{run_id}`
+  catch-all (verified with a dedicated regression test —
+  `test_trend_route_not_swallowed_by_run_id_catchall` — since FastAPI
+  matches routes in registration order and `/analytics/...` would
+  otherwise 404 as a bogus run lookup): `GET
+  /api/v1/test-runs/analytics/tests`, `GET
+  /api/v1/test-runs/analytics/tests/{test_key}`.
+- Web dashboard gets a new **Analytics** nav view (`webui/templates/index.html`,
+  `webui/static/js/app.js`) rendering tracked tests + pass rates, reusing
+  the existing card/badge design tokens (no new CSS). A small new `trend`
+  icon was added to `icons.js` in the same hand-drawn iconsax-Linear style
+  the rest of the set already uses.
+- Tenant-isolated throughout — every query is scoped by `tenant_id`,
+  matching the existing `api_runs` access pattern.
+**Not done:** no CLI-side equivalent. `aura execute` (the local CLI path)
+writes to `orchestrator/memory.py`'s `run_state` table, not
+`api/run_store.py`'s `api_runs` — and `run_state` is keyed by `run_id`
+with `ON CONFLICT DO NOTHING` / in-place status updates, so it only ever
+retains the *latest* status per test, not history across repeated runs of
+the same test_id. Building CLI-side trend analytics on top of it would
+require a schema change to that table (an append-only history table, not
+the existing single-row-per-run_id design) — flagged here as a real,
+separate gap rather than silently assumed to be covered by this pass.
+Trend analytics in this pass is scoped to the API/service-layer surface,
+which already has one fresh `run_id` per submission and therefore
+genuinely retains history.
+**Verification:** 11 new tests (`tests/test_run_store_analytics.py`,
+including a real pre-Phase-H legacy-schema SQLite file to prove the
+migration path works, not just a fresh DB) + 5 new API-level tests
+(`tests/test_analytics_api.py`, including the route-ordering regression
+test above and a tenant-isolation check). Full suite: 374 passing (up
+from 351), same pre-existing 9 sandbox-only Playwright/Chromium failures,
+zero regressions.
+
+## D-029 — Phase H2: flaky-test detection + opt-in quarantine
+
+**Decided:** 2026-07-15
+**Context:** the other half of Phase H — "flaky-test detection/quarantine,
+opt-in only, `--all` skips quarantined tests with a visible message,
+`--include-quarantined` overrides" (original phase plan wording).
+**What it does:**
+- `ApiRunStore.get_flaky_candidates(tenant_id, min_runs=3, min_transitions=2)`
+  — built directly on D-028's `test_history()` query layer, per the
+  original plan ("H2 depends on H1's query layer, so these stay one
+  phase"). A test is a candidate when its outcome flips between
+  pass/fail at least `min_transitions` times across at least `min_runs`
+  completed runs. Deliberately **not** just "pass rate below X%": a test
+  that fails every single run isn't flaky, it's just broken (zero
+  transitions, excluded); a test that passed 10 times then started
+  failing consistently after a real regression isn't flaky either (one
+  transition, excluded) — both are covered by dedicated tests
+  (`test_consistently_failing_test_is_not_flaky`,
+  `test_single_regression_is_not_flaky`).
+- New API route `GET /api/v1/test-runs/analytics/flaky` (query params
+  `min_runs`, `min_transitions`), same route-ordering care as D-028.
+  Surfaces candidates only — nothing calls this automatically, and
+  nothing in this codebase quarantines a test as a side effect of running
+  it.
+- New `orchestrator/quarantine_store.py` — a small JSON file (not SQLite;
+  this is a short, rarely-written, human-readable list, unlike the
+  high-churn run-history tables), under `orchestrator/skills_store/`
+  alongside the skill library it's conceptually a sibling of. Exposes
+  `quarantine()`/`unquarantine()`/`is_quarantined()`/`list_quarantined()`.
+- CLI: `aura skills quarantine <test_id> --reason "..."`, `aura skills
+  unquarantine <test_id>`, `aura skills quarantined` (new `skills`
+  subcommands, alongside the pre-existing list/export/import/diff).
+- `aura execute --all` now peeks each requirement doc's test_id (via
+  `agents/planner/spec_generator.py::infer_test_id` — a new module-level
+  function extracted from `LocalHeuristicBackend._infer_test_id` so the
+  `--all` skip-check and the Planner use the exact same heading-inference
+  logic instead of a hand-copied regex that could drift) *before*
+  generating a spec or running anything, and skips it with a visible
+  `[yellow]Skipped -- <test_id> is quarantined (<reason>)...[/yellow]`
+  message if quarantined. New `--include-quarantined` flag runs it anyway
+  without requiring an explicit `unquarantine` first. If every doc in
+  `requirements_input/` is quarantined, `--all` now exits 1 with an
+  explicit "nothing ran" message rather than silently succeeding with an
+  empty report list.
+**Not done:** quarantine is CLI-side/local-file only; there's no API
+endpoint to quarantine a test from the web dashboard yet (a human sees a
+flaky candidate in the Analytics view but currently has to go run `aura
+skills quarantine` in a terminal to act on it) — flagged as a natural,
+small follow-up, not silently dropped. Also not done: quarantine entries
+never expire/auto-review — a quarantined test stays quarantined
+indefinitely until someone explicitly unquarantines it, which is the
+correct default (no silent re-enabling of a known-flaky test) but means
+there's currently no reminder/staleness check if someone quarantines a
+test and forgets about it.
+**Verification:** 7 new tests (`tests/test_quarantine.py`, including a
+corrupt-JSON-file recovery case) + 1 new flaky-route API test + a live
+CLI smoke test (`aura skills quarantine` → `aura execute --all` actually
+skipping the quarantined spec with the documented message → `aura skills
+unquarantine` restoring it). Full suite: 374 passing, zero regressions
+(same run as D-028's verification, both landed in one pass).

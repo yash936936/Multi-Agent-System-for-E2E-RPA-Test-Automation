@@ -208,6 +208,7 @@ aura execute <test_id_or_path> --autonomous                      # same as --yes
 aura execute --interactive --url https://example.com --prompt "click the submit button"              # human-in-the-loop: waits for you, no timeout
 aura execute --interactive --url https://example.com --prompt "click the submit button" --timeout 120 # same, but gives up after 2 minutes
 aura execute --all --junit-out results.xml                       # CI mode: JUnit XML output, one <testsuite> per spec, exits 1 if anything failed
+aura execute --all --include-quarantined                         # also run specs quarantined via `aura skills quarantine` (skipped by default)
 ```
 
 `<test_id_or_path>` can be:
@@ -318,9 +319,14 @@ aura skills export --app my_target_app --out pack.json  # snapshot for one app o
 aura skills import --out pack.json                      # load skills from a file
 aura skills import --out pack.json --app my_target_app  # tag imported skills with an app id
 aura skills diff --before old_export.json --after new_export.json   # what changed between two snapshots
+aura skills quarantine TC-LOGIN-FLOW-001 --reason "intermittent timing failure"  # mark a test flaky/unreliable
+aura skills quarantined                                 # list everything currently quarantined
+aura skills unquarantine TC-LOGIN-FLOW-001              # clear a quarantine entry
 ```
 
 `skills diff` is useful for reviewing what the self-healer learned since your last checkpoint before trusting it in an unattended/CI run — shows skills added, removed, and changed (confidence, applied count, proposed fix).
+
+**Quarantine (Phase H2) is opt-in only.** Nothing in AURA quarantines a test automatically — the API's `/api/v1/test-runs/analytics/flaky` endpoint (and the web dashboard's Analytics view) only ever *surfaces candidates* based on real pass/fail history; a human decides whether to act on that by running `aura skills quarantine <test_id>`. Once quarantined, `aura execute --all` skips that spec by default (printing a visible `Skipped -- ... is quarantined` message) — pass `--include-quarantined` to run it anyway without first unquarantining it.
 
 ---
 
@@ -472,6 +478,7 @@ This surface is fully unit-tested (`tests/test_capabilities.py`, `tests/test_16_
   }
   ```
   `check_links` defaults to `false` (the real HTTP link check does not run unless explicitly requested) and `link_scope` (`"all"` | `"footer"` | `"nav"`) only has any effect when `check_links` is `true`.
+- **Trend analytics & flaky-test detection (Phase H1/H2).** `GET /api/v1/test-runs/analytics/tests/{test_key}` returns per-run history plus a cumulative pass-rate series for one test (`test_key` is whatever `test_id`/`test_name` the run was submitted with — untracked one-off runs with neither field are excluded). `GET /api/v1/test-runs/analytics/tests` lists every tracked `test_key` for the caller's tenant; `GET /api/v1/test-runs/analytics/flaky?min_runs=3&min_transitions=2` surfaces tests whose pass/fail outcome has flip-flopped at least `min_transitions` times across at least `min_runs` completed runs — a candidate list only, never an automatic action. The web dashboard's **Analytics** view renders both. Pair a flaky candidate with `aura skills quarantine <test_id>` (see `aura skills` above) to actually skip it in future `--all` runs.
 - **No `aura serve` command yet.** Start it manually:
   ```powershell
   pip install -e ".[dev]"

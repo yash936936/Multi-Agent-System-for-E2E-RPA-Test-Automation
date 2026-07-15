@@ -18,8 +18,10 @@ from __future__ import annotations
 import typer
 from rich.console import Console
 
+from agents.planner.spec_generator import infer_test_id
 from aura.cli import debug_cmd, execute_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd
 from config.settings import settings
+from orchestrator import quarantine_store
 from orchestrator.schemas import RunReport, RunStatus
 from reports.junit import render_junit_suites
 
@@ -97,6 +99,7 @@ def execute(
     interactive: bool = typer.Option(False, "--interactive", help='Mode B (human-in-the-loop): AURA does not act. It opens --url (if given) and waits, polling the screen, until you perform the action described by --prompt yourself -- no timeout by default. See README "Autonomy modes".'),
     timeout: int = typer.Option(0, "--timeout", help="Only used with --interactive: give up after this many seconds if nothing changes. 0 (default) means wait indefinitely."),
     junit_out: str = typer.Option(None, "--junit-out", help="Write results as JUnit XML to this path (for CI test-report consumption). With --all, every spec's outcome becomes one <testsuite> in a single combined file."),
+    include_quarantined: bool = typer.Option(False, "--include-quarantined", help="Phase H2: with --all, also run specs quarantined via `aura skills quarantine <test_id>` (skipped by default)."),
 ) -> None:
     """Execute a test: approval checkpoint -> live vision-execution loop -> report.
 
@@ -132,9 +135,22 @@ def execute(
         if not targets:
             console.print("[yellow]No requirement docs found in requirements_input/.[/yellow]")
             raise typer.Exit(code=1)
+
+        quarantined = quarantine_store.list_quarantined()
         junit_suites: list = [] if junit_out else None
         reports = []
+        skipped_any = False
         for path in targets:
+            # Phase H2: cheap test_id peek (same heading-inference logic
+            # Planner itself uses -- see agents/planner/spec_generator.py
+            # ::infer_test_id) so a quarantined spec is skipped *before*
+            # spec generation/execution, not filtered out after the fact.
+            doc_test_id = infer_test_id(path.read_text(encoding="utf-8"))
+            if doc_test_id in quarantined and not include_quarantined:
+                skipped_any = True
+                console.print(f"\n=== {path.name} ===")
+                console.print(f"[yellow]Skipped -- {doc_test_id} is quarantined ({quarantined[doc_test_id].get('reason') or 'no reason given'}). Use --include-quarantined to run it anyway.[/yellow]")
+                continue
             console.print(f"\n=== {path.name} ===")
             reports.append(execute_cmd.execute_test(
                 str(path), auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf,
@@ -143,6 +159,9 @@ def execute(
         if junit_out and junit_suites:
             combined_path = render_junit_suites(junit_suites, out_path=junit_out)
             console.print(f"\nCombined JUnit XML: {combined_path}")
+        if not reports and skipped_any:
+            console.print("[yellow]Every requirement doc was quarantined -- nothing ran.[/yellow]")
+            raise typer.Exit(code=1)
         _exit_nonzero_if_failed(reports)
         return
 
@@ -214,13 +233,15 @@ def schedule(
 
 @app.command()
 def skills(
-    action: str = typer.Argument(..., help="list | export | import | diff"),
+    action: str = typer.Argument(..., help="list | export | import | diff | quarantine | unquarantine | quarantined"),
+    target: str = typer.Argument(None, help="test_id -- required for quarantine/unquarantine"),
     app_name: str = typer.Option(None, "--app", help="App identifier filter/tag"),
     out: str = typer.Option(None, "--out", help="Output file for export, or input file for import"),
     before: str = typer.Option(None, "--before", help="Earlier skill-pack export (required for diff)"),
     after: str = typer.Option(None, "--after", help="Later skill-pack export (required for diff)"),
+    reason: str = typer.Option(None, "--reason", help="Only used with quarantine -- why this test is being quarantined."),
 ) -> None:
-    """Inspect, export, import, or diff the local self-healing skill library."""
+    """Inspect, export, import, or diff the local self-healing skill library. Also manages the Phase H2 flaky-test quarantine list."""
     if action == "list":
         skills_cmd.list_skills(app_id=app_name)
     elif action == "export":
@@ -235,8 +256,20 @@ def skills(
             console.print("[red]Usage: aura skills diff --before <old_export.json> --after <new_export.json>[/red]")
             raise typer.Exit(code=1)
         skills_cmd.diff_skills(before, after)
+    elif action == "quarantine":
+        if not target:
+            console.print("[red]Usage: aura skills quarantine <test_id> [--reason \"...\"][/red]")
+            raise typer.Exit(code=1)
+        skills_cmd.quarantine_test(target, reason=reason)
+    elif action == "unquarantine":
+        if not target:
+            console.print("[red]Usage: aura skills unquarantine <test_id>[/red]")
+            raise typer.Exit(code=1)
+        skills_cmd.unquarantine_test(target)
+    elif action == "quarantined":
+        skills_cmd.list_quarantined()
     else:
-        console.print(f"[red]Unknown action '{action}'. Use list | export | import | diff.[/red]")
+        console.print(f"[red]Unknown action '{action}'. Use list | export | import | diff | quarantine | unquarantine | quarantined.[/red]")
         raise typer.Exit(code=1)
 
 
