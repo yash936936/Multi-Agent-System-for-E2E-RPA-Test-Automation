@@ -54,7 +54,10 @@ async def login(body: LoginRequest):
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     token = create_access_token(
-        tenant_id=record["tenant_id"], user_id=record["user_id"], role=record["role"]
+        tenant_id=record["tenant_id"],
+        user_id=record["user_id"],
+        role=record["role"],
+        allowed_project_tags=record.get("allowed_project_tags"),
     )
     return LoginResponse(access_token=token, tenant_id=record["tenant_id"], role=record["role"])
 
@@ -185,7 +188,10 @@ async def oauth_callback(provider: str, code: str | None = None, state: str | No
 
     record = user_store.find_or_create_oauth_user(username=username, provider=provider)
     jwt_token = create_access_token(
-        tenant_id=record["tenant_id"], user_id=record["user_id"], role=record["role"]
+        tenant_id=record["tenant_id"],
+        user_id=record["user_id"],
+        role=record["role"],
+        allowed_project_tags=record.get("allowed_project_tags"),
     )
     # Hand the token back to the SPA via a URL fragment (never sent to the
     # server in subsequent requests, unlike a query param) for the frontend

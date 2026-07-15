@@ -98,20 +98,50 @@ class UserStore:
             return None
         if not _verify(password, record["salt"], record["hash"]):
             return None
-        return {"tenant_id": record["tenant_id"], "role": record["role"], "user_id": username}
+        return {
+            "tenant_id": record["tenant_id"],
+            "role": record["role"],
+            "user_id": username,
+            "allowed_project_tags": record.get("allowed_project_tags"),
+        }
 
     def user_exists(self, username: str) -> bool:
         return username in self._load()
 
     def create_user(
-        self, username: str, password: str, tenant_id: str = "default", role: str = "executor"
+        self,
+        username: str,
+        password: str,
+        tenant_id: str = "default",
+        role: str = "executor",
+        allowed_project_tags: Optional[list[str]] = None,
     ) -> None:
         self._ensure_seeded()
         with self._lock:
             users = self._load()
             if username in users:
                 raise ValueError(f"User '{username}' already exists")
-            users[username] = {"tenant_id": tenant_id, "role": role, **_new_hash(password)}
+            users[username] = {
+                "tenant_id": tenant_id,
+                "role": role,
+                "allowed_project_tags": allowed_project_tags,
+                **_new_hash(password),
+            }
+            self._save(users)
+
+    def set_allowed_project_tags(self, username: str, tags: Optional[list[str]]) -> None:
+        """
+        Phase K (decisions.md D-032): admin-only management operation --
+        set (or clear, with tags=None) a user's project-tag restriction.
+        Raises ValueError if the user doesn't exist, same convention as
+        create_user's "already exists" check.
+        """
+        self._ensure_seeded()
+        with self._lock:
+            users = self._load()
+            if username not in users:
+                raise ValueError(f"User '{username}' does not exist")
+            users[username]["allowed_project_tags"] = tags
             self._save(users)
 
     def find_or_create_oauth_user(
@@ -145,7 +175,12 @@ class UserStore:
                 # should be unreachable, but never hand back a record that
                 # wasn't actually created for this provider.
                 raise ValueError(f"Account key '{key}' exists but is not a {provider} OAuth account")
-        return {"tenant_id": record["tenant_id"], "role": record["role"], "user_id": key}
+        return {
+            "tenant_id": record["tenant_id"],
+            "role": record["role"],
+            "user_id": key,
+            "allowed_project_tags": record.get("allowed_project_tags"),
+        }
 
 
 user_store = UserStore()

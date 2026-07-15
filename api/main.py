@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
-from api.routers import runs, webhooks, adapters, auth
+from api.routers import runs, webhooks, adapters, auth, users
 from config.settings import settings
 
 # webui/ is a static repo asset (like config/tool_registry.yaml), so it must
@@ -22,6 +22,7 @@ app.include_router(auth.router)
 app.include_router(runs.router)
 app.include_router(webhooks.router)
 app.include_router(adapters.router)
+app.include_router(users.router)
 
 app.mount("/static", StaticFiles(directory=str(_webui_dir / "static")), name="static")
 templates = Jinja2Templates(directory=str(_webui_dir / "templates"))

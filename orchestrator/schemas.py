@@ -160,6 +160,13 @@ class TestSpec(BaseModel):
     steps: list[TestStep]
     assertions: list[Assertion] = Field(default_factory=list)
     data_requirements: list[str] = Field(default_factory=list)
+    # Phase K (decisions.md D-032): optional project/tag label used for
+    # fine-grained access control on top of the existing tenant+role
+    # model. None (the default) means "untagged" -- every existing spec
+    # and every existing test is completely unaffected, and an untagged
+    # spec remains accessible to any authenticated member of the tenant,
+    # exactly as before this field existed.
+    project_tag: Optional[str] = None
 
     @field_validator("steps")
     @classmethod

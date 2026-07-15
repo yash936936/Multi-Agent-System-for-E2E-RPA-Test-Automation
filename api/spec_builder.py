@@ -99,4 +99,5 @@ def build_test_spec(body: dict) -> TestSpec:
         preconditions=body.get("preconditions", []),
         steps=steps,
         data_requirements=body.get("data_requirements", []),
+        project_tag=body.get("project_tag"),
     )

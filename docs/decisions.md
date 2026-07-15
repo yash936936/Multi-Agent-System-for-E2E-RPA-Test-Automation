@@ -1375,3 +1375,100 @@ sequencing. No change was made to how the in-memory run store persists
 (`api/run_store.py`'s SQLite backing was already fine for concurrent
 access; this phase's scope was strictly the `RunEngine`
 singleton/guardrail/CLI-parallelism items listed above).
+
+## D-032 — Phase K: multi-tenant / fine-grained RBAC (project-tag permission matrix)
+
+**Decided:** 2026-07-15
+**Context:** the fifth phase of the second remediation roadmap (Phases
+G–M). Original gap: "JWT auth + per-tenant run isolation exist in the API
+layer, but it's a single-role model (no fine-grained RBAC like 'this user
+can only run specs in project X')." Verified before writing any code that
+tenant-level isolation was already real and thorough — every run/analytics
+query in `api/run_store.py` is already scoped by `tenant_id` (confirmed by
+grep across `api/`, not assumed) — so this phase's actual scope is
+*within*-tenant access control, not tenant isolation itself, which needed
+no changes.
+**What it does:**
+- `TestSpec.project_tag: Optional[str] = None` (additive) — an optional
+  label a spec author can set. `api/spec_builder.py::build_test_spec()`
+  reads it from the incoming request body's `project_tag` key.
+- `TokenPayload.allowed_project_tags: Optional[list[str]] = None`
+  (additive) — carried in the JWT itself (like `tenant_id`/`role` already
+  are), so no extra DB lookup is needed per request to check it.
+  `create_access_token()` gained a matching optional parameter.
+- `api/security.py::user_can_access_project(user, project_tag) -> bool` —
+  a small pure function, deliberately not a `Depends()` factory like
+  `require_role` (a spec's `project_tag` is only known after the request
+  body is parsed, not statically at route-decoration time, so the check
+  has to happen inline in the handler). Rule, in order: admin always
+  passes; an untagged spec (`project_tag is None`) is always accessible;
+  a user with `allowed_project_tags is None` (every existing/new user,
+  unless explicitly restricted) is unrestricted; only a tagged spec *and*
+  a restricted user actually narrows anything, to exactly that user's
+  list. `require_project_access()` is the raise-on-deny wrapper used at
+  the one write path (`create_run`); `user_can_access_project()` itself is
+  used directly at the two read paths (`list_runs` filters, `get_run`
+  denies) since a list/single-item read needs a boolean to filter/branch
+  on, not an automatic raise.
+- **New admin-only endpoint**, `PUT /api/v1/users/{username}/project-tags`
+  (`api/routers/users.py`, new router, registered in `api/main.py`
+  alongside the existing four). Deliberately **not** exposed via
+  `/auth/signup` — self-service signup can set nothing about its own
+  access beyond the existing default (`tenant_id="default"`,
+  `role="executor"`, unrestricted tags), so signup can never be used for
+  privilege escalation *or* narrowing of someone else's access. An empty
+  list (`[]`) in the request normalizes to `None` (unrestricted) before
+  reaching `user_can_access_project` — an admin clearing a restriction by
+  sending `[]` should mean "no restriction," not "can access nothing,"
+  which would be a confusing footgun. The raw function itself does treat
+  an actual empty list as "no tags allowed" (tested directly in
+  `tests/test_security.py`) — the normalization is deliberately the
+  router's job, a usability choice, not baked into the function's own
+  semantics.
+- `api/user_store.py` — `verify()`/`create_user()`/`find_or_create_oauth_user()`
+  all now read/write `allowed_project_tags` (defaulting to `None`/absent
+  for every existing user record, so no migration is needed — `.get()`
+  already handles a missing key gracefully). New
+  `set_allowed_project_tags(username, tags)` method, raising `ValueError`
+  for an unknown username (same convention as `create_user`'s
+  "already exists" check), caught and turned into a 404 by the router.
+- **Read-path enforcement, not just write-path:** `list_runs` filters out
+  any run whose stored spec has a `project_tag` the caller can't access
+  (no schema migration needed — `api/run_store.py`'s `_to_public()` already
+  stores/returns the full spec dict, so `run["spec"].get("project_tag")`
+  was already available). `get_run` denies with the *same* 404 message the
+  "run doesn't exist at all" case already used ("Run not found or access
+  denied") — deliberately not a 403, since telling an unauthorized caller
+  "this exists, you just can't see it" leaks more than telling them
+  nothing was found, matching the existing endpoint's own privacy-
+  conscious phrasing rather than introducing an inconsistent status code.
+- No live token revocation exists anywhere in this system (a pre-existing
+  property, not introduced by this phase) — restricting a user's tags via
+  the new endpoint takes effect on their *next* login, not retroactively
+  on tokens already issued. Confirmed this matches existing role/tenant-
+  change behavior (same limitation already applies to those) rather than
+  being a new gap specific to this feature.
+**Verification:** 16 new tests — `tests/test_security.py` (6, direct unit
+tests of the pure `user_can_access_project` function covering every
+branch including the empty-list-vs-None distinction) and
+`tests/test_project_tag_permissions.py` (10, full FastAPI `TestClient`
+integration tests: untagged-always-accessible, admin-bypass, unrestricted-
+user, restricted-denied, restricted-allowed-on-matching-tag, restricted-
+still-sees-untagged, non-admin-cannot-set-tags, 404-on-unknown-username,
+empty-list-normalization, list/get read-path filtering). Plus a live
+manual end-to-end run through a real `TestClient` instance outside the
+test suite (login → signup → restrict → re-login → denied run → allowed
+run), reproducing the exact flow a real deployment would use. Full suite:
+**401/415 tests passing** (16 new this pass; the 12 failed/2 errored are
+the same pre-existing Phase C Playwright/Chromium sandbox-only failures
+documented throughout this file — zero regressions, confirmed against the
+385/391 baseline from the immediately preceding Phase J pass).
+**Not done:** no bulk/list endpoint for an admin to see every user's
+current tag restrictions at once (only single-user get-via-side-effect
+today, through the PUT response) — a `GET /api/v1/users` listing endpoint
+would be a natural, small follow-up. No CLI equivalent of the new PUT
+endpoint (`aura users set-project-tags <username> <tags>` or similar) —
+this phase's scope was the API/service-layer surface specifically, per
+the original gap review's own framing ("JWT auth... in the API layer").
+Live token revocation (flagged above) remains a pre-existing, unaddressed
+limitation, not newly introduced or newly deferred by this phase.

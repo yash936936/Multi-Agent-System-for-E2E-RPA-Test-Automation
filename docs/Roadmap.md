@@ -304,11 +304,14 @@ documented gap (no plan offered, no fabricated fix).
   documented as verified rather than changed. Added `aura execute --all
   --parallel N` using `ThreadPoolExecutor` (I/O-bound work, threads are
   correct here, not multiprocessing).
-- **Phase K — Multi-tenant / fine-grained RBAC.** Not started. Its own
-  phase because it touches auth (same care level as Phase J): extend
-  `api/security.py`/`api/user_store.py`'s role model to a project-tag
-  permission matrix, additive and backward-compatible (untagged
-  specs/users behave exactly as today).
+- **Phase K — Multi-tenant / fine-grained RBAC.** ✅ **DONE, 2026-07-15** —
+  see `decisions.md` D-032. Extended `api/security.py`/`api/user_store.py`'s
+  role model to an opt-in project-tag permission matrix
+  (`TestSpec.project_tag` + `TokenPayload.allowed_project_tags`),
+  additive and backward-compatible (untagged specs/unrestricted users
+  behave exactly as before). New admin-only
+  `PUT /api/v1/users/{username}/project-tags` endpoint, enforced at both
+  the run-creation write path and the run-listing/detail read paths.
 - **Phase L — New capability adapters (batched).** Not started. L1:
   accessibility (`agents/capability/accessibility_adapter.py`, axe-core via
   Playwright injection). L2: passive security headers
@@ -327,3 +330,5 @@ documented gap (no plan offered, no fabricated fix).
   verified only against a mocked HTTP server — `decisions.md` will state
   plainly that live-integration correctness is unverified (no real account
   available to test against).
+
+**Current status (2026-07-15): G, H, I, J, and K all done. L and M not started.**

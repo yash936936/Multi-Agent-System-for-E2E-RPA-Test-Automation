@@ -11,6 +11,35 @@ project: AURA
 
 ---
 
+## 2026-07-15 — Phase K: multi-tenant / fine-grained RBAC (project-tag permission matrix)
+
+**What happened:**
+- Fifth phase of the second remediation roadmap (Phases G–M). Full detail in `decisions.md` D-032.
+- Verified before writing any code that tenant-level isolation was already real and thorough — grepped every use of `tenant_id` across `api/` and confirmed every run/analytics query in `api/run_store.py` was already scoped by it. So the actual scope here is *within*-tenant access, not tenant isolation, which needed no changes.
+- Added an opt-in permission matrix: `TestSpec.project_tag` (optional label a spec can carry) + `TokenPayload.allowed_project_tags` (optional per-user restriction, carried in the JWT itself like `tenant_id`/`role` already are). Untagged specs and unrestricted users (the default for every existing/new user) behave exactly as before — zero breaking change to anything that doesn't use the feature.
+- New admin-only `PUT /api/v1/users/{username}/project-tags` endpoint (new `api/routers/users.py` router). Deliberately not exposed via self-service `/auth/signup` — a signing-up user can't touch anyone's access, including their own, beyond the existing defaults.
+- Enforced at the write path (`create_run`, via a new `require_project_access` that raises 403) and, just as importantly, the read paths: `list_runs` now filters out runs the caller can't see rather than returning everything in the tenant, and `get_run` denies with the *same* "Run not found or access denied" message the plain-missing-run case already used — deliberately 404, not 403, so an unauthorized caller can't tell the difference between "doesn't exist" and "exists, not yours."
+- Verified live, not just via the test suite: a real `TestClient` run through login → signup → admin restricts a second user → that user re-logs-in → denied run on a disallowed tag → allowed run on their permitted tag, all producing the expected status codes and messages.
+- Full suite: **401/415 passing** (16 new this pass — 6 direct unit tests of the pure `user_can_access_project` function, 10 full HTTP integration tests), same pre-existing 12 failed/2 errored Chromium-binary-download sandbox gap documented throughout this log, zero regressions.
+
+**What changed:**
+- `orchestrator/schemas.py` — `TestSpec.project_tag` (additive).
+- `api/security.py` — `TokenPayload.allowed_project_tags`, `create_access_token()` gained the param, new `user_can_access_project()`/`require_project_access()`.
+- `api/user_store.py` — `verify()`/`create_user()`/`find_or_create_oauth_user()` read/write `allowed_project_tags`; new `set_allowed_project_tags()`.
+- `api/spec_builder.py` — `build_test_spec()` reads `project_tag` from the request body.
+- `api/routers/auth.py` — both token-issuance call sites (`/login`, OAuth callback) now pass `allowed_project_tags` through.
+- `api/routers/runs.py` — `create_run` checks access up front; `list_runs` filters; `get_run` denies.
+- `api/routers/users.py` — new router, new admin-only endpoint.
+- `api/main.py` — registered the new router.
+- `tests/test_security.py` (new, 6 tests), `tests/test_project_tag_permissions.py` (new, 10 tests).
+- `docs/decisions.md` — D-032 added.
+
+**What should happen next:**
+- Phase L (new capability adapters: accessibility, passive security headers, performance budget) is next per the roadmap's sequencing.
+- Small, disclosed follow-ups from this phase: no bulk `GET /api/v1/users` listing endpoint, no CLI equivalent of the new PUT endpoint (this phase's scope was the API/service-layer surface specifically).
+
+---
+
 ## 2026-07-15 — Phase J: parallel execution
 
 **What happened:**

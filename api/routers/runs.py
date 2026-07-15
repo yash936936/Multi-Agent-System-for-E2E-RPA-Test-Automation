@@ -3,7 +3,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Body
 
-from api.security import TokenPayload, require_role, get_current_user
+from api.security import TokenPayload, require_role, get_current_user, require_project_access, user_can_access_project
 from api.run_store import run_store
 from api.spec_builder import build_test_spec
 from orchestrator.audit_logger import audit_logger
@@ -55,6 +55,12 @@ async def create_run(
     user: TokenPayload = Depends(require_role(["admin", "executor"])),
 ):
     mode = spec.get("mode", "guided")
+    # Phase K (decisions.md D-032): checked once, up front, for both
+    # branches below -- both the autonomous (raw-dict) and guided
+    # (build_test_spec-parsed) paths read project_tag from the same
+    # incoming JSON body key, so there's no need to duplicate this check
+    # per branch.
+    require_project_access(user, spec.get("project_tag"))
 
     if mode == "autonomous":
         target = (spec.get("target") or "").strip()
@@ -226,7 +232,13 @@ def execute_full_exploration_run(
 
 @router.get("/", dependencies=[Depends(require_role(["admin", "executor", "viewer"]))])
 async def list_runs(user: TokenPayload = Depends(get_current_user)):
-    return run_store.list(user.tenant_id)
+    runs = run_store.list(user.tenant_id)
+    # Phase K (decisions.md D-032): filter, don't error -- a list where
+    # one item is inaccessible should just omit that item, not fail the
+    # whole request. Untagged runs (spec.project_tag is None/spec is None
+    # entirely for a malformed/legacy row) always pass, matching
+    # user_can_access_project's own "untagged is always accessible" rule.
+    return [r for r in runs if user_can_access_project(user, (r.get("spec") or {}).get("project_tag"))]
 
 
 # --- Phase H1/H2: trend analytics + flaky-test detection --------------------
@@ -267,5 +279,12 @@ async def test_trend(test_key: str, limit: int = 100, user: TokenPayload = Depen
 async def get_run(run_id: str, user: TokenPayload = Depends(get_current_user)):
     run = run_store.get(user.tenant_id, run_id)
     if run is None:
+        raise HTTPException(status_code=404, detail="Run not found or access denied")
+    # Phase K (decisions.md D-032): same 404 (not 403) as the "doesn't
+    # exist" case above, deliberately -- telling an unauthorized user
+    # "this exists but you can't see it" (403) leaks more than telling
+    # them "not found," matching the existing phrasing's own privacy
+    # posture rather than introducing an inconsistent status code here.
+    if not user_can_access_project(user, (run.get("spec") or {}).get("project_tag")):
         raise HTTPException(status_code=404, detail="Run not found or access denied")
     return run
