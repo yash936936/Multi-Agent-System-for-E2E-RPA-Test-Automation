@@ -1264,3 +1264,114 @@ playback/slideshow viewer was added to the HTML report renderer itself
 populated and real, but surfacing them nicely in the rendered report is
 left as a small follow-up, not required by the phase's own scope
 ("record", not "render nicely").
+
+## D-031 — Phase J: parallel execution (API RunEngine de-singletoned, `--parallel N`)
+
+**Decided:** 2026-07-15
+**Context:** Phase J of the gap-review roadmap (Phases G–M), split into
+its own phase per the roadmap's own sequencing rationale because it
+touches genuinely shared state (same care level as D-017's secrets
+split). Scope, per `Roadmap.md` §9: (1) remove the API layer's
+`RunEngine` singleton, (2) fix `LoopGuardrail._states` to key on
+`(run_id, step_id)` instead of just `step_id` so concurrent runs can't
+corrupt each other's guardrail state, (3) add `aura execute --all
+--parallel N` using `ThreadPoolExecutor`.
+
+**1 — API `RunEngine` singleton removed (`api/routers/runs.py`):**
+- The module-level `_engine: RunEngine | None` + `_run_lock =
+  threading.Lock()` are gone. Every background task (`execute_run`,
+  `execute_autonomous_run`, `execute_full_exploration_run`) now calls a
+  new `_new_engine()` helper that constructs a fresh `RunEngine` per
+  call.
+- Previously, `_run_lock.acquire(blocking=False)` meant a second run
+  submitted while any run was in flight immediately failed with `"Vision
+  Core busy -- another run is in flight"` rather than actually running --
+  full serialization dressed up as a lock, the opposite of what Phase J's
+  own name promises. Concurrent runs now genuinely execute in parallel,
+  bounded only by FastAPI's background-task thread pool.
+- This was safe to do without further changes because `RunEngine` itself
+  already holds no run-scoped mutable state on `self` shared across
+  calls: `SkillStore`/`RunMemoryStore` open a new sqlite3 connection per
+  operation (see `orchestrator/skill_store.py`/`orchestrator/memory.py`'s
+  `_connect()` context managers) rather than keeping one open across the
+  instance's lifetime, so two threads hitting the same on-disk `.db` file
+  concurrently is exactly as safe as it already was for the CLI's
+  `execute --all` sequential loop reusing one process across multiple
+  `aura execute` invocations over time.
+
+**2 — `LoopGuardrail._states` keying: reviewed, found already safe, NOT
+changed:**
+- Grepped every construction site of `LoopGuardrail(...)` in the repo.
+  There is exactly one: `orchestrator/run_engine.py::run_spec()` creates
+  `guardrail = LoopGuardrail()` as a local variable at the top of every
+  call, never stored on `self` or any module-level location. Two
+  concurrent `run_spec()` calls (whether from two API background tasks
+  now running in parallel, or two `--parallel` CLI workers) each get
+  their own, fully isolated `LoopGuardrail` instance -- there is no
+  instance for two runs to collide on in the first place.
+- Per `docs/debug.md`'s "verification, not assertion" rule, this is
+  documented as *verified already correct*, not silently left alone
+  without checking, and not changed just because the roadmap's original
+  plan (written before this review) assumed it needed a fix. Re-keying
+  `_states` to `(run_id, step_id)` would be inert today (a no-op given
+  the current one-guardrail-per-call architecture) and was skipped to
+  avoid adding unused complexity — see `context.md` §6 rule 7's
+  code-minimalism ladder ("does this need to exist at all?"). A comment
+  was added directly in `orchestrator/guardrails.py::LoopGuardrail`'s
+  docstring stating the precondition under which this would need
+  revisiting (if `RunEngine` ever starts sharing one `LoopGuardrail`
+  instance across calls), so this isn't a silent assumption for the next
+  pass to rediscover from scratch.
+
+**3 — `aura execute --all --parallel N` (`aura/main.py`):**
+- New `--parallel` int option, default `1` (preserves the exact original
+  sequential behavior and glob-sort ordering -- verified by
+  `test_parallel_one_matches_sequential_behavior`).
+- `--parallel N > 1` filters quarantined specs up front (identical
+  logic/messages to the original sequential path), then submits the
+  remaining specs to a `ThreadPoolExecutor(max_workers=N)`, collecting
+  results via `as_completed`. `ThreadPoolExecutor`, not
+  `multiprocessing`, because this is I/O-bound work (screenshot capture,
+  OCR/DOM lookups, adapter network calls), the same reasoning
+  `Roadmap.md` §9 gives.
+- `execute_cmd.execute_test` (called by each worker) already builds its
+  own `SkillStore`/`RunMemoryStore`/`RunEngine` per call inside
+  `_run_requirement_text` -- no shared mutable state between worker
+  threads was introduced by this change. `junit_suites` is a plain
+  `list`; `list.append` is atomic under the GIL, so concurrent appends
+  from worker threads don't need an explicit lock.
+- `--parallel 0` or negative rejected with a clean exit-1 message rather
+  than a confusing `ThreadPoolExecutor` construction error.
+- **Honest scope note, disclosed in `docs/README.md`:** `--parallel` is
+  intended for unattended (`--yes`/`--autonomous`) batch runs against
+  independent targets. It does not solve, and was never meant to solve,
+  two workers contending for the same physical display/screenshot
+  surface on one machine -- that's a hardware/OS constraint, not
+  something this file's threading logic could fix. Per-spec console
+  output from different worker threads may also interleave in the
+  terminal; this is a cosmetic limitation of concurrent live output, not
+  a correctness bug, and is called out rather than silently accepted as
+  fine.
+
+**New tests:** `tests/test_parallel_execution.py` (6 tests) --
+`--parallel` dispatches every target exactly once regardless of N,
+`--parallel 1` matches the original sequential call order, `--parallel 0`
+is rejected, a failed spec under `--parallel` still produces exit code 1,
+and two regression guards confirming `api/routers/runs.py` no longer
+exposes `_engine`/`_run_lock`/`_get_engine` and that `_new_engine()`
+returns independent instances each call.
+
+**Verification:** 379/391 passing before this pass (12 failed + 2 errors
+-- the same pre-existing Phase C Playwright/Chromium sandbox-only gap
+documented throughout this file; this sandbox's network-egress rules
+block the one-time Chromium binary download). **385/391 passing after**
+(6 new tests, all passing) -- zero regressions, identical pre-existing
+failure set.
+
+**Not done (explicitly out of scope for this pass):** Phase K
+(multi-tenant/fine-grained RBAC) and Phase L/M (new capability adapters,
+defect-tracker adapter) remain not started, per `Roadmap.md` §9's own
+sequencing. No change was made to how the in-memory run store persists
+(`api/run_store.py`'s SQLite backing was already fine for concurrent
+access; this phase's scope was strictly the `RunEngine`
+singleton/guardrail/CLI-parallelism items listed above).

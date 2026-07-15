@@ -11,6 +11,18 @@ project: AURA
 
 ---
 
+## 2026-07-15 — Phase J: parallel execution
+
+**What happened:**
+- Worked through Phase J of the second remediation roadmap (Phases G–M), the parallel-execution phase. Full detail in `decisions.md` D-031.
+- **API `RunEngine` singleton removed:** `api/routers/runs.py`'s module-level `_engine`/`_run_lock` are gone. Every background task now gets its own fresh `RunEngine` via a new `_new_engine()` helper. Previously, a second run submitted while one was already in flight got an immediate `"Vision Core busy"` failure instead of actually running — that was full serialization, not real concurrency. Concurrent API runs now genuinely execute in parallel.
+- **`LoopGuardrail` concurrency reviewed, found already safe:** the roadmap's original plan called for re-keying `LoopGuardrail._states` from `step_id` to `(run_id, step_id)`. On review, every construction site of `LoopGuardrail()` in the repo (there's exactly one, inside `orchestrator/run_engine.py::run_spec()`) already creates a fresh local instance per call — no two concurrent runs ever share one `LoopGuardrail`, so the re-key would be inert. Documented as verified-correct rather than changed, per `docs/debug.md`'s "verify, don't assume" rule, with a note on when this would need revisiting.
+- **`aura execute --all --parallel N`:** new option (default `1`, unchanged sequential behavior). `N > 1` dispatches the filtered (non-quarantined) requirement docs through a `ThreadPoolExecutor` — I/O-bound work, so threads rather than processes. Each worker already gets its own `SkillStore`/`RunMemoryStore`/`RunEngine` via the existing `execute_cmd.execute_test`/`_run_requirement_text` path, so no new shared-state locking was needed.
+- New tests: `tests/test_parallel_execution.py` (6) — every target runs exactly once under `--parallel`, `--parallel 1` matches the original sequential order, `--parallel 0` is rejected, a failed run under `--parallel` still exits 1, and two regression guards on the removed API singleton/lock.
+- Test count: 379/391 passing before this pass (12 failed/2 errors — the same pre-existing Phase C Playwright/Chromium sandbox-only gap noted throughout `STATUS.md`), **385/391 passing after** (6 new, all passing) — zero regressions.
+
+---
+
 ## 2026-07-15 — Phase I: cross-browser support + video recording
 
 **What happened:**

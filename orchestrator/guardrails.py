@@ -49,6 +49,21 @@ class LoopGuardrail:
                                     failure_signature="login_button_not_found")
         if verdict is GuardrailVerdict.HARD_STOP:
             ...escalate...
+
+    Phase J concurrency note (decisions.md D-031): `self._states` is keyed
+    by `step_id` alone, not `(run_id, step_id)`. This was flagged as a
+    risk in the Phase G-M roadmap's original Phase J plan, but on review
+    it is *not* a live bug: `orchestrator/run_engine.py::run_spec()`
+    constructs a brand-new `LoopGuardrail()` as a local variable on every
+    call and never shares one instance across two concurrent `run_spec()`
+    invocations (there is no module-level or `RunEngine.self`-level
+    guardrail instance). So a `step_id`-only key is safe today because
+    each run already gets its own isolated `LoopGuardrail`. This is called
+    out explicitly rather than silently reworking the key, per
+    docs/debug.md's "verify, don't assume" rule -- if a future change ever
+    makes `RunEngine` share one `LoopGuardrail` across calls (e.g. to
+    track guardrail state across runs), this key must be revisited to
+    `(run_id, step_id)` at that point, not before.
     """
 
     def __init__(self, config: GuardrailSettings | None = None) -> None:

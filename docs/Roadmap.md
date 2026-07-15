@@ -295,14 +295,15 @@ documented gap (no plan offered, no fabricated fix).
   live failure-path test confirming an uninstalled engine fails as a clean
   `NoDisplayError` rather than a crash — not a full three-engine live
   parametrization of every existing Phase C test.
-- **Phase J — Parallel execution.** Not started. Its own phase because it
-  touches genuinely shared state (same care level as D-017's secrets
-  split): remove the API layer's `RunEngine` singleton
-  (`api/routers/runs.py`); fix `LoopGuardrail._states` to key on
-  `(run_id, step_id)` instead of just `step_id` so concurrent runs can't
-  corrupt each other's guardrail state; add `aura execute --all --parallel N`
-  using `ThreadPoolExecutor` (I/O-bound work, threads are correct here, not
-  multiprocessing).
+- **Phase J — Parallel execution.** ✅ **DONE, 2026-07-15** — see
+  `decisions.md` D-031. Removed the API layer's `RunEngine` singleton
+  (`api/routers/runs.py`) — every background task now gets its own fresh
+  instance instead of serializing behind one shared lock. Reviewed
+  `LoopGuardrail._states`'s `step_id`-only keying and found it already
+  safe (every call site already constructs a fresh, per-run instance) —
+  documented as verified rather than changed. Added `aura execute --all
+  --parallel N` using `ThreadPoolExecutor` (I/O-bound work, threads are
+  correct here, not multiprocessing).
 - **Phase K — Multi-tenant / fine-grained RBAC.** Not started. Its own
   phase because it touches auth (same care level as Phase J): extend
   `api/security.py`/`api/user_store.py`'s role model to a project-tag

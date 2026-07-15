@@ -15,6 +15,8 @@ Phase 6: every command below now calls real logic (previously stubs):
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from rich.console import Console
 
@@ -102,6 +104,7 @@ def execute(
     include_quarantined: bool = typer.Option(False, "--include-quarantined", help="Phase H2: with --all, also run specs quarantined via `aura skills quarantine <test_id>` (skipped by default)."),
     browser: str = typer.Option("chromium", "--browser", help=f"Phase I1: Playwright browser engine for DOM-path targets. One of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)}."),
     record_video: bool = typer.Option(False, "--record-video", help="Phase I2: record a video of the run (DOM path: real Playwright video; OS/pixel path: an honestly-labeled step-boundary slideshow, not continuous video). Off by default."),
+    parallel: int = typer.Option(1, "--parallel", help="Phase J: with --all, run up to N requirement docs concurrently (ThreadPoolExecutor -- this is I/O-bound work, not CPU-bound, so threads are correct here). 1 (default) preserves the original sequential behavior."),
 ) -> None:
     """Execute a test: approval checkpoint -> live vision-execution loop -> report.
 
@@ -139,6 +142,10 @@ def execute(
         return
 
     if all:
+        if parallel < 1:
+            console.print("[red]--parallel must be >= 1.[/red]")
+            raise typer.Exit(code=1)
+
         targets = sorted(settings.requirements_input_dir.glob("*.md"))
         if not targets:
             console.print("[yellow]No requirement docs found in requirements_input/.[/yellow]")
@@ -146,8 +153,12 @@ def execute(
 
         quarantined = quarantine_store.list_quarantined()
         junit_suites: list = [] if junit_out else None
-        reports = []
         skipped_any = False
+
+        # Filter quarantined specs up front (same behavior/logging as the
+        # original sequential loop) so both the sequential and parallel
+        # paths below only ever iterate over the specs that will actually run.
+        runnable: list[Path] = []
         for path in targets:
             # Phase H2: cheap test_id peek (same heading-inference logic
             # Planner itself uses -- see agents/planner/spec_generator.py
@@ -159,11 +170,59 @@ def execute(
                 console.print(f"\n=== {path.name} ===")
                 console.print(f"[yellow]Skipped -- {doc_test_id} is quarantined ({quarantined[doc_test_id].get('reason') or 'no reason given'}). Use --include-quarantined to run it anyway.[/yellow]")
                 continue
-            console.print(f"\n=== {path.name} ===")
-            reports.append(execute_cmd.execute_test(
-                str(path), auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf,
-                url=url, scroll_test=scroll_test, ui_audit=ui_audit, junit_suite_collector=junit_suites,
-            ))
+            runnable.append(path)
+
+        if parallel == 1:
+            reports = []
+            for path in runnable:
+                console.print(f"\n=== {path.name} ===")
+                reports.append(execute_cmd.execute_test(
+                    str(path), auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf,
+                    url=url, scroll_test=scroll_test, ui_audit=ui_audit, junit_suite_collector=junit_suites,
+                ))
+        else:
+            # Phase J (decisions.md D-031): genuinely concurrent batch
+            # execution. This is I/O-bound work (screenshot capture,
+            # OCR/DOM lookups, network calls in capability adapters) so
+            # ThreadPoolExecutor is the right tool, not multiprocessing.
+            # `execute_cmd.execute_test` already builds its own fresh
+            # SkillStore/RunMemoryStore/RunEngine per call (see
+            # _run_requirement_text) rather than sharing process-wide
+            # instances, so each worker thread gets fully isolated state --
+            # no additional locking needed for correctness. `junit_suites`
+            # is a plain list; `list.append` is atomic under the GIL, so
+            # concurrent appends from worker threads are safe.
+            #
+            # Honest scope note: with --auto_approve off (interactive
+            # mode), the approval/heal-accept prompts inside each worker
+            # would interleave unreadably across threads -- not disallowed
+            # outright, but --parallel is intended for unattended
+            # (--yes/--autonomous) batch runs, and the terminal per-spec
+            # `console.print` output from different threads may interleave
+            # regardless of approval mode. This is disclosed, not silently
+            # hidden: a real UX limitation of running multiple live
+            # terminal views concurrently, not a correctness bug.
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            reports = []
+            with ThreadPoolExecutor(max_workers=parallel) as pool:
+                future_to_path = {
+                    pool.submit(
+                        execute_cmd.execute_test,
+                        str(path), auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf,
+                        url=url, scroll_test=scroll_test, ui_audit=ui_audit, junit_suite_collector=junit_suites,
+                    ): path
+                    for path in runnable
+                }
+                for future in as_completed(future_to_path):
+                    path = future_to_path[future]
+                    console.print(f"\n=== {path.name} ===")
+                    try:
+                        reports.append(future.result())
+                    except Exception as e:
+                        console.print(f"[red]{path.name} errored: {e}[/red]")
+                        raise
+
         if junit_out and junit_suites:
             combined_path = render_junit_suites(junit_suites, out_path=junit_out)
             console.print(f"\nCombined JUnit XML: {combined_path}")

@@ -1,4 +1,3 @@
-import threading
 import time
 import uuid
 
@@ -12,9 +11,6 @@ from orchestrator.run_engine import RunEngine
 
 router = APIRouter(prefix="/api/v1/test-runs")
 
-_engine: RunEngine | None = None
-_run_lock = threading.Lock()
-
 
 def _make_api_screenshot_provider():
     from runtime.hooks.capture import capture_screenshot
@@ -25,11 +21,31 @@ def _make_api_screenshot_provider():
     return provider
 
 
-def _get_engine() -> RunEngine:
-    global _engine
-    if _engine is None:
-        _engine = RunEngine(screenshot_provider=_make_api_screenshot_provider())
-    return _engine
+def _new_engine() -> RunEngine:
+    """
+    Phase J (decisions.md D-031): every background task gets its own
+    RunEngine instance instead of a shared process-wide singleton.
+
+    Previously a single module-level `_engine` was built once and reused,
+    guarded by a global `_run_lock` that made every run wait for the
+    previous one to finish end to end (each caller was told "Vision Core
+    busy" if a run was already in flight) -- full serialization dressed
+    up as a lock, not real concurrency. RunEngine itself holds no
+    run-scoped mutable state on `self` (its LoopGuardrail is a fresh local
+    variable created inside `run_spec()` per call, and its
+    SkillStore/RunMemoryStore open a new sqlite3 connection per operation
+    rather than holding one open across calls -- see
+    orchestrator/guardrails.py and orchestrator/skill_store.py /
+    orchestrator/memory.py), so instantiating one engine per run is both
+    correct and cheap. Concurrent runs now genuinely execute in parallel.
+
+    Honest scope note: this removes *artificial* serialization at the
+    Python-object level. It does not make two concurrent real-browser
+    vision runs safe to point at the same physical display/screenshot
+    surface on one machine -- that's a hardware/OS constraint, unchanged
+    by this pass.
+    """
+    return RunEngine(screenshot_provider=_make_api_screenshot_provider())
 
 
 @router.post("/")
@@ -94,21 +110,14 @@ async def create_run(
 
 
 def execute_run(tenant_id: str, run_id: str, test_spec) -> None:
-    acquired = _run_lock.acquire(blocking=False)
-    if not acquired:
-        run_store.update(run_id, status="failed", error="Vision Core busy -- another run is in flight")
-        return
-
     try:
         run_store.update(run_id, status="running")
-        engine = _get_engine()
+        engine = _new_engine()
         result = engine.run_spec(test_spec, run_id=run_id)
         report = result.report
         run_store.update(run_id, status=report.status.value, report=report.model_dump(mode="json"))
     except Exception as e:
         run_store.update(run_id, status="failed", error=str(e))
-    finally:
-        _run_lock.release()
 
 
 def execute_autonomous_run(tenant_id: str, run_id: str, requirement_text: str) -> None:
@@ -117,21 +126,14 @@ def execute_autonomous_run(tenant_id: str, run_id: str, requirement_text: str) -
     TestSpec from free-text (RunEngine.run) instead of accepting
     hand-assembled steps (RunEngine.run_spec).
     """
-    acquired = _run_lock.acquire(blocking=False)
-    if not acquired:
-        run_store.update(run_id, status="failed", error="Vision Core busy -- another run is in flight")
-        return
-
     try:
         run_store.update(run_id, status="running")
-        engine = _get_engine()
+        engine = _new_engine()
         result = engine.run(requirement_text, run_id=run_id)
         report = result.report
         run_store.update(run_id, status=report.status.value, report=report.model_dump(mode="json"))
     except Exception as e:
         run_store.update(run_id, status="failed", error=str(e))
-    finally:
-        _run_lock.release()
 
 
 def execute_full_exploration_run(
@@ -162,11 +164,6 @@ def execute_full_exploration_run(
     click-test everything," so the report shape mirrors what
     `aura/cli/explore_cmd.py` already writes to reports/explore_<id>/report.json.
     """
-    acquired = _run_lock.acquire(blocking=False)
-    if not acquired:
-        run_store.update(run_id, status="failed", error="Vision Core busy -- another run is in flight")
-        return
-
     started = time.time()
     try:
         run_store.update(run_id, status="running")
@@ -225,8 +222,6 @@ def execute_full_exploration_run(
         run_store.update(run_id, status=status, report=report)
     except Exception as e:
         run_store.update(run_id, status="failed", error=str(e))
-    finally:
-        _run_lock.release()
 
 
 @router.get("/", dependencies=[Depends(require_role(["admin", "executor", "viewer"]))])

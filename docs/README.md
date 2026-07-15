@@ -211,7 +211,10 @@ aura execute --all --junit-out results.xml                       # CI mode: JUni
 aura execute --all --include-quarantined                         # also run specs quarantined via `aura skills quarantine` (skipped by default)
 aura execute <test_id_or_path> --browser firefox                 # Phase I1: run against Firefox instead of the default Chromium
 aura execute <test_id_or_path> --record-video                    # Phase I2: record a real video (DOM path) or a step-boundary slideshow (OS/pixel path)
+aura execute --all --parallel 4 --yes                            # Phase J: run up to 4 requirement docs concurrently (ThreadPoolExecutor). Default is 1 (sequential, unchanged behavior).
 ```
+
+**`--parallel N` (Phase J)** only applies with `--all`. It's intended for unattended batch runs (`--yes`/`--autonomous`) against independent, non-conflicting targets — each worker thread gets its own `RunEngine`/`SkillStore`/`RunMemoryStore` instance, so there's no shared-state correctness risk, but per-spec console output from different threads can interleave, and two workers both driving a real browser on the same physical machine/display will contend for that one screen the same way any two manually-run instances would. `--parallel 1` (the default) preserves the exact original sequential behavior and ordering.
 
 `<test_id_or_path>` can be:
 - A direct file path: `aura execute requirements_input\login_flow.md`
