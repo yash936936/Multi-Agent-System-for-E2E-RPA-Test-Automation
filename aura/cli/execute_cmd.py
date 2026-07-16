@@ -31,6 +31,7 @@ from orchestrator.memory import RunMemoryStore
 from orchestrator.run_engine import RunEngine
 from orchestrator.schemas import RequirementInput, RunReport, TestStep, VisionActionResult
 from orchestrator.skill_store import SkillStore
+from orchestrator.spec_validator import SpecValidationError
 from reports.junit import render_junit
 from reports.render import render_html, render_pdf
 from runtime.hooks.browser import normalize_url
@@ -54,6 +55,18 @@ def _find_requirement_file(test_id: str) -> Path:
         f"Could not find a requirement doc for '{test_id}' under {settings.requirements_input_dir}. "
         "Pass a direct file path, or drop the doc into requirements_input/."
     )
+
+
+def _print_validation_warnings(warnings: list) -> None:
+    """
+    Phase T: surfaces non-blocking action/target-type mismatch warnings
+    from orchestrator/spec_validator.py. These never block a run (unlike
+    the error-severity issues caught as SpecValidationError above) -- just
+    a heads-up that a step's description sounded like it was describing a
+    backend target rather than a real UI element.
+    """
+    for w in warnings:
+        console.print(f"[yellow]Warning (step {w.step_id}):[/yellow] {w.message}")
 
 
 def _make_screenshot_provider(live: bool):
@@ -211,8 +224,13 @@ def execute_interactive(
         on_waiting_for_human=on_waiting,
     )
 
-    result = engine.run_spec(spec, run_id=run_id)
+    try:
+        result = engine.run_spec(spec, run_id=run_id)
+    except SpecValidationError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1)
     final = result.report
+    _print_validation_warnings(result.validation_warnings)
 
     if final.escalated_steps == 0:
         console.print("\n[green]Detected the change and it checks out — verified.[/green]")
@@ -316,7 +334,12 @@ def _run_requirement_text(
         on_skill_learned=on_skill_learned,
     )
 
-    result = engine.run(requirement_text, run_id=spec.test_id.lower().replace(" ", "-"))
+    try:
+        result = engine.run(requirement_text, run_id=spec.test_id.lower().replace(" ", "-"))
+    except SpecValidationError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1)
+    _print_validation_warnings(result.validation_warnings)
 
     # --- §2.5: healed-step accept/reject checkpoint (skipped when unattended) ---
     for step_id, skill in learned_skills:

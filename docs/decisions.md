@@ -2163,3 +2163,94 @@ all Phase S–touched files: clean.
 **Docs updated:** `docs/Roadmap.md` (Phase S marked done), `docs/progress.md`
 (this pass appended), `docs/STATUS.md` (next-action pointer updated to
 Phase T).
+
+## D-042 — Phase T: spec-level action/target-type validation pass
+
+**Decided:** 2026-07-17
+**Context:** Phase T of the R–V roadmap — a new pre-execution validation
+step that checks the whole `TestSpec` for action/target-type
+compatibility before any step runs, instead of discovering a broken or
+mismatched step only after the vision pipeline has already burned a full
+OCR/DOM cycle (and possibly a self-heal retry loop) trying to act on it.
+
+**New module: `orchestrator/spec_validator.py`.** Two independent kinds
+of check, deliberately different severities:
+
+1. **Structural completeness (`severity="error"`, blocks the run).** A
+   step's required fields for its own `action` are simply missing:
+   `NAVIGATE_URL` with no `url`, `VISUAL_CLICK` with no
+   `target_description`, `TYPE_TEXT` with no `field_description`,
+   `CAPABILITY_CHECK` with neither `target` nor `capability_params` set.
+   `SCROLL` and `WAIT_FOR_HUMAN_ACTION` have no required fields (a bare
+   scroll/wait is legitimate on its own). These are unambiguous — the
+   step cannot possibly succeed as written.
+2. **Action/target-type mismatch heuristic (`severity="warning"`, never
+   blocks).** A vision-driven step (`VISUAL_CLICK`/`TYPE_TEXT`/`SCROLL`)
+   whose `target_description`/`field_description` text contains a
+   high-signal backend keyword ("REST API", "webhook", "SQL query",
+   "Control Room", "trigger the bot", "S3 bucket", "SFTP server", etc.) —
+   exactly the plan's own example of a step that should have been a
+   `CapabilityType` check instead of a UI action. Kept as a warning, never
+   an error, because this is inherently fuzzy — a button genuinely
+   labeled "API Settings" is a legitimate real target, and the check has
+   no way to be certain which case it's looking at. The message names
+   which `CapabilityType` the keyword suggests, when there's an obvious
+   one, so the warning is actionable rather than just "something looks
+   off."
+
+**Wired into `RunEngine.run_spec()`** — the single entry point every
+execution path funnels through (`run()`, `aura explore`'s hand-assembled
+specs, `--interactive` mode, the API layer, `aura schedule`). Validation
+runs *before* `self.memory.start_run(...)` — an error-severity issue
+raises `SpecValidationError` before any memory write, any aggregator, or
+any screenshot call happens, so there's nothing to half-record or clean
+up. Warnings are carried through on a new `RunEngineResult.validation_warnings`
+field rather than printed directly from `run_engine.py` itself — that
+module stays UI-agnostic by design (no `console`/`rich` usage anywhere in
+it), so presentation is left to the callers, matching the existing
+architecture split between orchestration and CLI/API presentation layers.
+
+**Caller-side wiring:**
+- `aura/cli/execute_cmd.py`: both `RunEngine.run_spec()`/`RunEngine.run()`
+  call sites now catch `SpecValidationError` and print the clean,
+  actionable multi-line message via `console.print` + `typer.Exit(code=1)`,
+  instead of an unhandled traceback. A new `_print_validation_warnings()`
+  helper prints any non-blocking warnings after a run completes.
+- `api/routers/runs.py`: `execute_run()`/`execute_autonomous_run()` (both
+  background-task functions) gained an explicit `except SpecValidationError`
+  branch ahead of the pre-existing generic `except Exception` — behaviorally
+  the same outcome today (`status="failed", error=str(e)"`, since
+  `SpecValidationError`'s own message is already the clean, readable
+  text), but kept as its own branch so a client-distinguishable status
+  code could be added later without touching the generic error path.
+- `orchestrator/scheduler.py`'s job-runner path (`run_engine.run` bound as
+  a callable) was deliberately left untouched — a `SpecValidationError`
+  there is treated like any other exception apscheduler's own job wrapper
+  already logs, which is acceptable pre-existing behavior, not a gap this
+  phase needed to close.
+
+**Verification:** 484 passing before this pass. **508 passing after**
+(24 new: `tests/test_spec_validator.py` — 9 structural-completeness
+tests across every `ActionType`, 3 `validate_spec_or_raise` tests,
+6 parametrized + 2 direct action/target-mismatch heuristic tests, 1
+multi-step independence test, and 2 `RunEngine`-level integration tests:
+one proving the screenshot provider and `memory.start_run()` are never
+reached for an invalid spec, one proving a warning-only spec runs to
+completion and carries its warning through to
+`RunEngineResult.validation_warnings`) — zero regressions across the
+full suite, including the existing `test_cli.py`/`test_api_service.py`
+suites that exercise the two wired call sites.
+
+**Not done (explicitly out of scope for this pass):** the heuristic's
+keyword list is intentionally small and conservative rather than
+exhaustive — it will miss plenty of real mismatches phrased differently,
+by design (a broader/fuzzier list would trade false negatives for false
+positives, and a warning nobody trusts because it fires too often is
+worse than one that's merely incomplete). No attempt was made to
+validate `capability_params`' *contents* against each specific
+`CapabilityType`'s own required keys (e.g. confirming an
+`AUTOMATION_ANYWHERE` step's params actually contain `bot_id` for REST
+mode) — that would mean this module hardcoding knowledge of every
+adapter's own contract, duplicating validation each adapter already does
+correctly at runtime; the completeness check here stops at "is there
+*something* to check," not "is it the *right* something."

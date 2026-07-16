@@ -481,6 +481,8 @@ it should be built against the unified guard, not the fragmented one.
 
 ### Phase T — Spec-level action/target-type validation pass
 
+**Status (2026-07-17): done.** See `docs/decisions.md` D-042.
+
 New pre-execution validation step (not per-step at runtime) that checks
 action/target-type compatibility across the whole spec before any step
 runs — e.g. a `VISUAL_CLICK` step pointed at something that should have
@@ -530,3 +532,4 @@ actually built; the existing test suite stays green throughout.
 
 **Phase R status (2026-07-16): done.** See `docs/decisions.md` D-039.
 **Phase S status (2026-07-16): done.** See `docs/decisions.md` D-040 (S1) and D-041 (S2).
+**Phase T status (2026-07-17): done.** See `docs/decisions.md` D-042.

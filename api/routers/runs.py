@@ -8,6 +8,7 @@ from api.run_store import run_store
 from api.spec_builder import build_test_spec
 from orchestrator.audit_logger import audit_logger
 from orchestrator.run_engine import RunEngine
+from orchestrator.spec_validator import SpecValidationError
 
 router = APIRouter(prefix="/api/v1/test-runs")
 
@@ -122,6 +123,14 @@ def execute_run(tenant_id: str, run_id: str, test_spec) -> None:
         result = engine.run_spec(test_spec, run_id=run_id)
         report = result.report
         run_store.update(run_id, status=report.status.value, report=report.model_dump(mode="json"))
+    except SpecValidationError as e:
+        # Phase T: pre-execution validation failure -- the spec itself is
+        # structurally broken (e.g. a step missing a required field for
+        # its own action type), not a runtime failure partway through.
+        # Distinguished from the generic except below so this could later
+        # be surfaced with its own status code if a client needs to tell
+        # the two apart; for now both land as "failed" with a clear message.
+        run_store.update(run_id, status="failed", error=str(e))
     except Exception as e:
         run_store.update(run_id, status="failed", error=str(e))
 
@@ -138,6 +147,8 @@ def execute_autonomous_run(tenant_id: str, run_id: str, requirement_text: str) -
         result = engine.run(requirement_text, run_id=run_id)
         report = result.report
         run_store.update(run_id, status=report.status.value, report=report.model_dump(mode="json"))
+    except SpecValidationError as e:
+        run_store.update(run_id, status="failed", error=str(e))
     except Exception as e:
         run_store.update(run_id, status="failed", error=str(e))
 

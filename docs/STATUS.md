@@ -8,6 +8,12 @@ last_updated: 2026-07-15
 
 > This file should always reflect the *current* state — overwrite freely, don't accumulate history here (that belongs in `progress.md`).
 
+## Where things stand (2026-07-17 update, Phase T — done)
+- **New `orchestrator/spec_validator.py`:** a pre-execution validation pass over the whole `TestSpec`, wired into `RunEngine.run_spec()` before any memory write/screenshot happens. Structural-completeness issues (a step missing a required field for its own action type — e.g. `NAVIGATE_URL` with no `url`) raise `SpecValidationError` and block the run entirely, before anything starts. A second, separate check is a non-blocking heuristic: a vision-driven step (`VISUAL_CLICK`/`TYPE_TEXT`/`SCROLL`) whose description sounds like it's actually describing a backend/API/bot/database target gets a `severity="warning"` on `RunEngineResult.validation_warnings`, never a hard block (too fuzzy to trust as a hard rule — a UI button genuinely labeled "API Settings" is a legitimate real target).
+- Wired into both `aura/cli/execute_cmd.py` call sites (clean `console.print` + `typer.Exit(code=1)` instead of an unhandled traceback) and `api/routers/runs.py`'s two background-task functions (explicit `except SpecValidationError` branch ahead of the pre-existing generic catch-all).
+- **508/508 tests passing** (24 new), zero regressions. See `docs/decisions.md` D-042.
+- This is Phase T of the R–V roadmap (`docs/Roadmap.md`) — Phase U (OCR-then-DOM dual verification) is next, largest phase in this roadmap, depends on Phase S's unified display guard (already done) and benefits from Phase R3's retry/escalation logging (already done).
+
 ## Where things stand (2026-07-16 update, Phase Q — done, third remediation roadmap N–Q complete)
 - **`runtime/hooks/browser.py`** now mirrors Phase I2's video lifecycle for Playwright native trace files: `settings.record_trace` (off by default), `settings.traces_dir`, `context.tracing.start(screenshots=True, snapshots=True)`/`stop(path=...)`, `get_last_trace_path()`. Fully independent of `record_video`.
 - **`orchestrator/run_engine.py`** attaches `report.report_paths["trace"]`, same pattern as the existing video block.

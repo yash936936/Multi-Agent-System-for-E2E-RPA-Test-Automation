@@ -9,6 +9,29 @@ project: AURA
 
 ---
 
+## 2026-07-17 — Phase T: spec-level action/target-type validation pass
+
+**What happened:**
+- Worked through Phase T of the R–V roadmap (`docs/Roadmap.md`) — a new pre-execution validation pass over the whole `TestSpec`. Full detail in `decisions.md` D-042.
+- New `orchestrator/spec_validator.py`, two independent kinds of check: (1) structural completeness — a step missing a field required for its own `action` type (`NAVIGATE_URL` with no `url`, `VISUAL_CLICK` with no `target_description`, `TYPE_TEXT` with no `field_description`, `CAPABILITY_CHECK` with neither `target` nor `capability_params`) is `severity="error"` and raises `SpecValidationError`, blocking the run before it starts; (2) an action/target-type mismatch heuristic — a vision-driven step whose description mentions a high-signal backend keyword ("REST API", "Control Room", "SQL query", "S3 bucket", etc.) gets a non-blocking `severity="warning"`, naming the `CapabilityType` it probably should have been instead. Kept as a warning, not an error, since a UI element genuinely labeled with one of these words is a legitimate real target and the check can't be certain which case it's looking at.
+- Wired into `RunEngine.run_spec()` — the single entry point every execution path (`run()`, `aura explore`, `--interactive`, the API layer, `aura schedule`) already funnels through — right before `memory.start_run(...)`, so an error-severity issue means nothing is half-recorded: no memory write, no aggregator, no screenshot call happens at all.
+- `RunEngineResult` gained a new `validation_warnings` field so non-blocking warnings survive to the caller instead of being silently dropped — `run_engine.py` itself stays UI-agnostic (no `console`/`rich` usage), matching its existing architecture, so presentation is left to callers.
+- `aura/cli/execute_cmd.py`: both call sites now catch `SpecValidationError` cleanly (`console.print` + `typer.Exit(code=1)`) instead of an unhandled traceback, plus a new `_print_validation_warnings()` helper prints any warnings after a run completes.
+- `api/routers/runs.py`: both background-task functions gained an explicit `except SpecValidationError` branch ahead of the existing generic catch-all — same outcome today, but distinguished for a future client-facing status code if needed.
+- New tests: `tests/test_spec_validator.py` (24) — every `ActionType`'s completeness rule individually, the mismatch heuristic across 6 parametrized backend keywords, a multi-step independence check, and two `RunEngine`-level integration tests (one proving the screenshot provider/`memory.start_run()` are never reached for an invalid spec, one proving a warning-only spec completes normally and carries its warning through).
+- Full suite: **508/508 passing** (484 before this pass + 24 new), zero regressions.
+- Updated `docs/Roadmap.md` (Phase T marked done) and `docs/STATUS.md`.
+
+**What changed:**
+- One genuinely new, tested capability — no partial/undocumented surprises, same clean pattern as the recent phases before it.
+
+**Known limitations carried forward:**
+- The mismatch heuristic's keyword list is intentionally small and conservative, not exhaustive — by design, to avoid a warning that fires too often to trust.
+- No validation of `capability_params`' *contents* against each `CapabilityType`'s own required keys — that would mean duplicating each adapter's own runtime validation inside this module instead of trusting it; this pass only checks "is there something to check," not "is it the right something."
+- Phase U (OCR-then-DOM dual verification, results compiled) is next — the largest phase in the R–V roadmap, touching `agents/vision/executor.py`, `agents/vision/locator.py`, and `agents/vision/dom_locator.py`.
+
+---
+
 ## 2026-07-16 — Phase S: display/screenshot-guard unification (fourth roadmap)
 
 **What happened:**

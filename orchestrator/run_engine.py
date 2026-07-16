@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from agents.vision.assertions import check_assertion
@@ -49,6 +49,7 @@ from orchestrator.schemas import (
     VisionStepInput,
 )
 from orchestrator.skill_store import SkillStore
+from orchestrator.spec_validator import SpecValidationIssue, validate_spec_or_raise
 from runtime.hooks.capture import file_hash
 
 ScreenshotProvider = Callable[[str, int], str]  # (run_id, step_id) -> screenshot_path
@@ -59,6 +60,11 @@ class RunEngineResult:
     run_id: str
     spec: TestSpec
     report: RunReport
+    # Phase T: non-blocking action/target-type mismatch warnings found by
+    # spec_validator.py's heuristic check. Empty list in the overwhelming
+    # common case (no mismatch found) -- populated only when something
+    # looked suspicious enough to flag, never fatal on its own.
+    validation_warnings: list[SpecValidationIssue] = field(default_factory=list)
 
 
 class RunEngine:
@@ -249,6 +255,14 @@ class RunEngine:
                 if not response.ok:
                     raise RuntimeError(f"tool call '{name}' failed: {response.error}")
                 return self.registry.get(name).output_schema.model_validate(response.result)
+
+        # Phase T: validate the whole spec before touching memory/the
+        # aggregator/any screenshot. An error-severity issue raises
+        # SpecValidationError right here -- nothing has started yet, so
+        # there's nothing to half-record or clean up. Warnings (the
+        # action/target-type mismatch heuristic) never block; they're
+        # carried through to the final RunEngineResult instead.
+        validation_warnings = validate_spec_or_raise(spec)
 
         self.memory.start_run(run_id, spec.test_id)
 
@@ -625,4 +639,4 @@ class RunEngine:
                 report_json_path = aggregator.run_dir / "report.json"
                 report_json_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
 
-        return RunEngineResult(run_id=run_id, spec=spec, report=report)
+        return RunEngineResult(run_id=run_id, spec=spec, report=report, validation_warnings=validation_warnings)
