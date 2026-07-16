@@ -409,10 +409,10 @@ preferred over feature grouping where two items live in the same module.
     report actually contains both trails side by side, instead of Control
     Room's audit history existing only inside AA's own system with
     nothing on AURA's side to show it.
-- **Phase Q — Playwright native trace files.** Not started. Touches
-  `runtime/hooks/browser.py` again (same file Phase I's video recording
-  lives in), but scoped separately since it's a distinct feature, not a
-  bug fix to I2.
+- **Phase Q — Playwright native trace files.** ✅ **Done.** See
+  `docs/decisions.md` D-038. Touches `runtime/hooks/browser.py` again
+  (same file Phase I's video recording lives in), but scoped separately
+  since it's a distinct feature, not a bug fix to I2.
   - New `settings.record_trace` flag (off by default, same posture as
     `record_video`).
   - Wire `context.tracing.start(screenshots=True, snapshots=True)` at
@@ -422,6 +422,6 @@ preferred over feature grouping where two items live in the same module.
     completing the diagram's "(Screenshots, Videos, Trace files)" label
     for real, matching what's already true for the other two.
 
-**Current status (2026-07-16): Phases N, O, and P are done (see
-`docs/decisions.md` D-035, D-036, D-037). Phase Q (Playwright native trace
-files) is the only remaining phase in this roadmap, not started.**
+**Current status (2026-07-16): Phases N, O, P, and Q are all done (see
+`docs/decisions.md` D-035, D-036, D-037, D-038). The entire third
+remediation roadmap (Phases N–Q) is complete.**

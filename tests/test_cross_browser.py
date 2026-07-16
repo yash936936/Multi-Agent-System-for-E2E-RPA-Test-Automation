@@ -24,10 +24,12 @@ def _reset_browser_session_and_settings():
     browser.close()
     original_engine = settings.playwright_browser
     original_video = settings.record_video
+    original_trace = settings.record_trace
     yield
     browser.close()
     settings.playwright_browser = original_engine
     settings.record_video = original_video
+    settings.record_trace = original_trace
 
 
 def test_default_engine_is_chromium_and_still_works(server):
@@ -145,3 +147,51 @@ def test_record_video_off_by_default_produces_no_video_path(server):
     browser.close()
 
     assert browser.get_last_video_path() is None
+
+
+def test_record_trace_produces_a_real_trace_file_on_close(server):
+    """
+    Phase Q (decisions.md D-038): with settings.record_trace on, a real
+    Playwright trace .zip must exist on disk after browser.close() --
+    unlike video, tracing.stop(path=...) both finalizes and writes the
+    file in one call, but it has to run before the context itself is
+    torn down, which is exactly what close() now does first.
+    """
+    import os
+    import zipfile
+    from runtime.hooks import browser
+
+    settings.record_trace = True
+    browser.open_url(server_url(server), wait_seconds=0.1)
+    assert browser.has_active_page() is True
+
+    browser.close()
+
+    trace_path = browser.get_last_trace_path()
+    assert trace_path is not None
+    assert os.path.exists(trace_path)
+    assert os.path.getsize(trace_path) > 0
+    assert zipfile.is_zipfile(trace_path)
+
+
+def test_record_trace_off_by_default_produces_no_trace_path(server):
+    from runtime.hooks import browser
+
+    assert settings.record_trace is False
+    browser.open_url(server_url(server), wait_seconds=0.1)
+    browser.close()
+
+    assert browser.get_last_trace_path() is None
+
+
+def test_record_video_and_record_trace_are_independent(server):
+    """Toggling one must not implicitly toggle or suppress the other."""
+    from runtime.hooks import browser
+
+    settings.record_video = False
+    settings.record_trace = True
+    browser.open_url(server_url(server), wait_seconds=0.1)
+    browser.close()
+
+    assert browser.get_last_video_path() is None
+    assert browser.get_last_trace_path() is not None

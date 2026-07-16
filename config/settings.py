@@ -148,6 +148,15 @@ class Settings(BaseSettings):
         return self.runtime_dir / "videos"
 
     @property
+    def traces_dir(self) -> Path:
+        # Phase Q (docs/decisions.md D-038): Playwright native trace .zip
+        # files land here -- same category/lifecycle as videos_dir (local
+        # generated run state, gitignored, not source), kept as its own
+        # directory rather than reusing videos_dir since traces and videos
+        # are independently toggleable and conceptually distinct artifacts.
+        return self.runtime_dir / "traces"
+
+    @property
     def reports_dir(self) -> Path:
         return self.project_root / "reports"
 
@@ -257,6 +266,16 @@ class Settings(BaseSettings):
     # even reached, and db_seed_adapter.py itself checks this flag before
     # doing anything else. Set AURA_ALLOW_DB_SEEDING=true to enable.
     allow_db_seeding: bool = False
+
+    # --- Phase Q: Playwright native trace files (decisions.md D-038) ---
+    # Off by default, same posture as record_video above -- trace .zip
+    # files embed a DOM snapshot + screenshot per action, so they're
+    # meaningfully larger than either screenshots or video and stay
+    # opt-in. When True, runtime/hooks/browser.py wires Playwright's own
+    # context.tracing.start()/stop() around the session lifecycle,
+    # independently of record_video -- a run can have either, both, or
+    # neither on at once.
+    record_trace: bool = False
 
     # --- OCR engine (optional override) ---
     # If pytesseract can't find the `tesseract` binary on PATH (common on

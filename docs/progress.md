@@ -9,6 +9,20 @@ project: AURA
 
 ---
 
+## 2026-07-16 — Phase Q: Playwright native trace files (roadmap N–Q complete)
+
+**What happened:**
+- `runtime/hooks/browser.py` mirrors Phase I2's video-recording lifecycle for traces: new `settings.record_trace` flag (off by default) + `settings.traces_dir`; `context.tracing.start(screenshots=True, snapshots=True)` once per context, `context.tracing.stop(path=...)` in `close()` (before context teardown -- the opposite ordering constraint from video, which needs the *page* closed first). New `get_last_trace_path()`. `record_video`/`record_trace` are fully independent (either, both, or neither can be on).
+- `orchestrator/run_engine.py` attaches `report.report_paths["trace"]` the same way the video block does, completing the architecture diagram's "(Screenshots, Videos, Trace files)" label.
+- New tests: `tests/test_cross_browser.py` (+3) and `tests/test_run_engine_trace.py` (new, 3 tests).
+- **Verification note, genuinely better than N/O/P's:** this session actually has real `playwright` + a launchable Chromium binary. `pytest`/`pydantic` are still absent, so `runtime/hooks/browser.py` (which has no pydantic dependency itself) was run for real -- against a real Chromium instance and a real local HTTP server -- by swapping in a tiny plain-Python stand-in for just `config.settings`. This produced and validated an actual `trace.zip` on disk (confirmed as a real zip containing `trace.trace`/`trace.network`/resource entries), not just hand-traced logic. The `RunEngine`/`RunReport` wiring in `run_engine.py` still couldn't be exercised this session (needs `pydantic`) and was verified by code-reading only (near-verbatim structural mirror of the working video block). Full detail in `docs/decisions.md` D-038.
+
+**This completes the third remediation roadmap (Phases N–Q).**
+
+**What should happen next:**
+- Run `pytest tests/test_cross_browser.py tests/test_run_engine_trace.py tests/test_run_engine_video.py` (then the full suite) in a real environment to close the one remaining gap (the `run_engine.py` report-path wiring).
+- No further phases are currently planned -- a new roadmap would need to be supplied fresh.
+
 ## 2026-07-16 — Phase P: Control Room audit log retrieval + report sync
 
 **What happened:**

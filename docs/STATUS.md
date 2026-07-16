@@ -8,6 +8,12 @@ last_updated: 2026-07-15
 
 > This file should always reflect the *current* state — overwrite freely, don't accumulate history here (that belongs in `progress.md`).
 
+## Where things stand (2026-07-16 update, Phase Q — done, third remediation roadmap N–Q complete)
+- **`runtime/hooks/browser.py`** now mirrors Phase I2's video lifecycle for Playwright native trace files: `settings.record_trace` (off by default), `settings.traces_dir`, `context.tracing.start(screenshots=True, snapshots=True)`/`stop(path=...)`, `get_last_trace_path()`. Fully independent of `record_video`.
+- **`orchestrator/run_engine.py`** attaches `report.report_paths["trace"]`, same pattern as the existing video block.
+- **Verification is genuinely stronger here than for N/O/P:** this sandbox session has real `playwright` + a launchable Chromium binary (confirmed directly). `pytest`/`pydantic` are still absent, but `browser.py` itself has no `pydantic` dependency, so it was run for real against real Chromium + a real local HTTP server (via a tiny stand-in for just `config.settings`) and produced an actual, validated `trace.zip` on disk. Only the `run_engine.py` `report_paths` wiring (which does need `pydantic` via `RunEngine`) remains verified by code-reading only. See D-038.
+- **This closes out the entire third remediation roadmap (Phases N–Q).** No further phases are currently planned.
+
 ## Where things stand (2026-07-16 update, Phase P — done)
 - **`agents/capability/automation_anywhere_adapter.py`** gained P1 (`_fetch_control_room_audit()`, opt-in via `params.include_control_room_audit`, off by default, read-only, best-effort/non-fatal, shares N1's 401-retry) and P2 (a new `control_room_audit` evidence key, per-target + single-target-back-compat top level).
 - **No RunReport/report_aggregator/run_engine changes needed** — `evidence` already flows into per-step `raw_results.json` for every capability-check step, so the new key alone puts Control Room's audit trail and AURA's own trail side by side in one report.

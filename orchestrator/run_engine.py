@@ -603,4 +603,27 @@ class RunEngine:
                 report_json_path = aggregator.run_dir / "report.json"
                 report_json_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
 
+        # Phase Q (decisions.md D-038): same "only known for certain after
+        # teardown" constraint as video above -- tracing.stop(path=...) is
+        # called inside browser_hook.close() itself (it needs the context
+        # still open), so by the time we get here the .zip is already on
+        # disk and this is just reading the path back out. Scoped as its
+        # own settings.record_trace check (not folded into the
+        # settings.record_video block above) since the two are
+        # independently toggleable -- a run can have either, both, or
+        # neither.
+        if settings.record_trace:
+            trace_path = None
+            try:
+                from runtime.hooks import browser as browser_hook
+
+                trace_path = browser_hook.get_last_trace_path()
+            except Exception:
+                pass
+
+            if trace_path:
+                report.report_paths["trace"] = trace_path
+                report_json_path = aggregator.run_dir / "report.json"
+                report_json_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+
         return RunEngineResult(run_id=run_id, spec=spec, report=report)

@@ -21,6 +21,13 @@ Like capture.py/interact.py, Playwright is imported lazily so this module
 (and anything importing it) stays importable in environments where
 Playwright/its browser binaries aren't installed -- NoDisplayError is
 raised (not a bare exception) in that case, same contract as before.
+
+Phase Q (decisions.md D-038) added Playwright native trace-file capture,
+parallel to (and independent of) Phase I2's video recording: when
+settings.record_trace is True, context.tracing.start(screenshots=True,
+snapshots=True) is called once per context and context.tracing.stop(path=...)
+at close(), finalizing a self-contained .zip viewable in Playwright's own
+trace viewer (see get_last_trace_path()).
 """
 from __future__ import annotations
 
@@ -65,6 +72,8 @@ class _BrowserSession:
         self._context = None
         self._page = None
         self._last_video_path: str | None = None
+        self._last_trace_path: str | None = None
+        self._tracing_started = False
 
     def get_page(self):
         if self._page is not None:
@@ -99,6 +108,21 @@ class _BrowserSession:
                     settings.videos_dir.mkdir(parents=True, exist_ok=True)
                     context_kwargs["record_video_dir"] = str(settings.videos_dir)
                 self._context = self._browser.new_context(**context_kwargs)
+            if settings.record_trace and not self._tracing_started:
+                # Phase Q (decisions.md D-038): Playwright's tracing API is
+                # per-context, not per-page, so this starts once per
+                # context -- same lifecycle granularity as record_video's
+                # context_kwargs above, just via the start()/stop() API
+                # instead of a constructor kwarg (tracing has no
+                # context-creation-time equivalent). screenshots+snapshots
+                # both on, matching the roadmap's exact spec, so the trace
+                # is fully self-contained (viewable in Playwright's trace
+                # viewer without needing the original page).
+                try:
+                    self._context.tracing.start(screenshots=True, snapshots=True)
+                    self._tracing_started = True
+                except Exception:
+                    pass  # advisory only -- never block page creation on trace setup
             self._page = self._context.new_page()
             return self._page
         except NoDisplayError:
@@ -114,11 +138,16 @@ class _BrowserSession:
         """Path to the most recently finalized video file, if any (set by close())."""
         return self._last_video_path
 
+    def get_last_trace_path(self) -> str | None:
+        """Path to the most recently finalized Playwright trace .zip, if any (set by close())."""
+        return self._last_trace_path
+
     def close(self) -> None:
         # Always clear first -- a stale path from a *previous* session
         # (e.g. an earlier run that had recording on) must not leak into
         # this one's answer just because the field was never overwritten.
         self._last_video_path = None
+        self._last_trace_path = None
 
         # Capture the video path (if recording) before the page object is
         # closed and dereferenced -- Playwright only finalizes the video
@@ -133,6 +162,22 @@ class _BrowserSession:
                     self._page = None
             except Exception:
                 pass  # advisory only -- never let video bookkeeping break teardown
+
+        # Phase Q (decisions.md D-038): unlike video (finalized on page
+        # close), tracing.stop(path=...) both finalizes *and* writes the
+        # trace .zip in one call -- but it must be called on a still-open
+        # context, so this has to happen before the context.close() loop
+        # below tears it down.
+        if self._tracing_started and self._context is not None:
+            try:
+                settings.traces_dir.mkdir(parents=True, exist_ok=True)
+                trace_path = settings.traces_dir / f"trace_{int(time.time() * 1000)}.zip"
+                self._context.tracing.stop(path=str(trace_path))
+                self._last_trace_path = str(trace_path)
+            except Exception:
+                pass  # advisory only -- never let trace bookkeeping break teardown
+            finally:
+                self._tracing_started = False
 
         for obj, closer in (
             (self._page, "close"),
@@ -175,6 +220,11 @@ def has_active_page() -> bool:
 def get_last_video_path() -> str | None:
     """Path to the most recently finalized Playwright-recorded video, if settings.record_video was on."""
     return _session.get_last_video_path()
+
+
+def get_last_trace_path() -> str | None:
+    """Path to the most recently finalized Playwright trace .zip, if settings.record_trace was on."""
+    return _session.get_last_trace_path()
 
 
 def close() -> None:

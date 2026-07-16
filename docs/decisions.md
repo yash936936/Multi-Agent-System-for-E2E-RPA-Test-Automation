@@ -1934,3 +1934,88 @@ the rest of the full suite remains unverified this session; run
 `pytest tests/test_automation_anywhere.py tests/test_phase_n_automation_anywhere.py tests/test_phase_p_automation_anywhere.py`
 (then the full suite) in a real environment before starting Phase Q, the
 last phase in this roadmap.
+
+## D-038 — Phase Q: Playwright native trace files (`runtime/hooks/browser.py`, mirrors I2's video lifecycle)
+
+**Roadmap Phase Q** (`Roadmap.md` §10, last phase of the third remediation
+roadmap): touches `runtime/hooks/browser.py` again (same file Phase I2's
+video recording lives in), scoped separately since it's a distinct
+feature, not a bug fix to I2.
+
+**New `settings.record_trace` flag** (`config/settings.py`), off by
+default, same posture as `record_video`. New `settings.traces_dir`
+property (`runtime/traces/`), same category/lifecycle as `videos_dir` --
+local generated run state, gitignored, not source, created on demand
+rather than in `ensure_dirs()` (matching how `videos_dir` is handled).
+
+**`_BrowserSession` (browser.py):**
+- `context.tracing.start(screenshots=True, snapshots=True)` is called
+  once per context, right after `new_context()`, guarded by a new
+  `_tracing_started` flag so it's never started twice for one context.
+  Both `screenshots` and `snapshots` on, exactly matching the roadmap's
+  spec, so the resulting trace is self-contained and viewable in
+  Playwright's own trace viewer without the original page.
+- `context.tracing.stop(path=...)` is called in `close()`, **before** the
+  context-teardown loop -- unlike video (which finalizes only once its
+  *page* is closed), a trace is finalized and written to disk by
+  `tracing.stop()` itself, but that call requires the *context* to still
+  be open, so the ordering constraint is the mirror image of video's (video
+  needs the page already closed; trace needs the context not yet closed).
+  Both quirks are now handled correctly and explained inline in the code.
+- New `get_last_trace_path()` (session method + module-level function),
+  same shape as `get_last_video_path()`.
+- `record_video` and `record_trace` are fully independent: guarded by
+  separate settings flags, separate state fields, separate blocks in
+  `close()`. A run can have either, both, or neither on.
+
+**`orchestrator/run_engine.py`:** a new `if settings.record_trace:` block,
+placed right after the existing video/slideshow block (same "only known
+for certain after `browser_hook.close()` finalizes it" ordering
+constraint), attaches `report.report_paths["trace"]` and rewrites
+`report.json` if a trace path came back -- completing the architecture
+diagram's "(Screenshots, Videos, Trace files)" label for real, matching
+what was already true for the other two.
+
+**Verification — genuinely stronger than D-035/D-036/D-037's disclosed
+gap, not the same caveat repeated.** This sandbox session, unlike the
+Phase N/O/P sessions, actually has the **real `playwright` package (and a
+working, launchable Chromium binary)** installed -- confirmed directly
+(`sync_playwright().start().chromium.launch(headless=True)` succeeds).
+`pytest`/`pydantic`/`pydantic_settings`/`httpx`/`sqlalchemy` are still
+absent and there is still no network to install them, so the new
+`tests/test_cross_browser.py` additions (3 tests: real trace file
+produced and is a valid non-empty zip, off-by-default produces no trace
+path, video+trace toggle independently) and
+`tests/test_run_engine_trace.py` (3 tests, RunReport-level: trace attached
+when on, absent when off, both video+trace attached together) could still
+not be run through `pytest` itself (`RunEngine`/`TestSpec` need
+`pydantic`). But `runtime/hooks/browser.py` itself has no `pydantic`
+dependency at all -- only `config.settings`, which does. So this was
+verified by swapping in a minimal plain-Python stand-in for
+`config.settings` (exposing exactly the attributes/properties browser.py
+actually reads: `record_video`, `record_trace`, `playwright_browser`,
+`videos_dir`, `traces_dir`) and then importing and running the **real,
+unmodified `runtime/hooks/browser.py`** against a **real Chromium
+instance** navigating a **real local HTTP server**
+(`tests/conftest_local_server.py`, which has no `pydantic` dependency
+either). This produced an actual `trace.zip` on disk, confirmed to be a
+valid zip archive (`zipfile.is_zipfile`) containing `trace.trace`,
+`trace.network`, and JPEG/HTML resource entries -- a materially stronger
+verification than D-035/D-036/D-037's hand-traced-logic-only checks, for
+the part of this phase that could reach real Playwright. The
+`RunEngine`/`RunReport` integration in `run_engine.py` (the `report_paths
+["trace"]` wiring) still could not be exercised end-to-end this session,
+since `RunEngine` itself imports `orchestrator.schemas`, which needs
+`pydantic` -- that specific piece was verified by code reading only
+(the new block is a near-verbatim structural mirror of the adjacent,
+already-working video block, changed only in the settings flag/report key
+names and the ordering-constraint comment). Run
+`pytest tests/test_cross_browser.py tests/test_run_engine_trace.py tests/test_run_engine_video.py`
+(then the full suite) in an environment with `pydantic`/`pytest` present
+to close that last gap -- this is the only remaining unverified piece of
+an otherwise real-Chromium-confirmed phase.
+
+**This completes the third remediation roadmap (Phases N–Q).** All four
+phases (`docs/decisions.md` D-035, D-036, D-037, D-038) are done. No
+further phases are currently planned; the next roadmap (if any) would need
+to be supplied fresh, the same way this one was.
