@@ -373,10 +373,10 @@ preferred over feature grouping where two items live in the same module.
     Evidence carries a per-target breakdown, not just one aggregate
     status, so a failing target among several successes stays visible
     rather than getting swallowed.
-- **Phase O — Data seeding adapter (new capability, its own phase).** 🚧
-  **In progress, started 2026-07-16.** Its own phase because it's the one
-  item here that introduces AURA's first-ever intentional write path to a
-  database — the same elevated care level Phase J (shared state) and
+- **Phase O — Data seeding adapter (new capability, its own phase).** ✅
+  **Done.** See `docs/decisions.md` D-036. Its own phase because it's the
+  one item here that introduces AURA's first-ever intentional write path
+  to a database — the same elevated care level Phase J (shared state) and
   Phase K (auth) got.
   - New `agents/capability/db_seed_adapter.py`, a distinct
     `CapabilityType.DB_SEED` — not a loosening of `db_adapter.py`'s
@@ -397,10 +397,10 @@ preferred over feature grouping where two items live in the same module.
   - Only INSERT — explicitly no UPDATE/DELETE/DDL, even structured.
     Precondition setup means creating rows that didn't exist, not
     mutating or erasing existing ones.
-- **Phase P — Control Room audit log retrieval + report sync.** Not
-  started. Lower risk than N/O (read-only against Control Room), grouped
-  as one phase since both halves are about the same "data synchronization"
-  arrow in the architecture diagram (docs/TRD.md §11).
+- **Phase P — Control Room audit log retrieval + report sync.** ✅ **Done.**
+  See `docs/decisions.md` D-037. Lower risk than N/O (read-only against
+  Control Room), grouped as one phase since both halves are about the same
+  "data synchronization" arrow in the architecture diagram (docs/TRD.md §11).
   - **P1.** Fetch Control Room's own audit-log entries for a given
     deployment ID after the poll reaches a terminal state — a new
     read-only call, no new write capability.
@@ -422,9 +422,6 @@ preferred over feature grouping where two items live in the same module.
     completing the diagram's "(Screenshots, Videos, Trace files)" label
     for real, matching what's already true for the other two.
 
-**Current status (2026-07-16): Phase N is done (N1 + N2 implemented in
-`automation_anywhere_adapter.py`, see `docs/decisions.md` D-035); Phase O
-is in progress (`db_seed_adapter.py`, see D-036); Phases P and Q are not
-started, sequenced in that order for the same reason G–M were: independent
-low-risk work first, the one new write-path adapter isolated in its own
-phase, mechanically related file-touches batched together.**
+**Current status (2026-07-16): Phases N, O, and P are done (see
+`docs/decisions.md` D-035, D-036, D-037). Phase Q (Playwright native trace
+files) is the only remaining phase in this roadmap, not started.**

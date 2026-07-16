@@ -1863,3 +1863,74 @@ clean landing, and before starting Phase P.
 retrieval + report sync) and Phase Q (Playwright trace files) — untouched
 this pass, plans already recorded in `Roadmap.md` §10 from the Phase N
 session.
+
+## D-037 — Phase P: Control Room audit log retrieval + report sync
+
+**Roadmap Phase P** (`Roadmap.md` §10): both halves land in the same file
+touched for Phases N (and now O is separate — Phase O touched
+`db_seed_adapter.py`, not this one). P1 and P2 both live inside
+`agents/capability/automation_anywhere_adapter.py`, since they're two
+halves of the same "data synchronization" arrow in the architecture
+diagram (`docs/TRD.md` §11) — lower risk than N/O since this phase is
+entirely read-only against Control Room, no new write capability anywhere.
+
+**P1 — audit log retrieval.** New `_fetch_control_room_audit()` on
+`AutomationAnywhereAdapter`: once a target's poll has already reached a
+terminal state, a `POST {control_room_url}/v2/auditlog/list` filtered on
+that `deploymentId` fetches Control Room's own audit-log entries for it.
+Opt-in via `params.include_control_room_audit` (default falsy/absent) —
+existing callers who never asked for this see zero behavior change and
+zero extra network round trips, which matters here more than for N1/N2
+since this is a genuinely optional enrichment, not a correctness fix.
+Shares the same one-retry 401-re-authentication path as the deploy/poll
+calls (`_get_token(..., force=True)`), reusing N1's token machinery rather
+than duplicating it.
+
+**Best-effort, explicitly non-fatal.** A fetch failure (network error,
+non-200, unexpected response shape) never changes the trigger's own
+`passed`/`escalate` verdict — that verdict was already fully and correctly
+determined by the terminal activity status *before* this call is even
+made. The failure is recorded in its own `fetch_error` field instead
+(`entries: []`, `fetch_error: "<reason>"`), so a caller who asked for the
+audit trail and didn't get it can tell "no entries" apart from "couldn't
+fetch it" — but it's never conflated with whether the bot itself
+succeeded.
+
+**P2 — report sync.** No new report-plumbing was needed. The fetched data
+is merged directly into `CapabilityCheckResult.evidence` under a new
+`control_room_audit` key — per target (`evidence["targets"][dep_id]
+["control_room_audit"]`), plus mirrored to the top level
+(`evidence["control_room_audit"]`) for the common single-target case,
+matching N2's existing back-compat-shape convention. Since
+`VisionActionResult.capability_result` (and therefore its `.evidence`)
+already flows unmodified into `ReportAggregator.finalize()`'s
+`raw_results.json` (referenced from `RunReport.report_paths["raw_json"]`)
+for every capability-check step, this key alone is sufficient to put
+Control Room's own audit trail and AURA's own step/result trail side by
+side in one report — confirmed by re-reading
+`orchestrator/schemas.py::VisionActionResult` and
+`orchestrator/report_aggregator.py::finalize()` rather than assumed. No
+changes to either of those two files, or to `orchestrator/run_engine.py`,
+were needed.
+
+**Key absent, not empty, when not requested.** When
+`include_control_room_audit` isn't set, the `control_room_audit` key is
+completely absent from evidence (not present-but-empty) — so existing
+consumers of this adapter's evidence dict see no shape change at all
+unless they specifically opted in, same convention N2 already established
+for `deployment_ids` only appearing when there's more than one target.
+
+**Verification — same disclosed sandbox gap as D-035/D-036.** No
+`pytest`/`httpx`/`pydantic`/network this session.
+`tests/test_phase_p_automation_anywhere.py` (5 tests: off-by-default no
+extra call, opt-in fetch + evidence merge, fetch-failure-is-non-fatal,
+401-during-audit-fetch re-authentication, multi-target per-target
+breakdown) was written but not run through `pytest`. Hand-verified instead
+using the same minimal `pydantic`/`httpx` stand-ins as D-035, plus a
+regression check confirming the pre-existing single-target back-compat
+evidence shape and the "missing control_room_url" failure path are both
+still intact after this change — all passed. Regression-freeness against
+the rest of the full suite remains unverified this session; run
+`pytest tests/test_automation_anywhere.py tests/test_phase_n_automation_anywhere.py tests/test_phase_p_automation_anywhere.py`
+(then the full suite) in a real environment before starting Phase Q, the
+last phase in this roadmap.

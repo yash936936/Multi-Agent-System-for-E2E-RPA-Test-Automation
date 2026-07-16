@@ -8,6 +8,12 @@ last_updated: 2026-07-15
 
 > This file should always reflect the *current* state — overwrite freely, don't accumulate history here (that belongs in `progress.md`).
 
+## Where things stand (2026-07-16 update, Phase P — done)
+- **`agents/capability/automation_anywhere_adapter.py`** gained P1 (`_fetch_control_room_audit()`, opt-in via `params.include_control_room_audit`, off by default, read-only, best-effort/non-fatal, shares N1's 401-retry) and P2 (a new `control_room_audit` evidence key, per-target + single-target-back-compat top level).
+- **No RunReport/report_aggregator/run_engine changes needed** — `evidence` already flows into per-step `raw_results.json` for every capability-check step, so the new key alone puts Control Room's audit trail and AURA's own trail side by side in one report.
+- **Verification, same disclosed gap as N/O:** no `pytest`/`httpx`/`pydantic`/network this session. `tests/test_phase_p_automation_anywhere.py` (5 tests) hand-verified via the same stand-ins used for Phase N, plus a regression check on the pre-existing evidence shape. See D-037.
+- **This closes out the third remediation roadmap except Phase Q** (Playwright native trace files — not started).
+
 ## Where things stand (2026-07-16 update, Phase O — in progress)
 - **New write-path adapter:** `agents/capability/db_seed_adapter.py` (`CapabilityType.DB_SEED`) — structured `table` + `values`/`rows` input only, builds a parameterized `INSERT` itself, table/column identifiers allowlist-validated (`^[A-Za-z_][A-Za-z0-9_]*$`) since SQL can't bind identifiers. No code path reads caller-supplied SQL text at all, so only INSERT is structurally possible. `db_adapter.py` (read-only, D-017-hardened) is untouched.
 - **Two independent gates required:** the router's existing `capability_adapters_enabled` kill switch, plus a new `settings.allow_db_seeding` (default `False`, `config/settings.py`) checked inside the adapter itself.

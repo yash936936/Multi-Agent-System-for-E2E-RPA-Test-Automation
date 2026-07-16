@@ -68,6 +68,23 @@ N2. Multi-bot / multi-runner trigger — `bot_id` and `run_as_user_id` may
     strict) or `any_must_complete` (fan-out redundancy), and evidence
     always carries the full per-target breakdown alongside the rolled-up
     verdict, so a failing target among several successes stays visible.
+
+Roadmap Phase P (decisions.md D-037) added one more thing to this same
+file, opt-in and read-only:
+
+P1. Control Room audit log retrieval — once every target has reached a
+    terminal state, `params.include_control_room_audit=True` fetches
+    Control Room's own audit-log entries for each deployment id (a new
+    read-only call; no new write capability). Off by default, so existing
+    callers see no added latency unless they ask for it. Best-effort and
+    non-fatal: a fetch failure never changes the trigger's own verdict,
+    only its own `fetch_error` field.
+P2. That data lands under a new `control_room_audit` evidence key (per
+    target, and mirrored to the top level for the common single-target
+    case) — no separate report-plumbing needed, since `evidence` already
+    flows into `ReportAggregator`'s per-step `raw_results.json` via
+    `VisionActionResult.capability_result`. One AURA report now contains
+    both trails side by side.
 """
 from __future__ import annotations
 
@@ -235,6 +252,20 @@ class AutomationAnywhereAdapter:
                 deployment_ids, poll_interval_seconds, timeout_seconds,
             )
 
+            # P1 (Roadmap Phase P, decisions.md D-037): once every target
+            # has reached a terminal state, optionally fetch Control
+            # Room's own audit-log entries for each deployment id. A new
+            # read-only call, no new write capability -- opt-in via
+            # `include_control_room_audit` (default False) so this phase
+            # doesn't add a network round trip and latency to every
+            # existing caller that never asked for it.
+            audit_by_target: Dict[str, Dict[str, Any]] = {}
+            if params.get("include_control_room_audit"):
+                for dep_id in deployment_ids:
+                    audit_by_target[dep_id], headers = self._fetch_control_room_audit(
+                        client, control_room_url, headers, params, dep_id,
+                    )
+
         expected_status = expected.get("terminal_status", "COMPLETED")
         per_target = {
             dep_id: {
@@ -242,6 +273,12 @@ class AutomationAnywhereAdapter:
                 "expected_status": expected_status,
                 "passed": info["status"] == expected_status,
                 "activity_record": info["record"],
+                # P2 (Roadmap Phase P): merged in only when P1's fetch was
+                # requested -- absent entirely otherwise, rather than a
+                # always-present-but-usually-empty key, so existing
+                # consumers reading this dict see no shape change unless
+                # they actually asked for the audit trail.
+                **({"control_room_audit": audit_by_target[dep_id]} if dep_id in audit_by_target else {}),
             }
             for dep_id, info in target_status.items()
         }
@@ -262,6 +299,8 @@ class AutomationAnywhereAdapter:
             evidence["deployment_id"] = deployment_ids[0]
             evidence["terminal_status"] = only["terminal_status"]
             evidence["activity_record"] = only["activity_record"]
+            if "control_room_audit" in only:
+                evidence["control_room_audit"] = only["control_room_audit"]
         else:
             evidence["deployment_ids"] = deployment_ids
 
@@ -272,6 +311,62 @@ class AutomationAnywhereAdapter:
             evidence=evidence,
             escalate=not passed,
         )
+
+    # ------------------------------------------------------------------
+    # P1 -- Control Room audit log retrieval (Roadmap Phase P, D-037)
+    # ------------------------------------------------------------------
+    def _fetch_control_room_audit(
+        self,
+        client: httpx.Client,
+        control_room_url: str,
+        headers: Dict[str, str],
+        params: Dict[str, Any],
+        deployment_id: str,
+    ) -> tuple[Dict[str, Any], Dict[str, str]]:
+        """
+        Read-only call to Control Room's own audit-log endpoint for a
+        single deployment id, once the poll for that target has already
+        reached a terminal state. No new write capability -- this only
+        ever GETs/POSTs a filtered list query.
+
+        Best-effort and non-fatal by design: a failure here (network
+        error, non-200, unexpected shape) never changes the trigger's own
+        `passed`/`escalate` verdict, which was already fully determined by
+        the terminal activity status before this is even called. It is
+        recorded as its own `fetch_error` instead, so a caller who asked
+        for the audit trail and didn't get it can tell the difference
+        between "no entries" and "couldn't fetch it."
+
+        Returns `(result_dict, headers)` -- headers are returned back out
+        because a 401 here triggers the same one-retry re-authentication
+        as the deploy/poll calls, and the (possibly refreshed) headers
+        need to flow back to the caller for any further per-target calls
+        in the same loop.
+        """
+        audit_url = f"{control_room_url.rstrip('/')}/v2/auditlog/list"
+        body = {"filter": {"operator": "eq", "field": "deploymentId", "value": deployment_id}}
+
+        try:
+            response = client.post(audit_url, headers=headers, json=body)
+            if response.status_code == 401:
+                token = self._get_token(client, control_room_url, params, force=True)
+                headers = {"X-Authorization": token} if token else {}
+                response = client.post(audit_url, headers=headers, json=body)
+
+            if response.status_code != 200:
+                return (
+                    {"entries": [], "fetch_error": f"audit log request failed with status {response.status_code}"},
+                    headers,
+                )
+
+            body_json = response.json() if response.content else {}
+            entries = body_json.get("list", []) if isinstance(body_json, dict) else []
+            return {"entries": entries, "fetch_error": None}, headers
+        except Exception as e:
+            # Deliberately broad: this is supplementary, read-only,
+            # best-effort data -- any failure to fetch it is reported
+            # alongside the (already-determined) real result, not raised.
+            return {"entries": [], "fetch_error": f"audit log fetch error: {str(e)}"}, headers
 
     @staticmethod
     def _as_list(value: Any) -> List[Any]:

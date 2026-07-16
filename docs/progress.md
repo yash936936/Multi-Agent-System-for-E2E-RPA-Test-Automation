@@ -9,6 +9,18 @@ project: AURA
 
 ---
 
+## 2026-07-16 — Phase P: Control Room audit log retrieval + report sync
+
+**What happened:**
+- Both P1 and P2 landed inside `agents/capability/automation_anywhere_adapter.py` (the same file N1/N2 touched — Phase O's `db_seed_adapter.py` was a separate, new file). **P1:** new `_fetch_control_room_audit()`, opt-in via `params.include_control_room_audit` (default off — no extra latency for existing callers), fetches Control Room's own audit-log entries for a deployment id once that target's poll is already terminal. Read-only, best-effort, non-fatal on failure (a fetch failure never changes the trigger's own pass/fail verdict, only its own `fetch_error` field), shares N1's 401-re-auth path.
+- **P2:** the fetched entries land under a new `control_room_audit` evidence key (per-target, and mirrored to the top level for the single-target case) — no new report-plumbing needed, since `evidence` already flows into `ReportAggregator`'s per-step `raw_results.json` for every capability-check step. Confirmed by re-reading `orchestrator/schemas.py` and `orchestrator/report_aggregator.py`, not assumed; neither file (nor `run_engine.py`) needed changes.
+- New tests: `tests/test_phase_p_automation_anywhere.py` (5 tests). Full detail in `docs/decisions.md` D-037.
+- Same disclosed sandbox gap as N/O: no `pytest`/`httpx`/`pydantic`/network this session. Hand-verified end-to-end with the same lightweight stand-ins used for D-035, plus a regression check confirming the pre-existing single-target evidence shape and error paths are untouched.
+
+**What should happen next:**
+- Run `pytest tests/test_automation_anywhere.py tests/test_phase_n_automation_anywhere.py tests/test_phase_p_automation_anywhere.py` (and the full suite) in a real environment before starting Phase Q.
+- Phase Q (Playwright native trace files) is the last phase in this roadmap.
+
 ## 2026-07-16 — Phase O: data-seeding adapter (`db_seed_adapter.py`, AURA's first intentional DB write path)
 
 **What happened:**
