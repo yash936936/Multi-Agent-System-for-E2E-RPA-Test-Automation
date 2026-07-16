@@ -8,6 +8,9 @@ import is deferred to inside each function rather than at module level.
 That keeps `agents.vision.*` importable and unit-testable (against
 synthetic PIL images) even where no display exists; the real capture
 path is exercised only when actually running against a target app.
+
+Phase S (decisions.md D-040): NoDisplayError is now the one shared class
+from runtime.errors, not a module-local lookalike -- see runtime/errors.py.
 """
 from __future__ import annotations
 
@@ -18,10 +21,9 @@ from pathlib import Path
 from PIL import Image
 
 from config.settings import settings
+from runtime.errors import NoDisplayError
 
-
-class NoDisplayError(RuntimeError):
-    """Raised when a screenshot is requested but no display is available."""
+__all__ = ["NoDisplayError"]  # re-exported for existing `from runtime.hooks.capture import NoDisplayError` call sites
 
 
 def file_hash(path: str | Path) -> str:

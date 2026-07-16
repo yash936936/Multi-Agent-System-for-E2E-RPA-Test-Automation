@@ -126,18 +126,20 @@ def check_display_available() -> tuple[bool, str | None]:
     touch the screen at all, so treating "no display" as fatal here would
     block work that doesn't need a display in the first place.
     """
-    from runtime.hooks.capture import NoDisplayError, capture_screenshot
+    from runtime.errors import display_guard
+    from runtime.hooks.capture import capture_screenshot
     import uuid as _uuid
 
     try:
-        capture_screenshot(f"preflight_{_uuid.uuid4().hex[:6]}", 0)
-    except NoDisplayError as e:
-        return False, (
-            f"No display/screen-capture backend is reachable ({e}). "
-            "This is fine for pure API/database/file capability checks, but "
-            "`aura execute`'s vision steps and `aura explore` need a live "
-            "display (or a virtual one, e.g. Xvfb) to take screenshots."
-        )
+        with display_guard() as guard:
+            capture_screenshot(f"preflight_{_uuid.uuid4().hex[:6]}", 0)
+        if guard.no_display:
+            return False, (
+                f"No display/screen-capture backend is reachable ({guard.error}). "
+                "This is fine for pure API/database/file capability checks, but "
+                "`aura execute`'s vision steps and `aura explore` need a live "
+                "display (or a virtual one, e.g. Xvfb) to take screenshots."
+            )
     except Exception as e:  # noqa: BLE001 - advisory check, never let it crash preflight itself
         return False, f"Could not verify display availability ({e})."
     return True, None

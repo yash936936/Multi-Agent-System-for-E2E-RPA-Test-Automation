@@ -60,8 +60,7 @@ def run_autoscan(
     scroll_amount: int = -600,
 ) -> AutoScanReport:
     from runtime.hooks import interact
-    from runtime.hooks.capture import NoDisplayError as CaptureNoDisplayError
-    from runtime.hooks.interact import NoDisplayError
+    from runtime.errors import NoDisplayError, display_guard
 
     from agents.vision.page_health import detect_page_issues
 
@@ -71,9 +70,9 @@ def run_autoscan(
     display_unavailable = False
 
     for i in range(max_scrolls):
-        try:
-            path = screenshot_provider(run_id, 9000 + i)  # offset keeps these out of the main spec's step_id range
-        except CaptureNoDisplayError:
+        with display_guard() as guard:
+            guard.value = screenshot_provider(run_id, 9000 + i)  # offset keeps these out of the main spec's step_id range
+        if guard.no_display:
             # No display/screenshot capability available at all (headless
             # CI/sandbox environment, or a display that dropped mid-scan).
             # Every other real capture site in this pipeline
@@ -88,6 +87,7 @@ def run_autoscan(
             # taking the whole run down.
             display_unavailable = True
             break
+        path = guard.value
         issues = detect_page_issues(path)
         steps.append(AutoScanStepResult(index=i, screenshot_ref=path, issues=issues))
 

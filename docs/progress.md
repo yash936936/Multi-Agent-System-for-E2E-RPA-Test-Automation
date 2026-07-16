@@ -9,6 +9,18 @@ project: AURA
 
 ---
 
+## 2026-07-16 — Phase S: display/screenshot-guard unification (fourth roadmap)
+
+**What happened:**
+- **S1:** `NoDisplayError` was three unrelated classes (`runtime.hooks.browser`, `runtime.hooks.capture`, `runtime.hooks.interact`), each requiring its own aliased import at every call site that needed to catch any of them. New `runtime/errors.py` (stdlib-only) now defines the one shared class; all three hook modules import and re-export it, so existing `from runtime.hooks.X import NoDisplayError` imports keep working but now all resolve to the same class object. Redundant aliasing removed from `orchestrator/autoscan.py`, `orchestrator/ui_audit_runner.py`, `agents/vision/executor.py`, `orchestrator/run_engine.py`, `api/routers/runs.py`, `aura/cli/preflight.py`.
+- **S2:** added `runtime.errors.display_guard()`, a context manager every screenshot-acquisition call site now uses instead of writing its own `try/except NoDisplayError`. Wired into `run_engine.py::_safe_screenshot`, `autoscan.py::run_autoscan`, both screenshot sites in `ui_audit_runner.py::_run_click_audit`, and `preflight.py::check_display_available`.
+- Full detail in `docs/decisions.md` D-040 (S1) and D-041 (S2).
+
+**Test results:** 484/484 passing throughout (no regressions from either S1 or S2). `ruff check` clean on all touched files.
+
+**What should happen next:**
+- Phase T — Spec-level action/target-type validation pass (new pre-execution validation step checking action/target-type compatibility across the whole spec before any step runs).
+
 ## 2026-07-16 — Phase R: safety/correctness quick fixes (fourth roadmap, R–V, kicked off)
 
 **What happened:**

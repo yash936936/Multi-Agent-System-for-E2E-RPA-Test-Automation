@@ -225,13 +225,28 @@ of the Phase 1–19 baseline described above.
 **Tests: 483/484 → 484/484 passing** (full suite, confirmed both before
 and after by temporarily reverting the R1 fix and re-running).
 
+## Update — 2026-07-16 — Phase S: display/screenshot-guard unification (fourth roadmap)
+
+**Phase S is done** (`docs/decisions.md` D-040, D-041):
+- S1: `NoDisplayError` unified into one shared class in new `runtime/errors.py`,
+  replacing three previously-unrelated per-module classes
+  (`runtime.hooks.browser`/`capture`/`interact`). All call sites simplified
+  to a single import + single `except NoDisplayError`.
+- S2: new `runtime.errors.display_guard()` context manager -- the one
+  enforced way to guard a screenshot-acquisition call, replacing
+  hand-written `try/except NoDisplayError` at each site. Wired into
+  `run_engine.py`, `autoscan.py`, `ui_audit_runner.py` (both screenshot
+  sites), and `preflight.py`.
+
+**Tests: 484/484 passing throughout** (no regressions). `ruff check` clean
+on all Phase S-touched files.
+
 ## Next action
-> **Phase S — Display/screenshot-guard unification** (see
-> `docs/Roadmap.md`): unify `NoDisplayError` into one shared
-> `runtime.errors.NoDisplayError` (replacing the per-module duplicates in
-> `runtime.hooks.interact`, `runtime.hooks.browser`, and the third one),
-> then build a single shared screenshot-acquisition guard around it. This
-> is the structural fix behind what D-022 and D-024 each patched
-> piecemeal, and needs to land before Phase U (OCR-then-DOM dual
-> verification) so Phase U is built against the unified guard, not the
-> fragmented one.
+> **Phase T — Spec-level action/target-type validation pass**: new
+> pre-execution validation step checking action/target-type compatibility
+> across the whole spec before any step runs -- e.g. a `VISUAL_CLICK` step
+> pointed at something that should have been a
+> `CapabilityType.AUTOMATION_ANYWHERE` check fails fast with a specific
+> message instead of burning through the vision pipeline first. See
+> `docs/Roadmap.md`'s fourth-roadmap section for the full R–V plan and
+> sequencing rationale.

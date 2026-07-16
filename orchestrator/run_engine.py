@@ -99,12 +99,11 @@ class RunEngine:
         happens just before dispatching to the vision executor behave the
         same way, instead of being the one place that crashes.
         """
-        from runtime.hooks.capture import NoDisplayError
+        from runtime.errors import display_guard
 
-        try:
-            return self.screenshot_provider(run_id, step_id)
-        except NoDisplayError:
-            return None
+        with display_guard() as guard:
+            guard.value = self.screenshot_provider(run_id, step_id)
+        return None if guard.no_display else guard.value
 
     def _enforce_bot_validation_cross_check(self, spec: TestSpec, aggregator: ReportAggregator) -> None:
         """

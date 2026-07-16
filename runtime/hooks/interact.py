@@ -6,12 +6,15 @@ capture.py, the import is deferred into each function body so this
 module (and anything that imports it, like agents/vision/executor.py)
 stays importable in headless/no-display environments — real dispatch
 only happens when a step is actually executed against a live target app.
+
+Phase S (decisions.md D-040): NoDisplayError is now the one shared class
+from runtime.errors, not a module-local lookalike -- see runtime/errors.py.
 """
 from __future__ import annotations
 
+from runtime.errors import NoDisplayError
 
-class NoDisplayError(RuntimeError):
-    """Raised when an interaction is requested but no display is available."""
+__all__ = ["NoDisplayError"]  # re-exported for existing `from runtime.hooks.interact import NoDisplayError` call sites
 
 
 def _pyautogui():

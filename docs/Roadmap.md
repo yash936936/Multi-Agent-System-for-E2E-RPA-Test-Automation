@@ -529,3 +529,4 @@ Each phase gets its own `decisions.md` entry (continuing at D-039) once
 actually built; the existing test suite stays green throughout.
 
 **Phase R status (2026-07-16): done.** See `docs/decisions.md` D-039.
+**Phase S status (2026-07-16): done.** See `docs/decisions.md` D-040 (S1) and D-041 (S2).

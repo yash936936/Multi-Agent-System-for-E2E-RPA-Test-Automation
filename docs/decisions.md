@@ -2080,3 +2080,86 @@ the only previously-failing test; R3 added no new failures).
 **Docs updated:** `docs/Roadmap.md` (Phases R–V appended, Phase R marked
 done), `docs/progress.md` (this pass appended), `docs/STATUS.md`
 (next-action pointer updated to Phase S).
+
+---
+
+## D-040 — Phase S1: unify NoDisplayError into runtime/errors.py
+
+**Date:** 2026-07-16
+**Roadmap:** Fourth remediation roadmap, Phase S (S1)
+
+**Problem:** `NoDisplayError` was defined three separate times --
+`runtime.hooks.browser.NoDisplayError`, `runtime.hooks.capture.NoDisplayError`,
+and `runtime.hooks.interact.NoDisplayError` -- as three distinct
+`RuntimeError` subclasses that happened to share a name and docstring
+shape but were never related by inheritance. Callers that needed to catch
+"no display, whichever hook raised it" (`orchestrator/autoscan.py`,
+`orchestrator/ui_audit_runner.py`, `agents/vision/executor.py`) had to
+import every variant under an alias (`CaptureNoDisplayError`,
+`BrowserNoDisplayError`, plain `NoDisplayError` for interact's) and list
+every alias across separate `except` blocks. This is exactly the failure
+mode D-022 and D-024 each patched piecemeal: a caller could easily catch
+only the variant it remembered to import and let a different hook's
+lookalike propagate uncaught.
+
+**Fix:** new `runtime/errors.py`, dependency-free (stdlib only), defining
+the one shared `NoDisplayError(RuntimeError)`. `runtime/hooks/browser.py`,
+`runtime/hooks/capture.py`, and `runtime/hooks/interact.py` now import and
+re-export this class (`from runtime.errors import NoDisplayError` +
+`__all__`) instead of each defining their own -- existing
+`from runtime.hooks.X import NoDisplayError` call sites still work
+unchanged, but all three now resolve to the *same* class object.
+
+**Cleanup at call sites:** since the three variants are now identical,
+removed the now-redundant aliasing in `orchestrator/autoscan.py`,
+`orchestrator/ui_audit_runner.py`, `agents/vision/executor.py`,
+`orchestrator/run_engine.py`, `api/routers/runs.py`, and
+`aura/cli/preflight.py` -- each now imports once from `runtime.errors`
+and uses a single `except NoDisplayError` regardless of which hook raised
+it.
+
+**Verified:** `python3 -c "from runtime.hooks.browser import NoDisplayError as A; from runtime.hooks.capture import NoDisplayError as B; from runtime.hooks.interact import NoDisplayError as C; from runtime.errors import NoDisplayError as D; assert A is B is C is D"` passes. Full suite: 484/484 passing, no regressions.
+
+---
+
+## D-041 — Phase S2: shared screenshot-acquisition guard (`display_guard`)
+
+**Date:** 2026-07-16
+**Roadmap:** Fourth remediation roadmap, Phase S (S2)
+
+**Problem:** even after D-040 unified the exception class, every
+screenshot/display-dependent call site still had to remember to write its
+own `try/except NoDisplayError` -- a discipline, not an enforced code
+path. This is the structural gap D-022 and D-024 patched one call site at
+a time (and R1/R2 of this same roadmap found a live instance of the
+underlying busy-spin/isolation bug class in a different subsystem).
+
+**Fix:** `runtime.errors.display_guard()`, a context manager built around
+the D-040 `NoDisplayError`. Usage:
+```python
+with display_guard() as guard:
+    guard.value = screenshot_provider(run_id, step_id)
+if guard.no_display:
+    ...  # handle "no display" however this call site needs to
+```
+Only `NoDisplayError` is caught; any other exception still propagates
+normally. `guard.error` carries the original exception for call sites
+that need to surface its message (e.g. `aura/cli/preflight.py`'s
+advisory warning).
+
+**Call sites migrated:**
+- `orchestrator/run_engine.py::_safe_screenshot`
+- `orchestrator/autoscan.py::run_autoscan` (the screenshot-capture site;
+  the separate `interact.scroll()` guard a few lines down is not a
+  screenshot call and was left as a plain `except NoDisplayError`, per
+  S2's stated scope)
+- `orchestrator/ui_audit_runner.py::_run_click_audit` (both the baseline
+  and post-click screenshot sites)
+- `aura/cli/preflight.py::check_display_available`
+
+**Verified:** full suite 484/484 passing, no regressions. `ruff check` on
+all Phase S–touched files: clean.
+
+**Docs updated:** `docs/Roadmap.md` (Phase S marked done), `docs/progress.md`
+(this pass appended), `docs/STATUS.md` (next-action pointer updated to
+Phase T).

@@ -47,13 +47,13 @@ def _try_dom_path(browser_hook, step, threshold: float, action_taken: str, value
     """
     from agents.vision.dom_locator import locate_dom, relocate_dom
     from runtime.hooks import interact
-    from runtime.hooks.interact import NoDisplayError
+    from runtime.errors import NoDisplayError
 
     target_text = step.target_description or step.field_description
 
     try:
         page = browser_hook.get_page()
-    except browser_hook.NoDisplayError:
+    except NoDisplayError:
         return None
 
     dom_result = locate_dom(page, target_text)
@@ -94,7 +94,7 @@ def execute_step(payload: VisionStepInput) -> VisionActionResult:
 
     if step.action == ActionType.NAVIGATE_URL:
         from runtime.hooks import browser
-        from runtime.hooks.browser import NoDisplayError as BrowserNoDisplayError
+        from runtime.errors import NoDisplayError
 
         url = step.url or step.target_description
         try:
@@ -109,7 +109,7 @@ def execute_step(payload: VisionStepInput) -> VisionActionResult:
                 escalate=True,
                 screenshot_ref=payload.screenshot_path,
             )
-        except BrowserNoDisplayError:
+        except NoDisplayError:
             # No live display/browser (e.g. running headless on a server).
             # Previously this was silently swallowed and the step was
             # unconditionally reported as a successful navigation
@@ -189,7 +189,7 @@ def execute_step(payload: VisionStepInput) -> VisionActionResult:
 
     try:
         from runtime.hooks import interact
-        from runtime.hooks.interact import NoDisplayError
+        from runtime.errors import NoDisplayError
 
         if action_taken == "click":
             interact.click(result.x, result.y)

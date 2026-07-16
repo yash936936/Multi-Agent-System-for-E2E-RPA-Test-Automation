@@ -85,11 +85,11 @@ def _run_click_audit(
     from agents.vision.locator import locate_text
     from agents.vision.page_health import detect_page_issues
     from agents.vision.ui_audit import audit_screenshot
-    from runtime.hooks.capture import NoDisplayError as CaptureNoDisplayError
+    from runtime.errors import NoDisplayError, display_guard
 
-    try:
-        baseline_path = screenshot_provider(run_id, 8000)
-    except CaptureNoDisplayError:
+    with display_guard() as guard:
+        guard.value = screenshot_provider(run_id, 8000)
+    if guard.no_display:
         # No display/screenshot capability at all -- every other real
         # capture site in this pipeline already turns this into a clean
         # escalation/stop rather than an uncaught traceback; this was the
@@ -104,6 +104,7 @@ def _run_click_audit(
             page_issues=["No display available -- UI audit/exploration skipped (headless/no-display environment)."],
             requirement_prompt=requirement_prompt,
         )
+    baseline_path = guard.value
 
     landmarks = audit_screenshot(baseline_path)
     baseline_hash = file_hash(baseline_path)
@@ -120,7 +121,6 @@ def _run_click_audit(
     candidates = [e for e in all_elements if e.looks_interactive and band_filter(e)][:max_elements]
 
     from runtime.hooks import interact
-    from runtime.hooks.interact import NoDisplayError
 
     all_seen_text: list[str] = [e.text for e in all_elements]
 
@@ -136,9 +136,9 @@ def _run_click_audit(
             report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=False, state_changed=None))
             continue
 
-        try:
-            after_path = screenshot_provider(run_id, 8100 + i)
-        except CaptureNoDisplayError:
+        with display_guard() as after_guard:
+            after_guard.value = screenshot_provider(run_id, 8100 + i)
+        if after_guard.no_display:
             # Display was available for the baseline capture but dropped
             # partway through the audit (or the click itself somehow
             # succeeded in a race against a display disconnect) -- record
@@ -146,6 +146,7 @@ def _run_click_audit(
             # rather than crashing the whole run on the next iteration too.
             report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=True, state_changed=None))
             break
+        after_path = after_guard.value
         after_hash = file_hash(after_path)
         state_changed = after_hash != baseline_hash
         report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=True, state_changed=state_changed))

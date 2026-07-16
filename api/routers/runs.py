@@ -176,7 +176,7 @@ def execute_full_exploration_run(
 
         from orchestrator.ui_audit_runner import run_exploration
         from runtime.hooks import browser
-        from runtime.hooks.browser import NoDisplayError
+        from runtime.errors import NoDisplayError
         from runtime.hooks.capture import capture_screenshot
 
         try:

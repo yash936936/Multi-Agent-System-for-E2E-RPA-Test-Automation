@@ -28,16 +28,18 @@ settings.record_trace is True, context.tracing.start(screenshots=True,
 snapshots=True) is called once per context and context.tracing.stop(path=...)
 at close(), finalizing a self-contained .zip viewable in Playwright's own
 trace viewer (see get_last_trace_path()).
+
+Phase S (decisions.md D-040): NoDisplayError is now the one shared class
+from runtime.errors, not a module-local lookalike -- see runtime/errors.py.
 """
 from __future__ import annotations
 
 import time
 
 from config.settings import PLAYWRIGHT_BROWSER_CHOICES, settings
+from runtime.errors import NoDisplayError
 
-
-class NoDisplayError(RuntimeError):
-    """Raised when a browser can't be launched (no display / no browser found)."""
+__all__ = ["NoDisplayError"]  # re-exported for existing `from runtime.hooks.browser import NoDisplayError` call sites
 
 
 def normalize_url(url: str) -> str:
