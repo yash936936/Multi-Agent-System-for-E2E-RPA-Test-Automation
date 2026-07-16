@@ -2019,3 +2019,64 @@ an otherwise real-Chromium-confirmed phase.
 phases (`docs/decisions.md` D-035, D-036, D-037, D-038) are done. No
 further phases are currently planned; the next roadmap (if any) would need
 to be supplied fresh, the same way this one was.
+
+---
+
+## D-039 — Phase R: safety/correctness quick fixes (poll busy-spin, retry logging)
+
+**Date:** 2026-07-16
+**Roadmap:** Fourth remediation roadmap, Phase R (R1–R3)
+
+**Context:** Kicking off the R–V roadmap. Phase R is deliberately three
+small, independent, zero-architecture-change fixes, sequenced first
+because later phases (S, U) touch the same code paths and should build on
+correct code, not broken code.
+
+**R1 — Automation Anywhere poll-loop busy-spin.**
+`AutomationAnywhereAdapter._poll_rest_status_multi` used
+`poll_interval_seconds` as-is, with no floor. A caller-supplied `0` (or a
+negative value) made the `while time.monotonic() < deadline` loop spin
+with no pacing between status requests. In
+`test_n2_timed_out_target_reported_independently_of_completed_target`
+(`poll_interval_seconds=0`, `timeout_seconds=0.05`), this exhausted the
+test's 200-entry mocked response sequence before the deadline elapsed,
+surfacing as `KeyError: 'targets'` in the assertion (the adapter's
+generic exception handling converted the underlying `StopIteration` into
+a failure result that never populated the `targets` evidence key — a
+symptom one layer removed from the real cause).
+**Fix:** `poll_interval_seconds = max(poll_interval_seconds, 1.0)` inside
+`_poll_rest_status_multi` itself, not just documented as an expected
+value callers are trusted to respect.
+**Verified:** `pytest tests/test_phase_n_automation_anywhere.py` — 10/10
+passing (was 9/10, this test failing).
+
+**R2 — Test-isolation check.** Re-ran the fixed test both in isolation
+(`pytest tests/test_phase_n_automation_anywhere.py::test_n2_...`) and in
+the full suite. Both pass; no separate isolation-vs-full-suite ordering
+issue was found once the real busy-spin bug was fixed — the discrepancy
+described in the roadmap note was this same bug, not a second one.
+
+**R3 — Planner retry/escalation logging.** `agents/planner/spec_generator.py::generate_spec`'s
+one-retry-on-validation-failure loop (WORKFLOW.md Step 1.3) previously
+retried silently. Now: `backend.generate()` + `TestSpec.model_validate()`
+are wrapped in a single `try`, and on any exception a `logging.warning`
+call records `type(exc).__name__` and the exception text before
+re-prompting once. This also means a `backend.generate()` failure itself
+(e.g. a timeout raised by a future network-backed backend) is now
+covered by the same retry-with-logged-reason path, not just schema
+validation failures — matching the roadmap's stated scope ("schema
+validation error, timeout, exception type"). No new exception types are
+swallowed silently: if the retry also fails, `TestSpec.model_validate`
+still raises out of `generate_spec` as before.
+**Rationale for logging over a heavier mechanism:** `orchestrator/audit_logger.py`
+exists but is a tenant/user/action-scoped compliance log, not a fit for
+an in-process retry reason; stdlib `logging` is the minimal correct tool
+here (code-minimalism ladder, `context.md` §6.7) and sets up Phase V's
+escalation-policy logging to follow the same convention.
+
+**Test results:** 484/484 passing (full suite, before and after — R1 was
+the only previously-failing test; R3 added no new failures).
+
+**Docs updated:** `docs/Roadmap.md` (Phases R–V appended, Phase R marked
+done), `docs/progress.md` (this pass appended), `docs/STATUS.md`
+(next-action pointer updated to Phase S).

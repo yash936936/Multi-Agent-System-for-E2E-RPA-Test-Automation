@@ -408,7 +408,17 @@ class AutomationAnywhereAdapter:
         polling a target as soon as it reaches a terminal status; keeps
         polling the remaining ones until all are terminal or the shared
         deadline elapses (each still-pending target then reports TIMED_OUT).
+
+        R1 (Roadmap Phase R, decisions.md D-039): callers can pass a
+        poll_interval_seconds of 0 (or an accidentally-negative value) --
+        without a floor here, the loop busy-spins, firing a status request
+        on every trip through the while loop with no pacing, which can
+        exhaust a caller's mocked/rate-limited response sequence (or hammer
+        the real Control Room API) well before the deadline elapses. Clamp
+        to a sane floor inside this function itself, not just as a
+        documented "expected" value callers are trusted to respect.
         """
+        poll_interval_seconds = max(poll_interval_seconds, 1.0)
         deadline = time.monotonic() + timeout_seconds
         state: Dict[str, Dict[str, Any]] = {
             dep_id: {"status": None, "record": {}} for dep_id in deployment_ids

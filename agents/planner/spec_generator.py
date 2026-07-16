@@ -30,6 +30,7 @@ raising.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Protocol
@@ -394,13 +395,29 @@ def _default_backend() -> SpecBackend:
     return backend_cls()
 
 
+_logger = logging.getLogger(__name__)
+
+
 def generate_spec(payload: RequirementInput, backend: SpecBackend | None = None) -> TestSpec:
     backend = backend or _default_backend()
 
-    raw = backend.generate(payload.requirement_text)
     try:
+        raw = backend.generate(payload.requirement_text)
         return TestSpec.model_validate(raw)
-    except Exception:
-        # WORKFLOW.md Step 1.3: one re-prompt/retry on validation failure.
+    except Exception as first_exc:
+        # R3 (Roadmap Phase R, decisions.md D-039): WORKFLOW.md Step 1.3's
+        # one re-prompt/retry on validation failure was previously silent --
+        # no record of *why* a retry happened. Log the reason (schema
+        # validation error vs. an exception raised by the backend itself,
+        # e.g. a timeout) so this loop is auditable rather than a black box.
+        # This is a prerequisite for Phase V's escalation policy to be
+        # trustworthy: an opaque retry today would just become an opaque
+        # escalation later.
+        _logger.warning(
+            "Planner.generate_spec: retrying after validation/backend "
+            "failure (reason=%s: %s)",
+            type(first_exc).__name__,
+            first_exc,
+        )
         raw_retry = backend.generate(payload.requirement_text)
         return TestSpec.model_validate(raw_retry)

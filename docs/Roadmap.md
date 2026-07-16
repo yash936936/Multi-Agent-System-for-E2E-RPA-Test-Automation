@@ -425,3 +425,107 @@ preferred over feature grouping where two items live in the same module.
 **Current status (2026-07-16): Phases N, O, P, and Q are all done (see
 `docs/decisions.md` D-035, D-036, D-037, D-038). The entire third
 remediation roadmap (Phases N–Q) is complete.**
+
+---
+
+## Fourth remediation roadmap — Phases R–V
+
+Continuing the letter sequence after Phase Q (last landed phase,
+`decisions.md` D-038). Sequenced by dependency, not just priority: the two
+exception/guard-unification bugs go first since later phases touch the
+exact same code paths and should build on the fixed version, not the
+broken one.
+
+One note on the corrected Idea 1 (Phase U): OCR-then-DOM in sequence, both
+always run, results compiled together — the reverse order from Phase C's
+current DOM-first/OCR-fallback architecture. Built exactly as specified.
+
+### Phase R — Safety/correctness quick fixes (small, independent, do first)
+
+- **R1.** Automation Anywhere poll-loop busy-spin fix. Clamp
+  `poll_interval_seconds` to a sane floor (`max(poll_interval_seconds,
+  1.0)`) inside `_poll_rest_status_multi` itself — not just documented as
+  an expected value. Direct fix for the `KeyError: 'targets'` failure in
+  `test_n2_timed_out_target_reported_independently_of_completed_target`.
+- **R2.** Investigate the test-isolation mystery alongside the fix.
+  Confirm the fix resolves it both in isolation and in the full suite —
+  and if the isolation-vs-full-suite discrepancy persists even after the
+  real bug is fixed, chase that down too rather than letting a fixed bug
+  mask a separate ordering issue.
+- **R3.** Planner retry/escalation logging. Every retry inside
+  `generate_spec`'s validation-failure loop gets a logged reason (schema
+  validation error, timeout, exception type) instead of retrying silently.
+  Small, no architecture change, but a prerequisite for Phase V's
+  escalation policy being trustworthy/auditable rather than a black box.
+
+Why first: all three are small, self-contained, and carry zero risk to
+anything else — the same "smallest risk, unblocks nothing else, but
+removes real bugs before bigger changes land on top" pattern the very
+first remediation phase (Phase A) already established.
+
+### Phase S — Display/screenshot-guard unification (closes a whole bug class, not one instance)
+
+- **S1.** Unify `NoDisplayError`. One shared `runtime.errors.NoDisplayError`,
+  imported everywhere. Every current per-module duplicate
+  (`runtime.hooks.interact`, `runtime.hooks.browser`, and the third one)
+  gets replaced with the shared class, not a new duplicate.
+- **S2.** Shared screenshot-acquisition guard. A single context
+  manager/decorator that every screenshot call site uses, built around
+  S1's unified exception. This is the structural fix behind what D-022
+  and D-024 each patched piecemeal.
+
+Why S1 before S2: the shared guard needs the unified exception to exist
+first. Why S before U: Phase U is about to become the single most
+frequently-executed piece of display-touching code in the whole system —
+it should be built against the unified guard, not the fragmented one.
+
+### Phase T — Spec-level action/target-type validation pass
+
+New pre-execution validation step (not per-step at runtime) that checks
+action/target-type compatibility across the whole spec before any step
+runs — e.g. a `VISUAL_CLICK` step pointed at something that should have
+been a `CapabilityType.AUTOMATION_ANYWHERE` check fails fast with a
+specific, actionable message, instead of burning through the entire
+vision pipeline and failing with a confusing OCR/DOM miss. Independent of
+R and S — can land in parallel with either, but sequenced here since it's
+lower urgency than the display-guard bug class.
+
+### Phase U — OCR-then-DOM dual verification, results compiled (redesigned Idea 1)
+
+Replace the current DOM-first/OCR-fallback chain with: run OCR, then run
+DOM, sequentially, every time (not conditionally) — then compile/reconcile
+both results before deciding the step's outcome.
+
+Compilation rule: both agree (overlapping location) → strongest
+confidence, dispatch. Both find something but disagree → log both
+candidates as evidence, apply the configured tie-break, never silently
+trust one over the other without recording the disagreement. Only one
+finds it → proceed, but tag the result "single-method" vs.
+"dual-method-confirmed" in evidence. Neither finds it → escalate.
+
+This fully replaces the smaller "fresh DOM re-check before escalating"
+idea from last time. Depends on Phase S (built on the unified display
+guard) and benefits from Phase R3's logging (the disagreement/tie-break
+reasoning needs a logged reason, not a silent decision). Largest phase
+here — touches `agents/vision/executor.py`, `agents/vision/locator.py`,
+`agents/vision/dom_locator.py`, and the report template.
+
+### Phase V — Dual API + local LLM generic backend
+
+Generic OpenAI-compatible HTTP client (no SDK, no hardcoded vendor),
+`AURA_CLOUD_LLM_BASE_URL`/`_API_KEY`/`_MODEL`/`AURA_ENABLE_CLOUD_PLANNER`/
+`AURA_PLANNER_PRIORITY`/`AURA_REQUIRE_LLM_BACKEND` env vars, a detection
+matrix, local-first/cloud-escalation policy, and reuse of Phase D's
+existing egress-allowlist mechanism rather than a second one.
+
+Depends on Phase R3 — the escalation policy this phase introduces is
+exactly what R3's "why did this retry/escalate" logging exists to make
+trustworthy. Otherwise independent of S/T/U — touches the planner, not
+the vision pipeline — so it could run in parallel with those, but
+sequenced last here since it's net-new capability rather than fixing
+something already shipped and load-bearing.
+
+Each phase gets its own `decisions.md` entry (continuing at D-039) once
+actually built; the existing test suite stays green throughout.
+
+**Phase R status (2026-07-16): done.** See `docs/decisions.md` D-039.

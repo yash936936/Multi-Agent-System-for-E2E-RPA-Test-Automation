@@ -9,6 +9,20 @@ project: AURA
 
 ---
 
+## 2026-07-16 — Phase R: safety/correctness quick fixes (fourth roadmap, R–V, kicked off)
+
+**What happened:**
+- New fourth remediation roadmap (Phases R–V) added to `docs/Roadmap.md`, continuing the letter sequence after Phase Q.
+- **R1:** `agents/capability/automation_anywhere_adapter.py::_poll_rest_status_multi` busy-spun when `poll_interval_seconds` was `0` (or negative), exhausting a caller's bounded response sequence before its deadline elapsed. This was the real cause of `test_n2_timed_out_target_reported_independently_of_completed_target`'s `KeyError: 'targets'` failure (a symptom of the adapter's generic exception handling swallowing the real `StopIteration`). Fixed with a `max(poll_interval_seconds, 1.0)` floor inside the function itself.
+- **R2:** re-ran the fixed test in isolation and in the full suite — both pass, confirming there was no separate isolation-vs-full-suite ordering bug; it was the same busy-spin bug.
+- **R3:** `agents/planner/spec_generator.py::generate_spec`'s one-retry-on-validation-failure loop now logs the failure reason (`logging.warning`, exception type + message) before re-prompting, instead of retrying silently. Sets up Phase V's escalation-policy logging.
+- Full detail in `docs/decisions.md` D-039.
+
+**Test results:** 484/484 passing (was 483/484 — R1's fix is the only previously-failing test; R3 added no regressions).
+
+**What should happen next:**
+- Phase S — Display/screenshot-guard unification (`NoDisplayError` consolidation, then a shared screenshot-acquisition guard).
+
 ## 2026-07-16 — Phase Q: Playwright native trace files (roadmap N–Q complete)
 
 **What happened:**

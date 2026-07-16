@@ -183,3 +183,55 @@ Remaining honest gap from the original review: native desktop (Java/.NET) and ma
 > 4. Implement Roadmap Phase 20 (proposed, not started — see `Roadmap.md` §6 and `TRD.md` §10): Playwright-first element resolution + Scrapling-style DOM self-heal for `agents/vision/locator.py`, headless-render fix for `agents/capability/link_checker.py`'s client-rendered-page gap, structured audit-log taxonomy, skill quality-tracking. Full design backed by `external_repos.md`'s verified research across 18 repos. **This is now the largest remaining Phase (roadmap Phase C).**
 > 5. Implement Roadmap Phase 21 (proposed, not started — see `Roadmap.md` §7 and `TRD.md` §11): Automation Anywhere trigger/validate architecture — new `automation_anywhere_adapter.py` (REST/CLI bot trigger + poll) and `playwright_validator.py` (read-only post-run web-state check), reusing the existing `db_adapter`/`file_adapter` for the database/files validation legs. Sequenced after Phase 20 since both need the same Playwright dependency (roadmap Phase E, lowest urgency, deliberately last).
 > 6. **(New, 2026-07-13, roadmap Phases A & B — done, see `decisions.md` D-017/D-018):** Safety/correctness fixes (secrets split, `cloud_adapter` `list_objects` action + explicit mutating-action rejection, `db_adapter` mutating-function-pattern hardening, a real `cross_modal_diagnoser`↔`db_adapter` data-flow bug found and fixed) and full removal (not just disabling) of `AnthropicBackend`/`allow_network_calls` from the Planner. Planner now has exactly two backends: `heuristic` and `local_llm`. 18 tests added/changed across `test_cloud_workflow_adapters.py`, `test_db_adapter.py`, `test_preflight.py`; full suite passing. **Offline-hardening (roadmap Phase D) and the Phase C Playwright work above are the next logical steps**, in that order per the roadmap's own sequencing (Phase C is the prerequisite for the egress-audit-trail work in Phase D's capability-adapter logging extension).
+
+---
+
+## Update — 2026-07-16 — Phase R: safety/correctness quick fixes (fourth roadmap, R–V)
+
+**Note:** the sections above are historical (Phase 15–19 era) and were not
+overwritten per this file's own "overwrite, don't accumulate" convention in
+several recent passes — flagged here rather than silently rewritten,
+since a full rewrite is a larger editorial job than this pass's scope.
+Treat this section as the current ground truth; the third remediation
+roadmap (Phases N–Q, see `docs/decisions.md` D-035–D-038) and now this
+fourth roadmap (Phases R–V) are the most recent real work, layered on top
+of the Phase 1–19 baseline described above.
+
+**Fourth remediation roadmap (Phases R–V) kicked off — full plan in
+`docs/Roadmap.md`'s "Fourth remediation roadmap" section. Phase R is done
+(`docs/decisions.md` D-039):**
+
+- **R1 (fixed):** `AutomationAnywhereAdapter._poll_rest_status_multi` had
+  no floor on `poll_interval_seconds` — a caller-supplied `0` (or
+  negative) busy-spun the poll loop with no pacing between status
+  requests, which could exhaust a bounded response sequence (real API
+  rate limits, or a test's mocked sequence) before the deadline elapsed.
+  This was the real cause of the previously-failing
+  `test_n2_timed_out_target_reported_independently_of_completed_target`
+  (it surfaced one layer removed, as `KeyError: 'targets'`, because the
+  adapter's generic exception handling converted the underlying
+  `StopIteration` into a failure result with a different evidence shape).
+  Fixed with `poll_interval_seconds = max(poll_interval_seconds, 1.0)`
+  inside the function itself.
+- **R2 (confirmed):** re-ran the fixed test in isolation and in the full
+  suite. Both pass — there was no separate isolation-vs-full-suite
+  ordering bug, just this one busy-spin bug.
+- **R3 (added):** `agents/planner/spec_generator.py::generate_spec`'s
+  one-retry-on-validation-failure loop now logs the failure reason
+  (`logging.warning`, with the exception type and message) before
+  re-prompting, instead of retrying silently. This is a prerequisite for
+  Phase V's escalation policy being auditable rather than opaque.
+
+**Tests: 483/484 → 484/484 passing** (full suite, confirmed both before
+and after by temporarily reverting the R1 fix and re-running).
+
+## Next action
+> **Phase S — Display/screenshot-guard unification** (see
+> `docs/Roadmap.md`): unify `NoDisplayError` into one shared
+> `runtime.errors.NoDisplayError` (replacing the per-module duplicates in
+> `runtime.hooks.interact`, `runtime.hooks.browser`, and the third one),
+> then build a single shared screenshot-acquisition guard around it. This
+> is the structural fix behind what D-022 and D-024 each patched
+> piecemeal, and needs to land before Phase U (OCR-then-DOM dual
+> verification) so Phase U is built against the unified guard, not the
+> fragmented one.
