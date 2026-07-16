@@ -247,6 +247,17 @@ class Settings(BaseSettings):
     # claimed to be continuous video.
     record_video: bool = False
 
+    # --- Phase O: data-seeding adapter (decisions.md D-036) ---
+    # Off by default. Independent of capability_adapters_enabled above --
+    # that flag is the general "is any outbound capability traffic
+    # allowed" kill switch; this one is a second, deliberate gate specific
+    # to db_seed_adapter.py, AURA's first-ever intentional database write
+    # path. Both must be true for a seed call to actually run: the router
+    # still enforces capability_adapters_enabled before any adapter is
+    # even reached, and db_seed_adapter.py itself checks this flag before
+    # doing anything else. Set AURA_ALLOW_DB_SEEDING=true to enable.
+    allow_db_seeding: bool = False
+
     # --- OCR engine (optional override) ---
     # If pytesseract can't find the `tesseract` binary on PATH (common on
     # Windows), set this to the full path to tesseract.exe, either here or

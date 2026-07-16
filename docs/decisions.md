@@ -1756,3 +1756,110 @@ Control Room audit-log retrieval, and Phase Q's Playwright trace files —
 none of that code was touched in this pass, only `Roadmap.md` §10 was
 updated to record all four phases' plans up front, per the roadmap
 document the person supplied.
+
+## D-036 — Phase O: data-seeding adapter (`db_seed_adapter.py`, AURA's first intentional DB write path)
+
+**Roadmap Phase O** (`Roadmap.md` §10): given its own phase, deliberately
+separate from Phase N, because it introduces AURA's first-ever intentional
+write path to a database — the same elevated care level Phase J (shared
+state) and Phase K (auth) got.
+
+**New file, new capability type.** `agents/capability/db_seed_adapter.py`
++ `CapabilityType.DB_SEED` in `orchestrator/schemas.py`. `db_adapter.py`
+(read-only, hardened per D-017) is completely untouched — this is an
+additive new adapter, not a loosening of that one's guarantees.
+
+**Structured input only.** Params are `connection_string`, `table`, and
+either `values` (single row dict) or `rows` (list of row dicts) — never a
+query string. The adapter builds one parameterized `INSERT INTO table
+(cols...) VALUES (:col1, :col2, ...)` per call (executed once per row in
+the batch, same statement, bound params only) via `sqlalchemy.text()`.
+There is no code path that reads or executes caller-supplied SQL text at
+all, so there's no "did we forget to block DROP/UPDATE" question to even
+ask — confirmed with a test that passes a `query` param containing `DROP
+TABLE users` alongside valid `values` and shows it has zero effect (the
+key is simply never read).
+
+**Identifiers are interpolated, not bound — so they're allowlisted
+instead.** SQL doesn't support parameter binding for table/column names,
+only for values. `table` and every key in `values`/`rows` must match
+`^[A-Za-z_][A-Za-z0-9_]*$` or the call is rejected outright before any SQL
+is built. This is an allowlist-and-reject choice, deliberately not a
+quote-and-escape one — `db_adapter.py`'s own D-017 commentary on why a
+denylist alone is fragile applies even more directly to identifiers, where
+there's no reason to accept anything exotic in the first place.
+
+**All rows in one call must share one column set.** Rather than silently
+building a different INSERT per row (or silently dropping/padding
+mismatched rows), a batch with inconsistent column sets across `rows`
+fails the whole call with a clear error, before touching the database —
+callers with genuinely different row shapes make separate calls.
+
+**Two independent gates, not one.** `orchestrator/capability_router.py`'s
+existing `capability_adapters_enabled` kill switch still applies (checked
+before any adapter, including this one, is even reached — no change
+needed there). On top of that, `settings.allow_db_seeding` (new field,
+default `False`) is checked first thing inside
+`DbSeedAdapter.run()` itself — a second, deliberate, adapter-specific gate,
+per the roadmap's own framing, kept local to this one file rather than
+folded into the router's generic logic (which is meant to stay
+adapter-agnostic). Both must be true for a seed call to do anything.
+
+**Only INSERT — structurally, not by filtering.** There is no
+UPDATE/DELETE/DDL code path in this file at all, so "only INSERT" isn't a
+runtime check that could have a gap; it's a statement of what the code is
+capable of emitting. Precondition seeding creates rows that didn't exist;
+it never mutates or erases ones that did.
+
+**Every seed call is audited with the exact rows written.** Reuses the
+existing `orchestrator/audit_logger.py` singleton (same sink
+`capability_router.py`'s `CAPABILITY_EGRESS` records already go to), with
+a new `DB_SEED` action, `resource=table`, and `details` containing
+`row_count` and the full `rows` list actually inserted. Only logged on
+success — a failed/rejected call (gate closed, bad identifier, DB error)
+writes nothing and is not audited as if it had. This is deliberately more
+detail than the router's own host-only egress log carries, since this is
+the one adapter in the whole capability layer that leaves the target
+database in a different state than it found it.
+
+**Registration.** `orchestrator/capability_adapter.py::default_registry()`
+now imports and registers `DbSeedAdapter()` alongside the existing
+adapters. `config/tool_registry.yaml` needed no change — confirmed by
+re-reading it: the single generic `Capability.check` entry already routes
+every `CapabilityType` through the same registry lookup, exactly as it has
+for every adapter since Phase 14.
+
+**Egress/router impact: none beyond the new gate.** `connection_string` is
+already in `capability_router.py`'s `_CONN_STRING_PARAM_KEYS`, so this
+adapter's target host is extracted and allowlist-checked the same way
+`db_adapter.py`'s already is — no router change needed there either.
+
+**Verification — same disclosed sandbox gap as D-035.** This session
+still has no network and no `pytest`/`sqlalchemy`/`pydantic` installed.
+`tests/test_db_seed_adapter.py` (16 tests: gate on/off, single-row,
+batch-row, mismatched-row-shape rejection, empty-rows rejection,
+missing-values-and-rows rejection, bad table identifier, bad column
+identifier, valid identifiers, query-param-smuggling-has-no-effect,
+audit-logged-on-success, not-audited-on-failure, nonexistent-table
+failure shape) was written but not run through `pytest`. In its place,
+the adapter was hand-verified end-to-end against a **real sqlite3
+database on disk** (not just mocks) using minimal in-process stand-ins for
+`pydantic`/`pydantic_settings`/`sqlalchemy` (the sqlalchemy stand-in
+translates `:name` bound params to real DB-API `?` params and executes
+against actual `sqlite3` connections, including wrapping
+`sqlite3.OperationalError` as `SQLAlchemyError` to match real
+sqlalchemy's error-wrapping behavior for the failure-path test). Every
+scenario in the real test file was independently re-run this way and
+passed, including confirming rows were actually persisted (or, for
+rejected calls, confirming the table stayed empty). This is still not a
+real `pytest` run against the full existing suite, so **regression-freeness
+against the rest of the suite remains unverified this session** — same
+flag as D-035. Run
+`pytest tests/test_automation_anywhere.py tests/test_phase_n_automation_anywhere.py tests/test_db_adapter.py tests/test_db_seed_adapter.py`
+(then the full suite) in a real environment before trusting this as a
+clean landing, and before starting Phase P.
+
+**Explicitly out of scope, by design:** Phase P (Control Room audit-log
+retrieval + report sync) and Phase Q (Playwright trace files) — untouched
+this pass, plans already recorded in `Roadmap.md` §10 from the Phase N
+session.

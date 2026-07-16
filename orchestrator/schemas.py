@@ -79,6 +79,7 @@ class CapabilityType(str, Enum):
     SECURITY_HEADERS = "security_headers"  # Phase L2 — passive header/cookie/exposed-path checks
     PERFORMANCE = "performance"  # Phase L3 — single-page Navigation Timing budget check
     DEFECT_TRACKER = "defect_tracker"  # Phase M — generic REST + field-mapping (Jira/TestRail/Zephyr/Xray-style)
+    DB_SEED = "db_seed"  # Phase O — structured, parameterized INSERT-only precondition seeding (decisions.md D-036)
 
 # --------------------------------------------------------------------------
 # 4.1 Test Spec (Planner output)

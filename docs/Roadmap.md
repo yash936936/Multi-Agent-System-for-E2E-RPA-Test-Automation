@@ -349,7 +349,7 @@ the one genuinely new write-path capability isolated in its own phase
 preferred over feature grouping where two items live in the same module.
 
 - **Phase N — Automation Anywhere adapter completeness (auth +
-  multi-trigger).** 🚧 **In progress, started 2026-07-16.** Both items
+  multi-trigger).** ✅ **Done.** See `docs/decisions.md` D-035. Both items
   live inside `automation_anywhere_adapter.py`'s request/poll internals —
   one careful pass through that file instead of two, same reasoning as
   Phase I grouping browser-engine choice with video recording.
@@ -373,10 +373,11 @@ preferred over feature grouping where two items live in the same module.
     Evidence carries a per-target breakdown, not just one aggregate
     status, so a failing target among several successes stays visible
     rather than getting swallowed.
-- **Phase O — Data seeding adapter (new capability, its own phase).** Not
-  started. Its own phase because it's the one item here that introduces
-  AURA's first-ever intentional write path to a database — the same
-  elevated care level Phase J (shared state) and Phase K (auth) got.
+- **Phase O — Data seeding adapter (new capability, its own phase).** 🚧
+  **In progress, started 2026-07-16.** Its own phase because it's the one
+  item here that introduces AURA's first-ever intentional write path to a
+  database — the same elevated care level Phase J (shared state) and
+  Phase K (auth) got.
   - New `agents/capability/db_seed_adapter.py`, a distinct
     `CapabilityType.DB_SEED` — not a loosening of `db_adapter.py`'s
     existing read-only hardening. That adapter stays exactly as strict as
@@ -421,9 +422,9 @@ preferred over feature grouping where two items live in the same module.
     completing the diagram's "(Screenshots, Videos, Trace files)" label
     for real, matching what's already true for the other two.
 
-**Current status (2026-07-16): Phase N is in progress (N1 + N2 implemented
-in `automation_anywhere_adapter.py`, see `docs/decisions.md` D-035);
-Phases O, P, and Q are not started, sequenced in that order for the same
-reason G–M were: independent low-risk work first, the one new write-path
-adapter isolated in its own phase, mechanically related file-touches
-batched together.**
+**Current status (2026-07-16): Phase N is done (N1 + N2 implemented in
+`automation_anywhere_adapter.py`, see `docs/decisions.md` D-035); Phase O
+is in progress (`db_seed_adapter.py`, see D-036); Phases P and Q are not
+started, sequenced in that order for the same reason G–M were: independent
+low-risk work first, the one new write-path adapter isolated in its own
+phase, mechanically related file-touches batched together.**

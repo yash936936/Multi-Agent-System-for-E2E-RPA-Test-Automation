@@ -9,6 +9,20 @@ project: AURA
 
 ---
 
+## 2026-07-16 — Phase O: data-seeding adapter (`db_seed_adapter.py`, AURA's first intentional DB write path)
+
+**What happened:**
+- New `agents/capability/db_seed_adapter.py` + `CapabilityType.DB_SEED` (`orchestrator/schemas.py`) + registered in `orchestrator/capability_adapter.py::default_registry()`. `db_adapter.py` (read-only, D-017-hardened) untouched.
+- Structured input only (`table` + `values`/`rows`, never a raw query string) — the adapter builds one parameterized `INSERT` itself. Table/column identifiers are interpolated (SQL can't bind identifiers) so they're validated against a strict `^[A-Za-z_][A-Za-z0-9_]*$` allowlist instead. Only INSERT is structurally possible — there's no code path that reads caller SQL text at all.
+- New `settings.allow_db_seeding` (default `False`, `config/settings.py`) — a second, deliberate gate checked inside the adapter itself, independent of the router's general `capability_adapters_enabled` kill switch.
+- Every successful seed call is audited via the existing `orchestrator/audit_logger.py` singleton (`DB_SEED` action, exact rows written in `details`); failed/rejected calls are not audited.
+- New tests: `tests/test_db_seed_adapter.py` (16 tests). Full detail in `docs/decisions.md` D-036.
+- **Same disclosed sandbox gap as Phase N:** no `pytest`/`sqlalchemy`/`pydantic` and no network this session. Hand-verified end-to-end this time against a **real sqlite3 database on disk** (not just mocks) via minimal in-process stand-ins for the three missing packages — every scenario in the real test file was independently re-run this way and passed, including confirming rows were actually persisted or, for rejected calls, that nothing was written. Still not a substitute for a real `pytest` run against the full suite.
+
+**What should happen next:**
+- Run `pytest tests/test_db_adapter.py tests/test_db_seed_adapter.py` (and the full suite) in a real environment before starting Phase P.
+- Phase P (Control Room audit-log retrieval + report sync) is next per the roadmap's sequencing.
+
 ## 2026-07-16 — Phase N started (Control Room auth + multi-bot/multi-runner trigger); Phases N–Q added to Roadmap.md
 
 **What happened:**
