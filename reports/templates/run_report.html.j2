@@ -64,6 +64,21 @@
     <span class="confidence {{ 'low' if r.confidence < confidence_threshold else '' }}">confidence {{ '%.2f' % r.confidence }}</span>
   </div>
   {% if r.escalate %}<div class="badge-escalate">⚠ escalated</div>{% endif %}
+  {% if r.verification_method %}
+    <div class="muted">
+      verification: {{ r.verification_method }}
+      {% if r.verification_evidence and r.verification_evidence.agreement is not none %}
+        ({{ 'OCR/DOM agreed' if r.verification_evidence.agreement else 'OCR/DOM disagreed -- tie-break: ' + (r.verification_evidence.tie_break_applied or 'n/a') + ' -> ' + (r.verification_evidence.winner or 'n/a') }})
+      {% endif %}
+    </div>
+    {% if r.verification_evidence and r.verification_evidence.agreement == false %}
+    <div class="muted">
+      OCR candidate: {{ r.verification_evidence.ocr.matched_text }} (confidence {{ '%.2f' % r.verification_evidence.ocr.confidence }})
+      &middot;
+      DOM candidate: {{ r.verification_evidence.dom.matched_text }} (confidence {{ '%.2f' % r.verification_evidence.dom.confidence }})
+    </div>
+    {% endif %}
+  {% endif %}
   {% if r.assertion_passed is not none %}
     <div class="muted">assertion: {{ 'passed ✓' if r.assertion_passed else 'failed ✗' }}</div>
   {% endif %}

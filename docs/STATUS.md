@@ -1,12 +1,20 @@
 ---
 type: status
 project: AURA
-last_updated: 2026-07-15
+last_updated: 2026-07-17
 ---
 
 # STATUS
 
 > This file should always reflect the *current* state — overwrite freely, don't accumulate history here (that belongs in `progress.md`).
+
+## Where things stand (2026-07-17 update, Phase U — done)
+- **Replaced Phase C's DOM-first/OCR-fallback chain with OCR-then-DOM dual verification**, per the roadmap's redesigned Idea 1. `agents/vision/executor.py::execute_step()` now always runs OCR (`locate_text`) *and*, when a browser session exists, DOM (`_resolve_dom()` — `locate_dom()` then `relocate_dom()` self-heal, unchanged logic, just no longer dispatching inline) — not conditionally, both every time.
+- **New compilation rule** (`_compile_dual_result()`): both clear the confidence threshold and overlap (DOM bounding box vs. OCR point, within `settings.dual_verification_overlap_tolerance_px`) → agreement, dispatch via the higher-confidence method, tagged `"dual-method-confirmed"`. Both clear the threshold but disagree → logged, both candidates recorded, resolved via `settings.dual_verification_tie_break` (`highest_confidence`/`prefer_dom`/`prefer_ocr`), still `"dual-method-confirmed"`. Only one clears it → `"single-method"`. Neither → escalate, both candidates still recorded.
+- **Dispatch-fallback:** if the winning method's dispatch fails for a display reason (`NoDisplayError`) and the other candidate also cleared the threshold, falls back to it rather than reporting a false miss (`verification_evidence["dispatched_via"]` records which one actually fired).
+- `orchestrator/schemas.py::VisionActionResult` gained `verification_method`/`verification_evidence`. `agents/vision/dom_locator.py::DomLocateResult` gained a best-effort `bbox` field (needed for the overlap check — didn't exist before this pass). `config/settings.py` gained `dual_verification_overlap_tolerance_px` (default 40) and `dual_verification_tie_break` (default `"highest_confidence"`). `reports/templates/run_report.html.j2` renders verification method + both candidates on disagreement.
+- **528 tests collected (20 new this pass): 497 passing, 26 failed, 5 errored** — the failing/erroring ones are the same pre-existing Chromium-binary-download sandbox gap documented since Phase C/D, unrelated to this pass's own code (confirmed separately via 16 new pure-unit tests against the compilation logic, which need no browser and all pass cleanly). See `docs/decisions.md` D-043.
+- **This is Phase U of the R–V roadmap** (`docs/Roadmap.md`) — R, S, T, and U are now all done. **Phase V (dual API + local LLM generic backend) is next and last.**
 
 ## Where things stand (2026-07-17 update, Phase T — done)
 - **New `orchestrator/spec_validator.py`:** a pre-execution validation pass over the whole `TestSpec`, wired into `RunEngine.run_spec()` before any memory write/screenshot happens. Structural-completeness issues (a step missing a required field for its own action type — e.g. `NAVIGATE_URL` with no `url`) raise `SpecValidationError` and block the run entirely, before anything starts. A second, separate check is a non-blocking heuristic: a vision-driven step (`VISUAL_CLICK`/`TYPE_TEXT`/`SCROLL`) whose description sounds like it's actually describing a backend/API/bot/database target gets a `severity="warning"` on `RunEngineResult.validation_warnings`, never a hard block (too fuzzy to trust as a hard rule — a UI button genuinely labeled "API Settings" is a legitimate real target).

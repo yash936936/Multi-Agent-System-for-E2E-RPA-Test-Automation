@@ -99,3 +99,21 @@ def test_relocate_dom_returns_ties_count_when_ambiguous():
         assert result.ambiguous_count == 2
     finally:
         srv.shutdown()
+
+
+def test_locate_dom_populates_bbox_for_phase_u_overlap_check():
+    """
+    Phase U (decisions.md D-043): locate_dom must populate `bbox` on a
+    successful match so executor.py's OCR/DOM overlap check has real
+    coordinates to compare against -- not left None for every real match.
+    """
+    from agents.vision.dom_locator import locate_dom
+
+    page, srv = _page_for(PAGE_V1)
+    try:
+        result = locate_dom(page, "Login Button")
+        assert result.found is True
+        assert result.bbox is not None
+        assert set(result.bbox.keys()) >= {"x", "y", "width", "height"}
+    finally:
+        srv.shutdown()

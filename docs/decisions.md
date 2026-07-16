@@ -2254,3 +2254,124 @@ mode) — that would mean this module hardcoding knowledge of every
 adapter's own contract, duplicating validation each adapter already does
 correctly at runtime; the completeness check here stops at "is there
 *something* to check," not "is it the *right* something."
+
+## D-043 — Phase U: OCR-then-DOM dual verification, results compiled (redesigned Idea 1)
+
+**Roadmap Phase U** (`Roadmap.md`, "Fourth remediation roadmap — Phases
+R–V"): replaces Phase C's DOM-first/OCR-fallback chain in
+`agents/vision/executor.py` with OCR-then-DOM dual verification — both
+locators always run against a live browser target, every time, not
+conditionally — and their results are compiled/reconciled before the
+step's outcome is decided, per the roadmap's own compilation rule.
+
+**What changed:**
+
+- `agents/vision/executor.py::execute_step()` now always computes
+  `ocr_result` (via `agents.vision.locator.locate_text`, unchanged) *and*
+  (when a browser session exists) `dom_result` (via the new
+  `_resolve_dom()`, which is the old `_try_dom_path()`'s locate-only half
+  — `locate_dom()` then `relocate_dom()` self-heal, exactly as before,
+  just no longer dispatching inline).
+- New `_compile_dual_result()` implements the roadmap's compilation rule
+  exactly:
+  - **Both clear the confidence threshold and their locations overlap**
+    (OCR's matched point falls inside DOM's bounding box, expanded by
+    `settings.dual_verification_overlap_tolerance_px`, default 40px) →
+    agreement. Dispatch through whichever scored higher, tagged
+    `"dual-method-confirmed"`, `agreement=True`.
+  - **Both clear the threshold but don't overlap** → genuine
+    disagreement. Both candidates are recorded in
+    `verification_evidence` (never silently dropping the loser), a
+    `logging.warning()` is emitted (reusing R3's "log the reason, don't
+    retry/decide silently" convention), and the winner is picked via
+    `settings.dual_verification_tie_break` (`"highest_confidence"`
+    default, or `"prefer_dom"`/`"prefer_ocr"`). Still tagged
+    `"dual-method-confirmed"` (both genuinely found something),
+    `agreement=False`.
+  - **Only one clears the threshold** (including "DOM wasn't applicable
+    at all" — no browser session, e.g. native desktop targets) → proceed
+    on that one, tagged `"single-method"`.
+  - **Neither clears the threshold** → escalate, with both candidates
+    (or an explicit `{"attempted": False}` for DOM when no session
+    existed) still recorded in evidence.
+- Dispatch itself (`_dispatch_dom()`/`_dispatch_ocr()`) happens *after*
+  compilation, through whichever method won. If the winner's dispatch
+  fails for a display-related reason (`NoDisplayError` — e.g. the DOM
+  locator resolved but the element went stale before the click) and the
+  *other* candidate also cleared the threshold, dispatch falls back to it
+  rather than reporting a false miss — the same fallback behavior Phase
+  C's single-path chain had, just available from either direction now
+  (`verification_evidence["dispatched_via"]` records which one actually
+  fired).
+- `orchestrator/schemas.py::VisionActionResult` gained two new optional
+  fields: `verification_method` (`"single-method"` |
+  `"dual-method-confirmed"` | `None` — `None` for steps that never went
+  through this path at all, e.g. navigate/scroll) and
+  `verification_evidence` (the full compiled dict — both candidates,
+  agreement, tie-break applied, winner, dispatched_via).
+- `agents/vision/dom_locator.py::DomLocateResult` gained a `bbox` field
+  (Playwright's own `bounding_box()` shape), populated best-effort
+  (`None` on failure, never raises) by both `locate_dom()` and
+  `relocate_dom()` on a successful match — this is what makes the
+  overlap check in the point above possible; there was previously no way
+  to compare a DOM match's on-screen location against OCR's coordinate at
+  all.
+- `config/settings.py` gained `dual_verification_overlap_tolerance_px`
+  (int, default 40) and `dual_verification_tie_break` (str, default
+  `"highest_confidence"`; validated against a shared
+  `DUAL_VERIFICATION_TIE_BREAK_CHOICES` tuple the same way
+  `playwright_browser` is validated against `PLAYWRIGHT_BROWSER_CHOICES`
+  — an unrecognized value logs a warning and falls back to the default
+  rather than crashing).
+- `reports/templates/run_report.html.j2` now renders `verification_method`
+  per step, and — specifically on disagreement — both candidates'
+  matched text/confidence side by side, so a report reader can see
+  exactly what OCR and DOM each found and which one the tie-break picked,
+  rather than the report silently reflecting only the winner.
+
+**Why OCR-then-DOM (not the reverse) matters here:** the roadmap
+explicitly calls this "the reverse order from Phase C's current
+DOM-first/OCR-fallback architecture" — previously OCR only ever ran if
+DOM's self-heal also failed, so a step that DOM alone could resolve never
+got cross-checked against OCR at all, and there was no way to detect the
+two methods disagreeing (DOM would simply win by default, right or
+wrong, with no record of what OCR would have found instead). Running
+both unconditionally makes disagreement *visible* and *audited* instead
+of structurally invisible.
+
+**Depends on Phase S (D-040/D-041) and benefits from Phase R3 (D-039),**
+per the roadmap's own sequencing: the disagreement/tie-break path reuses
+the unified `NoDisplayError` (S1) for dispatch-fallback detection, and
+its `logging.warning()` on disagreement follows R3's "every non-obvious
+decision gets a logged reason" precedent rather than deciding silently.
+
+**Verification:** 508 passing before this pass (per D-042's own count).
+**528 collected after (20 new tests added this pass): 497 passing, 26
+failed, 5 errored** — 16 in the new
+`tests/test_dual_verification_compile.py` — pure unit tests against
+`_compile_dual_result`/`_locations_overlap`/`_apply_tie_break` directly,
+runnable with no browser at all; 1 new bbox-population test in
+`test_dom_locator.py`; 3 new live-browser integration tests added to
+`test_executor_dom_path.py`; the existing `test_no_active_browser_session_falls_back_to_ocr_path`
+test gained an additional single-method assertion rather than counting
+as a new test) — zero regressions. The failing/erroring tests in this
+pass's full run (26 failed, 5 errored) are the same pre-existing
+Chromium-binary-download sandbox gap documented since Phase C/D — none
+of them touch code this phase changed any differently than before; the
+3 new live-browser integration tests hit the identical gap for the same
+environmental reason, not a bug in this pass's logic (confirmed
+separately via the 16 pure-unit compile tests, which need no browser and
+all pass cleanly).
+
+**Explicitly out of scope, by design:** no change to the confidence
+*values* either locator produces (OCR's `_match_score`, DOM's
+`_score_candidates`) — Phase U is purely about running both and
+reconciling, not re-tuning either scorer; no persistence/trend-tracking
+of disagreement frequency over time (a reasonable Phase-H-style
+follow-up, not required here); `_region_from_skill_hint`'s "broaden
+search region" convention is unchanged and still only affects the OCR
+side.
+
+**Roadmap Phases R, S, T, and U (of the fourth remediation roadmap,
+R–V) are now all done. Phase V (dual API + local LLM generic backend) is
+next and last.**

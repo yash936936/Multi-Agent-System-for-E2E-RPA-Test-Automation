@@ -98,6 +98,12 @@ _INITIAL_ENV_PROFILE = os.environ.get("AURA_ENV") or None
 # aura/main.py's --browser CLI option so the two never drift apart.
 PLAYWRIGHT_BROWSER_CHOICES = ("chromium", "firefox", "webkit")
 
+# Phase U (decisions.md D-043): valid dual_verification_tie_break values,
+# shared between Settings' own field and agents/vision/executor.py's
+# validation of it, same "one shared tuple, not two independent lists"
+# convention as PLAYWRIGHT_BROWSER_CHOICES above.
+DUAL_VERIFICATION_TIE_BREAK_CHOICES = ("highest_confidence", "prefer_dom", "prefer_ocr")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -276,6 +282,32 @@ class Settings(BaseSettings):
     # independently of record_video -- a run can have either, both, or
     # neither on at once.
     record_trace: bool = False
+
+    # --- Phase U: OCR-then-DOM dual verification (decisions.md D-043) ---
+    # Both OCR and DOM locators now always run (when a browser session
+    # exists) rather than DOM-first/OCR-fallback -- see
+    # agents/vision/executor.py's compilation step. These two settings
+    # only affect what happens when *both* clear the confidence threshold:
+    #
+    # dual_verification_overlap_tolerance_px: how many pixels of slack are
+    # allowed, in each direction, when checking whether OCR's matched
+    # point falls inside (an expanded) DOM bounding box -- real DOM
+    # bounding boxes and OCR-detected text-line centers rarely land on the
+    # exact same pixel even for a genuine match, so a tolerance avoids
+    # false "disagreement" on real agreement.
+    #
+    # dual_verification_tie_break: which method wins when OCR and DOM both
+    # found *something* above threshold but at genuinely different
+    # locations (a real disagreement, not just pixel jitter). One of:
+    # "highest_confidence" (default -- whichever method scored higher),
+    # "prefer_dom" (DOM wins outright -- appropriate if the DOM path is
+    # trusted more for a given target app), "prefer_ocr" (OCR wins
+    # outright). A disagreement is always logged (see executor.py) and
+    # recorded in the step's verification_evidence regardless of which
+    # tie-break mode is configured -- the losing candidate is never
+    # silently dropped.
+    dual_verification_overlap_tolerance_px: int = 40
+    dual_verification_tie_break: str = "highest_confidence"
 
     # --- OCR engine (optional override) ---
     # If pytesseract can't find the `tesseract` binary on PATH (common on

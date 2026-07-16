@@ -63,6 +63,15 @@ class DomLocateResult:
     strategy: str = ""  # "exact_name" | "fuzzy_text" | "relocate" | ""
     ambiguous_count: int = 0
     top_score_seen: float = 0.0  # populated even when found=False, per Scrapling's "log the top score" UX
+    # Phase U (docs/decisions.md D-043): the resolved element's on-screen
+    # bounding box ({"x", "y", "width", "height"}, Playwright's own
+    # bounding_box() shape), best-effort populated whenever a locator was
+    # actually resolved. Used by agents/vision/executor.py's OCR/DOM
+    # compilation step to decide whether the two methods' locations
+    # genuinely overlap (agreement) or point at different places
+    # (disagreement, tie-break required) -- never populated when
+    # found=False, since there is no element to measure.
+    bbox: dict | None = None
 
 
 def _flatten(node: dict, out: list[dict]) -> None:
@@ -110,6 +119,21 @@ def _score_candidates(target_description: str, candidates: list[dict]) -> list[t
     return scored
 
 
+def _resolve_bbox(locator) -> dict | None:
+    """
+    Best-effort Playwright bounding_box() read (Phase U, D-043) -- returns
+    None rather than raising if the element isn't visible/measurable
+    (detached, off-screen, or the locator itself failed to resolve to a
+    single element). A missing bbox just means the overlap check in
+    executor.py can't confirm agreement geometrically and falls through to
+    the tie-break path -- it's evidence of "couldn't measure," not a bug.
+    """
+    try:
+        return locator.bounding_box()
+    except Exception:
+        return None
+
+
 def locate_dom(page, target_description: str, min_ratio: float = 0.55) -> DomLocateResult:
     """
     Primary resolution path for browser targets: snapshot the accessibility
@@ -128,15 +152,17 @@ def locate_dom(page, target_description: str, min_ratio: float = 0.55) -> DomLoc
         return DomLocateResult(found=False, top_score_seen=round(best_score, 4))
 
     strategy = "exact_name" if best_score >= 0.95 else "fuzzy_text"
+    locator = _build_locator(page, best["role"], best["name"])
     return DomLocateResult(
         found=True,
-        locator=_build_locator(page, best["role"], best["name"]),
+        locator=locator,
         confidence=round(min(best_score, 0.99), 4),
         matched_text=best["name"],
         role=best["role"],
         strategy=strategy,
         ambiguous_count=len(top_ties),
         top_score_seen=round(best_score, 4),
+        bbox=_resolve_bbox(locator),
     )
 
 
@@ -163,13 +189,15 @@ def relocate_dom(page, last_known: dict, min_ratio: float = RELOCATE_MIN_RATIO) 
     if best_score < min_ratio:
         return DomLocateResult(found=False, top_score_seen=round(best_score, 4))
 
+    locator = _build_locator(page, best["role"], best["name"])
     return DomLocateResult(
         found=True,
-        locator=_build_locator(page, best["role"], best["name"]),
+        locator=locator,
         confidence=round(min(best_score, 0.99), 4),
         matched_text=best["name"],
         role=best["role"],
         strategy="relocate",
         ambiguous_count=len(top_ties),
         top_score_seen=round(best_score, 4),
+        bbox=_resolve_bbox(locator),
     )

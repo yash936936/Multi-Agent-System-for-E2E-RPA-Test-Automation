@@ -494,6 +494,8 @@ lower urgency than the display-guard bug class.
 
 ### Phase U — OCR-then-DOM dual verification, results compiled (redesigned Idea 1)
 
+**Status (2026-07-17): done.** See `docs/decisions.md` D-043.
+
 Replace the current DOM-first/OCR-fallback chain with: run OCR, then run
 DOM, sequentially, every time (not conditionally) — then compile/reconcile
 both results before deciding the step's outcome.
@@ -533,3 +535,5 @@ actually built; the existing test suite stays green throughout.
 **Phase R status (2026-07-16): done.** See `docs/decisions.md` D-039.
 **Phase S status (2026-07-16): done.** See `docs/decisions.md` D-040 (S1) and D-041 (S2).
 **Phase T status (2026-07-17): done.** See `docs/decisions.md` D-042.
+**Phase U status (2026-07-17): done.** See `docs/decisions.md` D-043.
+**Current status (2026-07-17): R, S, T, and U are all done. Phase V (dual API + local LLM generic backend) is next and last.**

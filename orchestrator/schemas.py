@@ -224,6 +224,19 @@ class VisionActionResult(BaseModel):
     visual_diff_ratio: Optional[float] = None
     visual_diff_image_ref: Optional[str] = None
     visual_baseline_created: Optional[bool] = None
+    # Phase U (decisions.md D-043) -- populated only for VISUAL_CLICK/TYPE_TEXT
+    # steps that went through the OCR-then-DOM dual-verification compilation
+    # in agents/vision/executor.py. "dual-method-confirmed" means both OCR
+    # and DOM located a candidate (whether or not they agreed on where);
+    # "single-method" means only one of the two found anything (or the DOM
+    # path wasn't applicable at all, e.g. no browser session); None means
+    # this step never went through the locate/dispatch path (navigate,
+    # scroll, capability_check, etc.). verification_evidence carries the
+    # full compiled detail (both candidates, agreement, tie-break applied)
+    # for the report template and for audit -- never silently dropped even
+    # when the two methods disagreed and one was picked over the other.
+    verification_method: Optional[Literal["single-method", "dual-method-confirmed"]] = None
+    verification_evidence: Optional[Dict[str, Any]] = None
 
 
 # --------------------------------------------------------------------------
