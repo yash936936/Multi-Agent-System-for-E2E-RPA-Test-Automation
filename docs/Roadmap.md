@@ -516,6 +516,8 @@ here — touches `agents/vision/executor.py`, `agents/vision/locator.py`,
 
 ### Phase V — Dual API + local LLM generic backend
 
+**Status (2026-07-17): done.** See `docs/decisions.md` D-044.
+
 Generic OpenAI-compatible HTTP client (no SDK, no hardcoded vendor),
 `AURA_CLOUD_LLM_BASE_URL`/`_API_KEY`/`_MODEL`/`AURA_ENABLE_CLOUD_PLANNER`/
 `AURA_PLANNER_PRIORITY`/`AURA_REQUIRE_LLM_BACKEND` env vars, a detection
@@ -536,4 +538,7 @@ actually built; the existing test suite stays green throughout.
 **Phase S status (2026-07-16): done.** See `docs/decisions.md` D-040 (S1) and D-041 (S2).
 **Phase T status (2026-07-17): done.** See `docs/decisions.md` D-042.
 **Phase U status (2026-07-17): done.** See `docs/decisions.md` D-043.
-**Current status (2026-07-17): R, S, T, and U are all done. Phase V (dual API + local LLM generic backend) is next and last.**
+**Phase V status (2026-07-17): done.** See `docs/decisions.md` D-044.
+**Current status (2026-07-17): R, S, T, U, and V are all done. The entire
+fourth remediation roadmap (Phases R–V) is complete. No further phases are
+currently planned.**

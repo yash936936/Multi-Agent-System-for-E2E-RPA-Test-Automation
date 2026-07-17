@@ -106,6 +106,20 @@ def _host_allowed(host: str | None, allowed_hosts: list[str] | None) -> bool:
     return False
 
 
+def is_egress_host_allowed(host: str | None) -> bool:
+    """
+    Public wrapper around `_host_allowed`, checked against the live
+    `settings.allowed_capability_hosts` allowlist. Phase V (decisions.md
+    D-044, `agents/planner/spec_generator.py::CloudLLMBackend`) reuses this
+    exact function for the cloud-LLM egress check rather than building a
+    second allowlist mechanism -- the roadmap's own explicit instruction.
+    Same semantics as every capability adapter's egress check: an unset
+    allowlist means "allow everything" (opt-in restriction), and an
+    unresolvable host fails open (the kill switches are the hard backstop).
+    """
+    return _host_allowed(host, settings.allowed_capability_hosts)
+
+
 def _rejected_result(capability: CapabilityType, reason: str, host: str | None) -> CapabilityCheckResult:
     return CapabilityCheckResult(
         capability=capability,

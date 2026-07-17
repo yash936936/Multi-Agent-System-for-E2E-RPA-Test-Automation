@@ -333,6 +333,42 @@ class Settings(BaseSettings):
     local_llm_context_size: int = 4096
     local_llm_temperature: float = 0.1  # low temperature: this is structured JSON extraction, not creative writing
 
+    # --- Phase V: dual API + local LLM generic backend (decisions.md D-044) ---
+    # "cloud_llm": CloudLLMBackend -- a generic OpenAI-compatible HTTP client
+    #   (no vendor SDK, works against any server implementing the
+    #   /v1/chat/completions shape: OpenAI itself, Anthropic/others' OpenAI-
+    #   compat endpoints, or a *local* OpenAI-compat server like Ollama/
+    #   llama.cpp's server mode -- "cloud" names the code path, not a
+    #   requirement that the endpoint be remote).
+    #
+    # Off by default (AURA_ENABLE_CLOUD_PLANNER=false) -- per D-002/D-018,
+    # no network-capable planner path is enabled unless explicitly opted
+    # into, mirroring record_video/allow_db_seeding's off-by-default
+    # posture for anything that leaves the local machine or writes state.
+    enable_cloud_planner: bool = False
+    cloud_llm_base_url: str | None = None  # e.g. "https://api.openai.com/v1" or a local OpenAI-compat server URL
+    cloud_llm_api_key: str | None = None
+    cloud_llm_model: str | None = None
+
+    # Detection-matrix priority when settings.planner_backend is left
+    # unset (auto-detect, see _auto_detect_planner_backend below):
+    # "local_first" (default) prefers a bundled local .gguf model over
+    # cloud when both are available; "cloud_first" reverses that. Either
+    # way, generate_spec()'s own escalation policy (decisions.md D-044,
+    # built on R3's retry-logging groundwork) can still fall through to
+    # cloud at *runtime* if the chosen primary backend fails and cloud is
+    # enabled -- this setting only controls the initial pick, not whether
+    # escalation itself is possible.
+    planner_priority: str = "local_first"
+
+    # If True, generate_spec() must never silently fall back to the
+    # heuristic backend -- if no LLM backend (local or cloud) is actually
+    # usable, fail fast and loudly instead. Off by default: the heuristic
+    # backend existing as a always-available fallback is a deliberate
+    # design property (decisions.md D-002), not something every deployment
+    # wants to give up.
+    require_llm_backend: bool = False
+
     # --- OAuth providers (optional; unset = provider disabled in UI) ---
     # Populate via env vars AURA_GOOGLE_CLIENT_ID / AURA_GOOGLE_CLIENT_SECRET
     # and AURA_GITHUB_CLIENT_ID / AURA_GITHUB_CLIENT_SECRET, or a .env file.
@@ -353,6 +389,16 @@ class Settings(BaseSettings):
             return None
         return candidates[0] if candidates else None
 
+    def _cloud_llm_available(self) -> bool:
+        # "Available" here means "configured", not "reachable" -- actually
+        # pinging cloud_llm_base_url at Settings-construction time would
+        # make every process startup depend on network reachability, which
+        # is exactly the kind of implicit network dependency D-002/D-018
+        # rule out. Real reachability failures surface at call time in
+        # CloudLLMBackend.generate() instead, where generate_spec()'s
+        # escalation policy (decisions.md D-044) can react to them.
+        return bool(self.enable_cloud_planner and self.cloud_llm_base_url)
+
     @model_validator(mode="after")
     def _auto_detect_planner_backend(self) -> "Settings":
         # Explicit AURA_PLANNER_BACKEND in .env always wins. Only resolve
@@ -360,10 +406,37 @@ class Settings(BaseSettings):
         # the user didn't already point it somewhere themselves.
         if self.planner_backend is None:
             bundled = self._find_bundled_model()
-            if bundled is not None:
+            local_available = bundled is not None
+            cloud_available = self._cloud_llm_available()
+
+            # Detection matrix (Phase V, decisions.md D-044): pick the
+            # highest-priority *available* LLM backend; planner_priority
+            # only breaks the tie when both are available. Heuristic is
+            # the guaranteed-available last resort, unless
+            # require_llm_backend demands failing fast instead.
+            if self.planner_priority not in ("local_first", "cloud_first"):
+                raise ValueError(
+                    f"Unknown settings.planner_priority '{self.planner_priority}'. "
+                    "Valid options: 'local_first', 'cloud_first'."
+                )
+            order = ["cloud_llm", "local_llm"] if self.planner_priority == "cloud_first" else ["local_llm", "cloud_llm"]
+            available = {"local_llm": local_available, "cloud_llm": cloud_available}
+            chosen = next((name for name in order if available[name]), None)
+
+            if chosen == "local_llm":
                 self.planner_backend = "local_llm"
                 if self.local_llm_model_path is None:
                     self.local_llm_model_path = str(bundled)
+            elif chosen == "cloud_llm":
+                self.planner_backend = "cloud_llm"
+            elif self.require_llm_backend:
+                raise ValueError(
+                    "settings.require_llm_backend is True but no LLM backend is usable: "
+                    "no bundled .gguf model found under models_dir, and settings.enable_cloud_planner "
+                    "is False (or cloud_llm_base_url is unset). Either place a .gguf model in models/, "
+                    "set AURA_ENABLE_CLOUD_PLANNER=true with AURA_CLOUD_LLM_BASE_URL configured, "
+                    "or unset AURA_REQUIRE_LLM_BACKEND to allow the heuristic fallback."
+                )
             else:
                 self.planner_backend = "heuristic"
         elif self.planner_backend == "local_llm" and self.local_llm_model_path is None:

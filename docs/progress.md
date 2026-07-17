@@ -9,6 +9,25 @@ project: AURA
 
 ---
 
+## 2026-07-17 — Phase V: dual API + local LLM generic backend (fourth remediation roadmap R–V complete)
+
+**What happened:**
+- New `CloudLLMBackend` (`agents/planner/spec_generator.py`): a generic OpenAI-compatible HTTP client (`POST {base_url}/chat/completions`), no vendor SDK, no hardcoded provider — works identically against a real cloud API or an operator's own local OpenAI-compat server. Config via `AURA_CLOUD_LLM_BASE_URL`/`_API_KEY`/`_MODEL`, off by default via `AURA_ENABLE_CLOUD_PLANNER`.
+- New public `orchestrator.capability_router.is_egress_host_allowed()` — `CloudLLMBackend` reuses Phase D's existing egress-allowlist mechanism rather than building a second one, per the roadmap's explicit instruction.
+- `config/settings.py::_auto_detect_planner_backend` extended into a real detection matrix: local-vs-cloud availability, tie-broken by `AURA_PLANNER_PRIORITY` (`local_first`/`cloud_first`), with `AURA_REQUIRE_LLM_BACKEND` to fail fast at startup instead of silently falling back to heuristic.
+- `generate_spec` gained a logged local-to-cloud escalation policy (built directly on R3's retry-logging groundwork, D-039) for the auto-resolved backend path — explicit `backend=` callers are unaffected, exactly R3's existing behavior.
+- New tests: `tests/test_phase_v_cloud_llm.py` (24 tests). Full detail in `docs/decisions.md` D-044.
+- **A real bug was caught and fixed during hand-verification, before it shipped:** the escalation check was originally `isinstance(primary, CloudLLMBackend)`, which breaks under the natural test-mocking pattern (`patch("...CloudLLMBackend", ...)` replaces the name with a `Mock`, and `isinstance()` can't accept that as its second argument). Fixed to check `settings.planner_backend != "cloud_llm"` instead — this is exactly the kind of thing that only surfaces by actually running the scenario, not by reading the code, which is why the hand-verification step matters even without real `pytest` access this session.
+- Same disclosed sandbox gap as N–Q: no `pytest`/`pydantic`/`httpx`/network. Hand-verified against the real, unmodified source files via a from-scratch `pydantic`/`pydantic_settings` stand-in (more complete than earlier phases' — this phase's core logic lives inside a real `@model_validator`), plus a full regression pass confirming no pre-existing planner behavior changed.
+
+**This closes out the fourth remediation roadmap (Phases R–V).**
+
+**What should happen next:**
+- Run `pytest tests/test_phase_v_cloud_llm.py tests/test_planner.py` (then the full suite) in a real environment before deploying this.
+- No further phases are currently planned — a new roadmap would need to be supplied fresh.
+
+---
+
 ## 2026-07-17 — Phase T: spec-level action/target-type validation pass
 
 **What happened:**

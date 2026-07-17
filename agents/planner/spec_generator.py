@@ -7,25 +7,44 @@ Converts normalized requirement text into a schema-valid TestSpec
   - LocalHeuristicBackend (default): pure-Python sentence-pattern parser.
     No network call, no model weights — matches decisions.md D-002
     (fully offline) and D-004 (agents defined by contract, not by a
-    specific model). This is what actually runs in this sandbox, and is
-    always available with zero dependencies.
+    specific model). Always available with zero dependencies; the
+    guaranteed last-resort backend unless settings.require_llm_backend
+    says otherwise (see CloudLLMBackend below).
 
   - LocalLLMBackend (opt-in): a small local GGUF model (llama-cpp-python),
-    run fully on-device. No network call is made at any point. This is
-    now the *only* enhanced/LLM-backed path — see decisions.md D-018.
+    run fully on-device. No network call is made at any point.
+
+  - CloudLLMBackend (opt-in, Phase V, decisions.md D-044): a generic
+    OpenAI-compatible HTTP client — no vendor SDK, no hardcoded provider.
+    Works against a real cloud endpoint or an operator's own local
+    OpenAI-compat server (Ollama, llama.cpp server mode, etc.) equally;
+    "cloud" names the code path, not a requirement that the endpoint be
+    remote. Off by default (settings.enable_cloud_planner); every
+    outbound call is checked against the same egress allowlist Phase D
+    built for capability adapters
+    (orchestrator.capability_router.is_egress_host_allowed), reused
+    rather than duplicated.
 
 2026-07-13 (decisions.md D-018, roadmap Phase B): AnthropicBackend and the
-`allow_network_calls` setting were removed entirely, not just disabled.
-There is no network-capable code path left anywhere in the planner — not
-"off by default," genuinely absent, so there is no residual attack
-surface, no accidental-enable risk via a config flag, and no dependency on
-an external API being reachable or funded. The planner now has exactly
-two backends: heuristic (always available) and local_llm (opt-in,
-verified end-to-end, see LocalLLMBackend's docstring below).
+`allow_network_calls` setting were removed entirely, not just disabled —
+there was no network-capable code path left anywhere in the planner as of
+that phase, not "off by default," genuinely absent, so there was no
+residual attack surface, no accidental-enable risk via a config flag, and
+no dependency on an external API being reachable or funded.
 
-Either backend must return data that validates against TestSpec; if it
-doesn't, generate_spec re-prompts once (WORKFLOW.md Step 1.3) before
-raising.
+2026-07-17 (decisions.md D-044, roadmap Phase V): a network-capable path
+was deliberately reintroduced, but on much stricter terms than
+AnthropicBackend's — see CloudLLMBackend above. `generate_spec` now
+resolves among three backends via a local-first (or cloud-first, via
+settings.planner_priority) auto-detection matrix at Settings-construction
+time, plus a logged local-to-cloud escalation policy at call time if the
+auto-detected primary backend fails — see generate_spec's own docstring
+below for the exact contract.
+
+Every backend must return data that validates against TestSpec; if it
+doesn't, generate_spec re-prompts that same backend once (WORKFLOW.md Step
+1.3, decisions.md D-039) before either raising (explicit-backend callers)
+or escalating (the default auto-resolved path).
 """
 from __future__ import annotations
 
@@ -375,17 +394,133 @@ def _extract_json_object(text: str) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Generic OpenAI-compatible cloud/remote-server LLM backend (Phase V, D-044)
+# --------------------------------------------------------------------------
+
+class CloudLLMConfigError(RuntimeError):
+    pass
+
+
+class CloudLLMEgressBlockedError(RuntimeError):
+    pass
+
+
+class CloudLLMBackend:
+    """
+    Runs spec generation through any server implementing the OpenAI
+    Chat Completions HTTP shape (`POST {base_url}/chat/completions`) --
+    no vendor SDK, no hardcoded provider. This covers actual cloud
+    providers (OpenAI, and any other OpenAI-compat cloud endpoint) *and*
+    local OpenAI-compat servers (Ollama, llama.cpp's own server mode,
+    vLLM, etc.) equally -- "cloud" names this code path's origin
+    (decisions.md D-044, as opposed to LocalLLMBackend's in-process
+    llama-cpp-python), not a hard requirement that the endpoint be remote.
+
+    Configuration is entirely settings/env-driven
+    (AURA_CLOUD_LLM_BASE_URL / AURA_CLOUD_LLM_API_KEY / AURA_CLOUD_LLM_MODEL),
+    same provenance-stays-with-the-operator posture as
+    LocalLLMBackend.model_path -- AURA never bundles or defaults to a
+    specific vendor.
+
+    Egress control (decisions.md D-044): before every request, the target
+    host is checked against `settings.allowed_capability_hosts` via
+    `orchestrator.capability_router.is_egress_host_allowed()` -- the exact
+    same allowlist mechanism Phase D built for capability adapters, reused
+    here rather than duplicated. `settings.enable_cloud_planner` is a
+    second, separate, off-by-default gate (checked first) -- this class
+    can be constructed and used directly in tests without either gate
+    (callers that explicitly instantiate CloudLLMBackend are assumed to
+    know what they're doing, same as LocalLLMBackend); the gates are
+    enforced by `generate_spec`'s backend-resolution/escalation path, not
+    inside this class's constructor.
+    """
+
+    def __init__(
+        self,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        self.base_url = base_url or settings.cloud_llm_base_url
+        self.api_key = api_key or settings.cloud_llm_api_key
+        self.model = model or settings.cloud_llm_model
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            import httpx
+
+            self._client = httpx.Client(timeout=60.0)
+        return self._client
+
+    def generate(self, requirement_text: str) -> dict:
+        from urllib.parse import urlparse
+
+        from agents.planner.prompts import SPEC_GENERATION_SYSTEM_PROMPT, SPEC_GENERATION_USER_TEMPLATE
+        from orchestrator.capability_router import is_egress_host_allowed
+
+        if not self.base_url:
+            raise CloudLLMConfigError(
+                "CloudLLMBackend requires settings.cloud_llm_base_url (or "
+                "AURA_CLOUD_LLM_BASE_URL / a .env entry) -- e.g. "
+                "'https://api.openai.com/v1' or a local OpenAI-compat server's URL."
+            )
+        if not self.model:
+            raise CloudLLMConfigError(
+                "CloudLLMBackend requires settings.cloud_llm_model (or "
+                "AURA_CLOUD_LLM_MODEL / a .env entry) -- the model name the "
+                "target server expects in the request body."
+            )
+
+        host = urlparse(self.base_url).hostname
+        if not is_egress_host_allowed(host):
+            raise CloudLLMEgressBlockedError(
+                f"CloudLLMBackend: host '{host}' (from cloud_llm_base_url) is not in "
+                "settings.allowed_capability_hosts. Add it to the allowlist (or leave "
+                "the allowlist unset to allow all hosts) before enabling the cloud planner."
+            )
+
+        url = f"{self.base_url.rstrip('/')}/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        body = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": SPEC_GENERATION_SYSTEM_PROMPT},
+                {"role": "user", "content": SPEC_GENERATION_USER_TEMPLATE.format(requirement_text=requirement_text)},
+            ],
+            "temperature": settings.local_llm_temperature,
+            "max_tokens": settings.local_llm_max_tokens,
+        }
+
+        client = self._get_client()
+        response = client.post(url, headers=headers, json=body)
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"CloudLLMBackend request to {url} failed with status {response.status_code}: "
+                f"{response.text[:500]}"
+            )
+
+        response_body = response.json()
+        text = response_body["choices"][0]["message"]["content"]
+        return _extract_json_object(text)
+
+
+# --------------------------------------------------------------------------
 # Public entrypoint
 # --------------------------------------------------------------------------
 
 _BACKEND_REGISTRY: dict[str, type] = {
     "heuristic": LocalHeuristicBackend,
     "local_llm": LocalLLMBackend,
+    "cloud_llm": CloudLLMBackend,
 }
 
 
 def _default_backend() -> SpecBackend:
-    """Resolves settings.planner_backend ('heuristic' | 'local_llm') to a backend instance."""
+    """Resolves settings.planner_backend ('heuristic' | 'local_llm' | 'cloud_llm') to a backend instance."""
     backend_cls = _BACKEND_REGISTRY.get(settings.planner_backend)
     if backend_cls is None:
         raise ValueError(
@@ -399,8 +534,60 @@ _logger = logging.getLogger(__name__)
 
 
 def generate_spec(payload: RequirementInput, backend: SpecBackend | None = None) -> TestSpec:
-    backend = backend or _default_backend()
+    """
+    Resolves a backend and produces a schema-valid TestSpec.
 
+    If `backend` is passed explicitly, that exact instance is used with
+    R3's one-retry-with-logged-reason behavior and nothing else -- no
+    escalation, matching every existing caller/test that constructs its
+    own backend. `backend=None` (the normal path) additionally applies
+    Phase V's escalation policy (decisions.md D-044): if the
+    auto-detected/configured primary backend fails (after its own retry)
+    and `settings.enable_cloud_planner` is True and the primary wasn't
+    already CloudLLMBackend, one escalation attempt is made against
+    CloudLLMBackend before giving up -- logged the same way R3 logs a
+    retry, so "why did this escalate" is never a black box.
+    """
+    if backend is not None:
+        return _generate_with_retry(payload, backend)
+
+    primary = _default_backend()
+    try:
+        return _generate_with_retry(payload, primary)
+    except Exception as primary_exc:
+        # Deliberately checked via settings.planner_backend rather than
+        # `isinstance(primary, CloudLLMBackend)`: an isinstance check
+        # against a module-global class breaks the moment a caller/test
+        # patches `agents.planner.spec_generator.CloudLLMBackend` (a
+        # perfectly normal way to avoid a real network call in a test) --
+        # patching replaces the name with a Mock, which isinstance() can't
+        # accept as its second argument. Checking the *configured* backend
+        # name instead is both more robust and more semantically correct:
+        # "don't escalate to cloud if cloud is already what we were
+        # configured to use."
+        can_escalate = settings.enable_cloud_planner and settings.planner_backend != "cloud_llm"
+        if not can_escalate:
+            raise
+        _logger.warning(
+            "Planner.generate_spec: escalating from %s to CloudLLMBackend after retry "
+            "also failed (reason=%s: %s)",
+            type(primary).__name__,
+            type(primary_exc).__name__,
+            primary_exc,
+        )
+        try:
+            return _generate_with_retry(payload, CloudLLMBackend())
+        except Exception as escalation_exc:
+            _logger.warning(
+                "Planner.generate_spec: escalation to CloudLLMBackend also failed "
+                "(reason=%s: %s) -- giving up, no further backends to try",
+                type(escalation_exc).__name__,
+                escalation_exc,
+            )
+            raise
+
+
+def _generate_with_retry(payload: RequirementInput, backend: SpecBackend) -> TestSpec:
     try:
         raw = backend.generate(payload.requirement_text)
         return TestSpec.model_validate(raw)
@@ -414,8 +601,9 @@ def generate_spec(payload: RequirementInput, backend: SpecBackend | None = None)
         # trustworthy: an opaque retry today would just become an opaque
         # escalation later.
         _logger.warning(
-            "Planner.generate_spec: retrying after validation/backend "
+            "Planner.generate_spec: retrying %s after validation/backend "
             "failure (reason=%s: %s)",
+            type(backend).__name__,
             type(first_exc).__name__,
             first_exc,
         )

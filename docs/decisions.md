@@ -2375,3 +2375,128 @@ side.
 **Roadmap Phases R, S, T, and U (of the fourth remediation roadmap,
 R–V) are now all done. Phase V (dual API + local LLM generic backend) is
 next and last.**
+
+## D-044 — Phase V: dual API + local LLM generic backend (fourth remediation roadmap complete)
+
+**Roadmap Phase V** (`Roadmap.md`, fourth remediation roadmap R–V, last
+phase): reintroduces a network-capable planner path, on much stricter
+terms than the AnthropicBackend removed in D-018, and builds directly on
+R3's retry-logging groundwork (D-039).
+
+**`CloudLLMBackend`** (`agents/planner/spec_generator.py`): a generic
+OpenAI-compatible HTTP client — `POST {base_url}/chat/completions`, no
+vendor SDK, no hardcoded provider. "Cloud" names the code path (as
+opposed to `LocalLLMBackend`'s in-process `llama-cpp-python`), not a
+requirement that the endpoint be remote — it works identically against a
+real cloud API or an operator's own local OpenAI-compat server (Ollama,
+llama.cpp server mode, vLLM, etc.). Configuration is entirely env/settings
+-driven (`AURA_CLOUD_LLM_BASE_URL` / `_API_KEY` / `_MODEL`), same
+provenance-stays-with-the-operator posture as `local_llm_model_path` —
+AURA bundles or defaults to no specific vendor. Reuses the existing
+`SPEC_GENERATION_SYSTEM_PROMPT`/`_USER_TEMPLATE` and `_extract_json_object`
+helper unchanged — the prompt contract and response-parsing tolerance
+(markdown fences, stray prose) are backend-agnostic, so nothing there
+needed touching.
+
+**Egress control reuses Phase D's mechanism, not a second one.** New
+public `orchestrator.capability_router.is_egress_host_allowed(host)`
+wraps the existing private `_host_allowed()` against the live
+`settings.allowed_capability_hosts` — the exact function every capability
+adapter's egress check already goes through. `CloudLLMBackend.generate()`
+calls it before every request; an unresolvable/blocked host raises a new
+`CloudLLMEgressBlockedError` before any network call is attempted. This
+was the roadmap's own explicit instruction ("reuse ... rather than a
+second one"), so no new allowlist config surface was added anywhere.
+
+**Two independent gates, same pattern as `allow_db_seeding` (D-036).**
+`settings.enable_cloud_planner` (new, default `False`) is checked by the
+backend-resolution/escalation logic in `generate_spec`, not inside
+`CloudLLMBackend.__init__`/`.generate()` itself — a test or caller that
+constructs `CloudLLMBackend` directly can still use it without the gate,
+same as `LocalLLMBackend` always could. The egress allowlist is the second,
+independent check, enforced inside `.generate()` regardless of how the
+instance was reached.
+
+**Detection matrix (`config/settings.py::_auto_detect_planner_backend`,
+extended, not replaced).** When `settings.planner_backend` is left unset,
+resolution now considers both a bundled local `.gguf` model and a
+configured+enabled cloud backend, breaking ties via
+`settings.planner_priority` (`"local_first"` default, or `"cloud_first"`;
+an unrecognized value raises immediately rather than silently defaulting).
+If neither is available, `settings.require_llm_backend` (new, default
+`False`) decides the failure mode: `False` falls back to the always-
+available heuristic backend exactly as before D-018 removed
+AnthropicBackend; `True` fails fast at `Settings()` construction with a
+named `ValueError` rather than silently degrading to heuristic — for
+deployments that specifically don't want that silent degrade path. An
+**explicit** `AURA_PLANNER_BACKEND` always bypasses this matrix entirely
+(unchanged pre-Phase-V behavior) — `require_llm_backend` and the priority
+setting only apply to the auto-detect (`None`) case. Bundled-model
+detection is deliberately still filesystem-only at construction time, not
+a live reachability probe of `cloud_llm_base_url` — pinging a network
+endpoint during every process startup would make startup itself depend on
+network reachability, exactly what D-002/D-018 rule out; real reachability
+failures surface at call time instead, where the escalation policy below
+can react to them.
+
+**Escalation policy (`generate_spec`, built on R3's `_generate_with_retry`
+helper, factored out of the previous inline try/except so both the
+explicit-backend and auto-resolved paths share identical
+one-retry-with-logged-reason behavior).** `backend=` passed explicitly →
+exactly R3's existing retry behavior, no escalation, matching every
+pre-Phase-V caller/test unchanged. `backend=None` (the default path)
+additionally escalates to a freshly-constructed `CloudLLMBackend()` if the
+resolved primary backend fails (after its own retry) and
+`settings.enable_cloud_planner` is `True` and `settings.planner_backend`
+isn't already `"cloud_llm"` — each attempt and its reason logged via
+`_logger.warning`, same style/level as R3's retry logging, so an
+escalation is never a silent behavior change from the caller's point of
+view. If the escalation attempt also fails, that failure is logged too and
+re-raised — no third fallback, no silent swallow.
+
+**A real bug caught by hand-verification before it shipped:** the
+escalation check was originally written as
+`isinstance(primary, CloudLLMBackend)`. Manually exercising the exact
+mocking pattern the test file uses
+(`patch("agents.planner.spec_generator.CloudLLMBackend", return_value=...)`)
+immediately broke it — patching replaces the module-global name with a
+`Mock`, which `isinstance()` cannot accept as its second argument, so
+`TypeError` fired on every escalation-path test. Fixed by checking
+`settings.planner_backend != "cloud_llm"` instead of the primary
+instance's type — more robust (immune to how the instance was
+constructed/mocked) and arguably more correct anyway: the real question is
+"is cloud already what we're configured to use," not "what Python class is
+this particular object." Left as a cautionary note in the code comment,
+since it's the kind of check that looks obviously right until a test
+mocks the exact thing it's checking.
+
+**Verification.** Same disclosed sandbox gap as D-035 through D-038: no
+`pytest`/`pydantic`/`httpx`/network in this session. New
+`tests/test_phase_v_cloud_llm.py` (24 tests: CloudLLMBackend config
+errors, egress-allowlist blocking/allowing, the actual
+Phase-D-function-is-called check, mocked-request/response shape, missing-
+api-key/no-auth-header, non-200 handling; `_default_backend` resolving
+`"cloud_llm"`; 8 detection-matrix scenarios against real `Settings()`
+construction; 6 escalation-policy scenarios) was written but not run
+through `pytest`. In its place, every scenario was hand-verified against
+the **real, unmodified `config/settings.py` and
+`agents/planner/spec_generator.py`** using a from-scratch minimal
+`pydantic`/`pydantic_settings` stand-in built specifically to support
+`Settings`' actual `Field(default_factory=...)` usage and
+`@model_validator(mode="after")` decorator (more complete than the
+lighter stand-ins used in D-035–D-038, since this phase's core logic lives
+inside a real pydantic validator, not a plain method) — including the
+exact mocking pattern above, which is how the `isinstance` bug was caught.
+A full regression pass (pre-existing `LocalLLMBackend`/`_extract_json_object`/
+`_default_backend` behavior, plus an end-to-end `generate_spec` call
+through the real heuristic backend against
+`requirements_input/example_login_flow.md`) confirmed no pre-Phase-V
+behavior changed. This is still not a substitute for a real `pytest` run
+against the full suite (484 passing as of D-043) — run
+`pytest tests/test_phase_v_cloud_llm.py tests/test_planner.py` (then the
+full suite) in a real environment before deploying this.
+
+**This completes the fourth remediation roadmap (Phases R–V).** All five
+phases (`docs/decisions.md` D-039 through D-044 — note D-044 is Phase V;
+R/S1/S2/T/U are D-039–D-043) are done. No further phases are currently
+planned.
