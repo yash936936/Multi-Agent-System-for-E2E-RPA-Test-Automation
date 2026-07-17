@@ -207,7 +207,46 @@ async function openRunDetail(runId) {
   try {
     const run = await api(`/test-runs/${runId}`);
     document.getElementById('run-detail-title').textContent = run.spec?.test_name || runId;
-    document.getElementById('run-detail-body').textContent = JSON.stringify(run, null, 2);
+
+    let stepsHtml = '';
+    try {
+      const steps = await api(`/test-runs/${runId}/steps`);
+      const results = steps.step_results || [];
+      if (results.length) {
+        const rows = results.map(r => {
+          const method = r.verification_method === 'dual-method-confirmed'
+            ? '<span class="badge badge-passed"><span class="dot"></span>DOM + OCR confirmed</span>'
+            : r.verification_method === 'single-method'
+              ? '<span class="badge">single method</span>'
+              : '<span class="card-meta">n/a</span>';
+          return `<tr>
+            <td>${r.step_id}</td>
+            <td>${escapeHtml(r.action_taken)}</td>
+            <td>${method}</td>
+            <td>${(r.confidence ?? 0).toFixed(2)}</td>
+            <td>${r.escalate ? '⚠️ escalated' : '—'}</td>
+          </tr>`;
+        }).join('');
+        const traceLink = steps.trace_path
+          ? `<div class="card-meta" style="margin-top:8px;">Playwright trace: <code>${escapeHtml(steps.trace_path)}</code> (open with <code>playwright show-trace</code>)</div>`
+          : '';
+        stepsHtml = `
+          <div class="card" style="margin-bottom:16px;">
+            <div class="card-title">Element resolution per step</div>
+            <div class="card-meta">DOM/accessibility-tree locate is the primary path for browser targets; OCR/vision is the fallback for native-desktop targets with no accessibility tree.</div>
+            <table style="width:100%; margin-top:8px; font-size:13px;">
+              <thead><tr><th>Step</th><th>Action</th><th>Locate method</th><th>Confidence</th><th>Status</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+            ${traceLink}
+          </div>`;
+      }
+    } catch (_) {
+      // Non-fatal: older runs predating this endpoint just show the raw JSON below.
+    }
+
+    document.getElementById('run-detail-body').innerHTML = stepsHtml
+      + `<pre>${escapeHtml(JSON.stringify(run, null, 2))}</pre>`;
     document.getElementById('run-detail-modal').classList.remove('hidden');
   } catch (e) {
     toast(e.message, true);

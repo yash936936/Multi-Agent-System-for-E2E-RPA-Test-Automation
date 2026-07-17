@@ -1,3 +1,4 @@
+import json
 import time
 import uuid
 
@@ -6,6 +7,7 @@ from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Body
 from api.security import TokenPayload, require_role, get_current_user, require_project_access, user_can_access_project
 from api.run_store import run_store
 from api.spec_builder import build_test_spec
+from config.settings import settings
 from orchestrator.audit_logger import audit_logger
 from orchestrator.run_engine import RunEngine
 from orchestrator.spec_validator import SpecValidationError
@@ -299,3 +301,43 @@ async def get_run(run_id: str, user: TokenPayload = Depends(get_current_user)):
     if not user_can_access_project(user, (run.get("spec") or {}).get("project_tag")):
         raise HTTPException(status_code=404, detail="Run not found or access denied")
     return run
+
+
+@router.get("/{run_id}/steps", dependencies=[Depends(require_role(["admin", "executor", "viewer"]))])
+async def get_run_steps(run_id: str, user: TokenPayload = Depends(get_current_user)):
+    """
+    Per-step verification detail (locate method used, DOM-vs-OCR agreement,
+    self-heal evidence, Playwright trace path) -- this lives in
+    reports/run_<id>/raw_results.json (written by ReportAggregator.finalize)
+    but was never exposed over the API, so the webui had nothing to render
+    beyond the top-level RunReport (status/counts only). Same tenant/ACL
+    check as get_run so this doesn't open a new access-control gap.
+    """
+    run = run_store.get(user.tenant_id, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found or access denied")
+    if not user_can_access_project(user, (run.get("spec") or {}).get("project_tag")):
+        raise HTTPException(status_code=404, detail="Run not found or access denied")
+
+    raw_path = settings.reports_dir / f"run_{run_id}" / "raw_results.json"
+    if not raw_path.exists():
+        return {"run_id": run_id, "step_results": [], "skills_learned": [], "trace_path": None}
+
+    try:
+        data = json.loads(raw_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"run_id": run_id, "step_results": [], "skills_learned": [], "trace_path": None}
+
+    trace_path = None
+    for step in data.get("step_results", []):
+        ev = step.get("verification_evidence") or {}
+        if ev.get("trace_path"):
+            trace_path = ev["trace_path"]
+            break
+
+    return {
+        "run_id": run_id,
+        "step_results": data.get("step_results", []),
+        "skills_learned": data.get("skills_learned", []),
+        "trace_path": trace_path,
+    }
