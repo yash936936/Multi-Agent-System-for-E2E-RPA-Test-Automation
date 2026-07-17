@@ -172,11 +172,22 @@ def test_allow_network_calls_setting_no_longer_exists():
 
 
 def test_spec_generator_has_no_anthropic_backend():
+    # This test predates Phase V (decisions.md D-044), which
+    # intentionally added a third backend, "cloud_llm" -- a generic
+    # OpenAI-compatible HTTP client, not a reintroduction of the
+    # AnthropicBackend removed in D-018 (no vendor SDK, no hardcoded
+    # provider, off by default, gated by settings.enable_cloud_planner
+    # plus the same egress allowlist every capability adapter already
+    # uses). The two assertions that actually matter -- no AnthropicBackend
+    # class exists, "anthropic" isn't a registry key -- are unchanged and
+    # still the real point of this test; only the exact-membership check
+    # below needed updating to reflect the now-intentional three-backend
+    # registry.
     import agents.planner.spec_generator as sg
 
     assert not hasattr(sg, "AnthropicBackend")
     assert "anthropic" not in sg._BACKEND_REGISTRY
-    assert set(sg._BACKEND_REGISTRY) == {"heuristic", "local_llm"}
+    assert set(sg._BACKEND_REGISTRY) == {"heuristic", "local_llm", "cloud_llm"}
 
 
 def test_check_planner_backend_unknown_value(monkeypatch):

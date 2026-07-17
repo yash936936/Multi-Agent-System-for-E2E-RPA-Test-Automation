@@ -8,6 +8,12 @@ last_updated: 2026-07-17
 
 > This file should always reflect the *current* state — overwrite freely, don't accumulate history here (that belongs in `progress.md`).
 
+## Where things stand (2026-07-17 update, Phase V verification closed — see D-045)
+- **Ran the real `pytest` suite D-044 explicitly asked for** (this session has full tooling: `pytest`, `pydantic`, `httpx`, `sqlalchemy`, real `playwright`). `tests/test_phase_v_cloud_llm.py tests/test_planner.py` — **50/50 passing, first run** — the hand-verification from D-044's constrained session held up exactly.
+- **One real, pre-existing, non-Playwright test bug found and fixed:** `test_spec_generator_has_no_anthropic_backend` hardcoded the exact backend registry as `{"heuristic", "local_llm"}` from before Phase V intentionally added `"cloud_llm"` as a third backend. The test's actually-meaningful checks (no `AnthropicBackend` class, `"anthropic"` not a registry key) were and are still correct — only the stale exact-set assertion needed updating. One-line fix, `tests/test_preflight.py`.
+- **Full suite: 518/524 passing** (up from 517 before the fix). All 26 failed + 5 errored are the same long-documented Chromium-binary-download sandbox limitation (spot-checked and reconfirmed live, not assumed) — none touch Phase V's own code.
+- **This closes the verification gap across the entire fourth remediation roadmap (R–V).** No phase from R through V has an outstanding "never run through real pytest" gap anymore.
+
 ## Where things stand (2026-07-17 update, Phase V — done, fourth remediation roadmap R–V complete)
 - **New `CloudLLMBackend`** (`agents/planner/spec_generator.py`): generic OpenAI-compatible HTTP client (`POST {base_url}/chat/completions`), no vendor SDK, works against a real cloud endpoint or an operator's own local OpenAI-compat server equally. Config entirely via `AURA_CLOUD_LLM_BASE_URL`/`_API_KEY`/`_MODEL`. Off by default (`AURA_ENABLE_CLOUD_PLANNER=false`).
 - **Egress control reuses Phase D's mechanism, not a new one:** new public `orchestrator.capability_router.is_egress_host_allowed()` wraps the existing allowlist check; `CloudLLMBackend` calls it before every request.

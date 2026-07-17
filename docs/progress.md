@@ -9,6 +9,24 @@ project: AURA
 
 ---
 
+## 2026-07-17 — Verification pass: real pytest run confirms Phase V, one stale test fixed (D-045)
+
+**What happened:**
+- D-044 (Phase V) explicitly asked for a real `pytest` run once available, since it was hand-verified only. This session had full tooling (`pytest`, `pydantic`, `httpx`, `sqlalchemy`, real `playwright`), so ran exactly what was requested.
+- `pytest tests/test_phase_v_cloud_llm.py tests/test_planner.py` — 50/50 passing, first try. The hand-verification held up.
+- Found one real, pre-existing test bug unrelated to the sandbox's Chromium limitation: `test_spec_generator_has_no_anthropic_backend` hardcoded the exact backend registry set from before Phase V intentionally added a third backend (`cloud_llm`). Its meaningful assertions were still correct; only the exact-membership check was stale. Fixed with a one-line update plus an explanatory comment.
+- Full suite: 518/524 passing (one more than before the fix). Remaining 26 failed + 5 errored are all the same long-documented Chromium-binary-download sandbox limitation — spot-checked live to confirm, not assumed.
+- This closes the "never run through real pytest" gap across the entire fourth remediation roadmap (Phases R–V) — R/S1/S2/T were already pytest-verified in their own sessions; U's core logic was too, with only its browser-dependent tests sharing the sandbox gap; V is now verified the same way.
+
+**What changed:**
+- `tests/test_preflight.py` — one assertion updated, comment added.
+- `docs/decisions.md` — D-045 added.
+
+**What should happen next:**
+- No further phases are currently planned for the fourth roadmap. Any future work should check `docs/STATUS.md` for the latest state before assuming what's done.
+
+---
+
 ## 2026-07-17 — Phase V: dual API + local LLM generic backend (fourth remediation roadmap R–V complete)
 
 **What happened:**

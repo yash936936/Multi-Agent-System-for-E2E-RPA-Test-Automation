@@ -2500,3 +2500,64 @@ full suite) in a real environment before deploying this.
 phases (`docs/decisions.md` D-039 through D-044 — note D-044 is Phase V;
 R/S1/S2/T/U are D-039–D-043) are done. No further phases are currently
 planned.
+
+## D-045 — Phase V verification closed: real `pytest` run confirms the hand-verified work, one stale test fixed
+
+**Date:** 2026-07-17
+**Context:** D-044 (Phase V) explicitly disclosed it was hand-verified
+only, with no `pytest`/`pydantic`/`httpx`/network available in that
+session, and left a direct instruction: *"run `pytest
+tests/test_phase_v_cloud_llm.py tests/test_planner.py` (then the full
+suite) in a real environment before deploying this."* This session has
+full tooling (confirmed: `pytest` 9.1.1, `pydantic` 2.13.4, `httpx`
+0.28.1, `sqlalchemy` 2.0.51, real `playwright` import). Ran exactly what
+was asked, then the full suite.
+
+**Result: the hand-verification held up.**
+`pytest tests/test_phase_v_cloud_llm.py tests/test_planner.py` — **50/50
+passing**, first run, no changes needed. The from-scratch pydantic
+stand-in D-044 built for that session was accurate enough that nothing
+in the real environment behaved differently.
+
+**One real, non-Playwright test failure found and fixed:**
+`tests/test_preflight.py::test_spec_generator_has_no_anthropic_backend`
+— predates Phase V, and its final assertion hardcoded the exact expected
+backend registry as `{"heuristic", "local_llm"}`. Phase V intentionally
+added a third, `"cloud_llm"`, per D-044's own design — this is not a
+reintroduction of the `AnthropicBackend` removed in D-018 (no vendor SDK,
+no hardcoded provider, off by default, gated by
+`settings.enable_cloud_planner` plus the same egress allowlist every
+capability adapter uses), so the test's actually-meaningful assertions
+(`not hasattr(sg, "AnthropicBackend")`, `"anthropic" not in
+sg._BACKEND_REGISTRY`) were and remain correct — only the exact-membership
+check needed updating to `{"heuristic", "local_llm", "cloud_llm"}` to
+reflect the now-intentional three-backend registry. Fixed in
+`tests/test_preflight.py`, with a comment explaining why the set grew and
+that this isn't a policy reversal.
+
+**Full suite: 518/524 passing** (26 failed + 5 errored before the fix,
+515 passed; after the one-line fix: 518 passed, 26 failed, 5 errored —
+net one more passing, one fewer failing, zero regressions). Every
+remaining failure/error is the same pre-existing Chromium-binary-download
+sandbox limitation documented continuously since Phase C/D — spot-checked
+one directly (`test_dom_locator.py::test_locate_dom_finds_exact_button_match`)
+and confirmed the exact same root cause (`playwright install chromium`
+blocked by this sandbox's egress rules, `cdn.playwright.dev` unreachable)
+by attempting the install live and observing the identical failure
+signature already on file. All 26+5 are in files that need a real
+launchable browser (`test_accessibility_adapter.py`,
+`test_browser_hook.py`, `test_cross_browser.py`, `test_dom_locator.py`,
+`test_link_checker.py`'s Playwright-fallback test,
+`test_performance_adapter.py`, `test_run_engine_trace.py`,
+`test_run_engine_video.py`, `test_executor_dom_path.py`) — none of them
+touch Phase V's own code.
+
+**This closes the verification gap across the entire fourth remediation
+roadmap.** R, S1, S2, and T were already pytest-verified in their own
+sessions (D-039–D-042). U's core logic was pytest-verified via its 16
+browser-free unit tests in its own session, with only the
+browser-dependent integration tests carrying the disclosed sandbox gap
+(D-043). V is now verified the same way, in this session. No phase in
+R–V has an outstanding "never actually run through pytest" gap anymore —
+only the long-standing, environment-specific Chromium binary limitation
+remains, which is infrastructure, not code.
