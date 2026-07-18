@@ -40,11 +40,12 @@ from typing import Any
 
 from agents.vision.locator import _match_score
 
-# Matches lines like `- button "Login Button"` or `  - link "Home":` from
-# Locator.aria_snapshot()'s YAML output. Metadata lines (e.g. `- /url: "#"`,
-# `- /placeholder: Username`) start with a slash and never match this
-# quoted-name shape, so they're naturally skipped.
-_ARIA_LINE_RE = re.compile(r'-\s+([a-zA-Z][\w-]*)\s+"((?:[^"\\]|\\.)*)"')
+# Matches aria_snapshot() lines like:  - button "Login Button" [ref=e12]
+# or nested/indented variants; role is the first bare word, name is the
+# quoted accessible name. Roles with no name (e.g. "- generic:") don't
+# match this pattern at all and are dropped, same effect as the old
+# _flatten()'s `and name` guard.
+_ARIA_LINE_RE = re.compile(r'-\s*([a-zA-Z][a-zA-Z0-9_-]*)\s+"([^"]*)"')
 
 # Scrapling's own default relocate() threshold (docs/external_repos.md
 # Batch 6: "clears a configurable `percentage` threshold (default 40%)").
@@ -81,37 +82,43 @@ class DomLocateResult:
     bbox: dict | None = None
 
 
-def _parse_aria_snapshot(text: str) -> list[dict]:
-    out: list[dict] = []
-    for line in (text or "").splitlines():
-        m = _ARIA_LINE_RE.search(line)
-        if not m:
+def _flatten(snapshot_text: str, out: list[dict]) -> None:
+    """
+    Parses aria_snapshot()'s YAML-ish text tree (one role/name per line,
+    e.g. `- button "Login Button" [ref=e12]`) into flat {"role", "name"}
+    dicts. Replaces the old recursive dict-tree walk that
+    page.accessibility.snapshot() used to return -- Playwright removed
+    that API (Page.accessibility is gone in current versions) in favor of
+    Locator.aria_snapshot(), which returns text, not a nested dict. Lines
+    with no quoted name (pure structural nodes like "- generic:") simply
+    don't match _ARIA_LINE_RE and are skipped, same effect as the old
+    `and name` guard.
+    """
+    for line in snapshot_text.splitlines():
+        match = _ARIA_LINE_RE.search(line)
+        if not match:
             continue
-        role, name = m.group(1), m.group(2).strip()
+        role, name = match.group(1), match.group(2).strip()
         if role and name:
             out.append({"role": role, "name": name})
-    return out
 
 
 def snapshot_elements(page) -> list[dict]:
     """
-    Flattens Playwright's accessibility-tree snapshot into a flat list of
+    Flattens the page's current ARIA snapshot into a flat list of
     {"role": str, "name": str} candidates. Interactive-role-only nodes with
     non-empty accessible names -- text-only decorative nodes aren't useful
     click/type targets and would just add noise to scoring.
 
-    `Page.accessibility.snapshot()` was removed from current Playwright
-    releases (the API was deprecated in favor of ARIA snapshots); this now
-    reads `page.locator("body").aria_snapshot()` -- a YAML-ish tree of
-    `role "name"` lines -- and parses it into the same candidate shape this
-    function has always returned, so every caller (locate_dom, relocate_dom)
-    needs no changes.
+    Uses Locator.aria_snapshot() (current Playwright API) rather than the
+    removed Page.accessibility.snapshot(). aria_snapshot() is scoped to a
+    locator, so this snapshots from page.locator("html") to cover the
+    whole document, matching the old whole-page tree's coverage.
     """
-    try:
-        raw = page.locator("body").aria_snapshot()
-    except Exception:
-        return []
-    out = _parse_aria_snapshot(raw)
+    snapshot_text = page.locator("html").aria_snapshot()
+    out: list[dict] = []
+    if snapshot_text:
+        _flatten(snapshot_text, out)
     return [el for el in out if el["role"] in _INTERACTIVE_ROLES]
 
 

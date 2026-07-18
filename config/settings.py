@@ -283,6 +283,28 @@ class Settings(BaseSettings):
     # neither on at once.
     record_trace: bool = False
 
+    # --- DOM-extractor exploration supplement (agents/vision/dom_extractor.py) ---
+    # Off by default. When True and a live Playwright session is already
+    # open (runtime.hooks.browser.has_active_page()), orchestrator/
+    # ui_audit_runner.py's click-audit/explore loop supplements its
+    # OCR-band candidate list with a live-DOM scan (icon-only controls,
+    # custom div/span controls with no OCR-visible label text -- see
+    # agents/vision/dom_extractor.py's module docstring for the full
+    # rationale). Defaults off rather than on, unlike most detection
+    # improvements in this codebase, for one specific reason: this is the
+    # first source in the click-audit loop that can produce a *real*
+    # on-screen click for an element whose only detectable signal is a
+    # CSS cursor style (`cursor: pointer` on a div/span/li) -- broader
+    # detection surface than either OCR text-matching or ARIA-role
+    # matching, which both require some form of semantic labeling.
+    # Enabling it trades a real chance of AURA finding genuinely missed
+    # click targets against a real chance of it clicking a decorative
+    # element that merely happens to be styled with a pointer cursor.
+    # Turn on deliberately (AURA_ENABLE_DOM_EXTRACTOR=true) once you've
+    # seen it behave correctly against your own site(s), not by default
+    # for every user's first run.
+    enable_dom_extractor: bool = False
+
     # --- Phase U: OCR-then-DOM dual verification (decisions.md D-043) ---
     # Both OCR and DOM locators now always run (when a browser session
     # exists) rather than DOM-first/OCR-fallback -- see

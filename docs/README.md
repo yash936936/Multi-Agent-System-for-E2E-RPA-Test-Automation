@@ -153,13 +153,6 @@ aura explore https://example.com --check-links
 
 # Same, but restrict the link check to just the footer
 aura explore https://example.com --check-links --link-scope footer
-
-# Autonomously fill in and submit a signup/contact/checkout form -- reports
-# what happened (URL change, new tab, success/error wording). Off by default.
-aura explore https://example.com --fuzz-forms
-
-# Same, but with deliberately malformed/boundary values instead of realistic ones
-aura explore https://example.com --fuzz-forms --fuzz-mode edge_case
 ```
 
 The `--prompt` check is a **keyword heuristic, not language understanding** — it looks for on-screen text overlapping words from your prompt among everything it saw while exploring, and says so explicitly in the output either way. Treat it as "here's what I noticed that might be relevant," not a verdict.
@@ -253,15 +246,9 @@ aura explore https://example.com --no-scroll-scan                       # skip t
 aura explore https://example.com --check-links                          # also run a real HTTP-level link check (off by default)
 aura explore https://example.com --check-links --link-scope footer      # restrict that link check to just <footer> links
 aura explore https://example.com --check-links --link-scope nav         # restrict it to just <nav> links
-aura explore https://example.com --fuzz-forms                           # autonomously fill + submit every detected form field (off by default)
-aura explore https://example.com --fuzz-forms --fuzz-mode edge_case     # same, with deliberately malformed/boundary values instead of realistic ones
 ```
 
 Generalizes the same click-and-diff engine `--ui-audit` uses (`orchestrator/ui_audit_runner.py`) from "nav + footer only" to every interactive-looking element on the page (nav, hero, footer, body). Output is a terminal summary plus a JSON report under `reports\explore_<run_id>\report.json` — this mode doesn't (yet) produce an HTML report, since `render_html()` expects a full spec-driven run on disk and `explore` deliberately has neither a spec nor a `RunEngine` pass.
-
-**Cursor/navigation handling (D-046):** when a live Playwright browser session is active, each click is resolved DOM-first (`agents/vision/dom_locator.py`'s accessibility-tree locator, with the same Scrapling-style self-heal used elsewhere in this codebase) rather than pure OCR, and returning to the original page uses a tab-aware `dom_smart_back()`: if the click opened a new tab (a `target="_blank"` link, very common in real nav bars/footers), AURA reads that tab's URL, closes it, and refocuses the original page — reported explicitly in the output ("opened in a new tab ... closed and returned") instead of being misjudged as "no visible change." The original OCR/OS-level path (`browser_back()`'s Alt+Left) remains the fallback whenever no live browser page is available.
-
-**Autonomous form/signup fuzzing (`agents/vision/form_fuzzer.py`) — opt-in via `--fuzz-forms`:** detects every fillable field on the current page, classifies each by its label (email/password/username/phone/address/name/etc.), generates a value (realistic via Faker, or deliberately malformed/boundary in `--fuzz-mode edge_case`), fills every field, and submits — then reports what happened: whether the page navigated, whether a new tab opened, and whether any known success- or error-ish wording appeared. This is a heuristic signal, not a pass/fail verdict — AURA has no way to know what a "correct" signup response looks like for an arbitrary site, so it reports what it observed and lets you (or a `--prompt` requirement check) draw the conclusion. Requires a live browser session (same DOM-first path as above); skipped with a clear message, not a crash, if none is active.
 
 **Real HTTP link check (`agents/capability/link_checker.py`) — opt-in via `--check-links`:** by default `explore` only does the OCR click-and-diff sweep above; pass `--check-links` to *additionally* fetch the page's raw HTML and issue a real HTTP status check against every navigable `<a href>` link. `--link-scope` (`all` by default, or `footer`/`nav`) only has any effect when `--check-links` is also passed — it's not a separate way to trigger the check. This is opt-in rather than automatic because a live HTTP request against every link on the page is a meaningfully different (and heavier/network-dependent) check than the OCR sweep, and shouldn't run silently on a plain `aura explore` call. Two things worth knowing about how this works:
 - **Redirects are shown, not hidden.** A link that 301/302-redirects somewhere else still counts as "working" (its final destination is what matters), but the redirect chain — every hop's status code and target — is reported explicitly rather than silently landing on the final URL and looking identical to a direct hit.

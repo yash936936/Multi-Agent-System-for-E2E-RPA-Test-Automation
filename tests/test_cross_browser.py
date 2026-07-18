@@ -101,51 +101,17 @@ def test_firefox_engine_selected_launches_firefox_not_chromium(monkeypatch):
     fake_chromium_engine.launch.assert_not_called()
 
 
-def test_firefox_launch_failure_wraps_into_no_display_error_not_a_crash(monkeypatch, server):
+def test_real_firefox_binary_not_installed_fails_gracefully_not_a_crash(server):
     """
-    Whatever engine is selected, if the underlying Playwright launch()
-    call fails (e.g. the browser binary genuinely isn't downloaded), that
-    failure must surface as a clean NoDisplayError, not an unhandled
+    In this sandbox, only the Chromium binary is actually downloaded (same
+    restriction documented throughout docs/STATUS.md). Selecting firefox
+    for real must still fail as a clean NoDisplayError, not an unhandled
     exception -- confirms the existing except-wrap-into-NoDisplayError
     behavior still covers the new engine-selection code path.
-
-    This used to assert against real ambient machine state ("only
-    chromium is installed in this sandbox"), which broke the moment
-    firefox was installed anywhere the suite ran (e.g. `playwright
-    install firefox` on a dev machine) -- the test then failed not
-    because the wrapping behavior regressed, but because its own
-    precondition (firefox absent) no longer held. A fake Playwright
-    engine whose launch() always raises tests the wrapping behavior
-    deterministically, independent of which browser binaries happen to
-    be downloaded on whatever machine runs this suite.
     """
-    import playwright.sync_api as playwright_sync_api
     from runtime.hooks import browser
 
     settings.playwright_browser = "firefox"
-
-    class _BrokenEngine:
-        def launch(self, *args, **kwargs):
-            raise Exception(
-                "Executable doesn't exist at .../firefox/firefox.exe\n"
-                "Looks like Playwright was just installed or updated. "
-                "Please run: playwright install"
-            )
-
-    class _FakePlaywrightContext:
-        def __init__(self):
-            self.chromium = _BrokenEngine()
-            self.firefox = _BrokenEngine()
-            self.webkit = _BrokenEngine()
-
-        def stop(self):
-            pass
-
-    class _FakeSyncPlaywright:
-        def start(self):
-            return _FakePlaywrightContext()
-
-    monkeypatch.setattr(playwright_sync_api, "sync_playwright", lambda: _FakeSyncPlaywright())
 
     with pytest.raises(browser.NoDisplayError):
         browser.open_url(server_url(server), wait_seconds=0.1)

@@ -253,8 +253,6 @@ def explore(
     check_links: bool = typer.Option(False, "--check-links", help="Also run a real HTTP-level link check (actual status codes, not just click-and-diff). Off by default -- opt in explicitly."),
     link_scope: str = typer.Option("all", "--link-scope", help='Only used with --check-links. Which links get checked: "all" (default -- every navigable link on the page), "footer", or "nav".'),
     browser: str = typer.Option("chromium", "--browser", help=f"Phase I1: Playwright browser engine. One of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)}."),
-    fuzz_forms: bool = typer.Option(False, "--fuzz-forms", help="D-045: also autonomously fill every detected form field (e.g. a signup page) and submit it, reporting what happened. Off by default -- opt in explicitly, same posture as --check-links."),
-    fuzz_mode: str = typer.Option("realistic", "--fuzz-mode", help='Only used with --fuzz-forms. "realistic" (plausible Faker-backed values) or "edge_case" (deliberately malformed/boundary values per PRD FR4).'),
 ) -> None:
     """
     Fully autonomous exploration: give it a URL, nothing else. AURA
@@ -265,13 +263,10 @@ def explore(
     if browser not in PLAYWRIGHT_BROWSER_CHOICES:
         console.print(f"[red]--browser must be one of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)} (got '{browser}').[/red]")
         raise typer.Exit(code=1)
-    if fuzz_mode not in ("realistic", "edge_case"):
-        console.print(f"[red]--fuzz-mode must be 'realistic' or 'edge_case' (got '{fuzz_mode}').[/red]")
-        raise typer.Exit(code=1)
     settings.playwright_browser = browser
 
     preflight.run_preflight_or_exit()
-    explore_cmd.explore(url, max_elements=max_elements, prompt=prompt, scroll_scan=not no_scroll_scan, check_links=check_links, link_scope=link_scope, fuzz_forms=fuzz_forms, fuzz_mode=fuzz_mode)
+    explore_cmd.explore(url, max_elements=max_elements, prompt=prompt, scroll_scan=not no_scroll_scan, check_links=check_links, link_scope=link_scope)
 
 
 @app.command()

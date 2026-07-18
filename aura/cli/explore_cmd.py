@@ -44,8 +44,6 @@ def explore(
     scroll_scan: bool = True,
     check_links: bool = False,
     link_scope: str = "all",
-    fuzz_forms: bool = False,
-    fuzz_mode: str = "realistic",
 ) -> None:
     """
     Autonomous exploration: navigate to `url`, then click every
@@ -81,6 +79,13 @@ def explore(
     from runtime.hooks.capture import capture_screenshot
 
     def provider(rid: str, index: int) -> str:
+        # Deliberately does NOT catch NoDisplayError here: run_autoscan and
+        # run_exploration each wrap their own calls to this provider in
+        # runtime.errors.display_guard(), which only works if the error
+        # propagates out of the provider uncaught. Swallowing it here would
+        # silently hand back an empty path instead of setting
+        # guard.no_display, breaking both callers' display_unavailable
+        # reporting.
         return str(capture_screenshot(rid, index))
 
     if scroll_scan:
@@ -119,8 +124,6 @@ def explore(
     for c in report.checked:
         if not c.clicked:
             console.print(f"  [dim]· {c.label} ({c.band}) — could not locate/click[/dim]")
-        elif c.new_tab_opened:
-            console.print(f"  [green]✓ {c.label} ({c.band}) — opened in a new tab ({c.new_tab_url or 'unknown URL'}), closed and returned[/green]")
         elif c.state_changed:
             console.print(f"  [green]✓ {c.label} ({c.band}) — click produced a visible change[/green]")
         else:
@@ -161,37 +164,6 @@ def explore(
     if not report.possibly_broken and not report.page_issues and link_check_clean:
         console.print("\n[green]Exploration clean — no non-functional elements or error indicators found.[/green]")
 
-    fuzz_result = None
-    if fuzz_forms:
-        from runtime.hooks import browser as browser_hook
-
-        console.print(f"\n[bold]Fuzzing forms[/bold] (mode='{fuzz_mode}') — filling every detected field and submitting...")
-        if not browser_hook.has_active_page():
-            console.print("[yellow]No live browser session available -- form fuzzing requires the Playwright DOM path and was skipped.[/yellow]")
-        else:
-            from agents.vision.form_fuzzer import fuzz_form
-
-            fuzz_result = fuzz_form(browser_hook.get_page(), mode=fuzz_mode)
-            if not fuzz_result.filled:
-                console.print("[dim]No fillable fields (textbox/searchbox/combobox) detected on this page.[/dim]")
-            for f in fuzz_result.filled:
-                console.print(f"  [green]✓ filled[/green] {f.label} ({f.field_key}) — {f.value_preview}")
-            if fuzz_result.submit_clicked:
-                if fuzz_result.new_tab_opened:
-                    console.print(f"  Submitted — opened in a new tab ({fuzz_result.new_tab_url or 'unknown URL'}), closed and returned.")
-                elif fuzz_result.url_changed:
-                    console.print(f"  Submitted — navigated from {fuzz_result.url_before} to {fuzz_result.url_after}.")
-                else:
-                    console.print("  Submitted — page did not navigate (likely a same-page validation response, if any).")
-                if fuzz_result.success_markers_seen:
-                    console.print(f"  [green]Success-ish wording seen:[/green] {', '.join(fuzz_result.success_markers_seen)}")
-                if fuzz_result.error_markers_seen:
-                    console.print(f"  [yellow]Error-ish wording seen:[/yellow] {', '.join(fuzz_result.error_markers_seen)}")
-                if not fuzz_result.success_markers_seen and not fuzz_result.error_markers_seen:
-                    console.print("  [dim]No known success/error wording detected -- review the outcome manually; this is a heuristic, not certainty.[/dim]")
-            elif fuzz_result.note:
-                console.print(f"  [yellow]{fuzz_result.note}[/yellow]")
-
     out_dir = settings.reports_dir / f"explore_{run_id}"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "report.json"
@@ -211,25 +183,6 @@ def explore(
                 "link_check_requested": check_links,
                 "link_check_scope": link_scope if check_links else None,
                 "link_check_result": report.link_check_result,
-                "fuzz_forms_requested": fuzz_forms,
-                "fuzz_mode": fuzz_mode if fuzz_forms else None,
-                "fuzz_result": (
-                    {
-                        "filled": [f.__dict__ for f in fuzz_result.filled],
-                        "submit_found": fuzz_result.submit_found,
-                        "submit_clicked": fuzz_result.submit_clicked,
-                        "url_before": fuzz_result.url_before,
-                        "url_after": fuzz_result.url_after,
-                        "url_changed": fuzz_result.url_changed,
-                        "new_tab_opened": fuzz_result.new_tab_opened,
-                        "new_tab_url": fuzz_result.new_tab_url,
-                        "error_markers_seen": fuzz_result.error_markers_seen,
-                        "success_markers_seen": fuzz_result.success_markers_seen,
-                        "note": fuzz_result.note,
-                    }
-                    if fuzz_result is not None
-                    else None
-                ),
             },
             indent=2,
         ),
