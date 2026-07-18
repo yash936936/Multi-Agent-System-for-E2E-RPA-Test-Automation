@@ -9,6 +9,25 @@ project: AURA
 
 ---
 
+## 2026-07-18 — Full-repo debug pass: cursor/navigation fixes (D-046) + autonomous form fuzzing (D-047)
+
+**What happened:**
+- Requested: a full line-by-line debug/QA pass across the whole repo (logic, bugs, connectivity, code reuse), cross-checked against `docs/external_repos.md`, plus a specific check of "cursor handling" — whether a clicked link's success is verified, and whether AURA handles a click opening a new tab (close it, return, try another) with autonomous decision-making — and a new capability to autonomously fuzz-test a signup/form page using random/edge-case data.
+- Cloned the actual GitHub repo fresh, installed all deps into a clean venv, and ran the real `pytest` suite before touching anything: 518 passed / 26 failed / 5 errored (baseline).
+- Read every navigation/click-related module in full: `orchestrator/autoscan.py`, `orchestrator/ui_audit_runner.py`, `aura/cli/explore_cmd.py`, `agents/capability/link_checker.py`, `runtime/hooks/interact.py`, `runtime/hooks/browser.py`, `agents/vision/dom_locator.py`.
+- Found two real, confirmed bugs in `ui_audit_runner._run_click_audit()` (the shared engine behind `aura explore` and `--ui-audit`): it never used the Phase C DOM-first Playwright locator (pure OCR/pixel only), and its back-navigation (`browser_back()`) was an OS-level Alt+Left with no new-tab awareness, misreporting working `target="_blank"` links as broken.
+- Fixed both: added `runtime.hooks.interact.dom_smart_back()` (detects a new tab via `context.pages` growth, closes it, refocuses the original; else uses Playwright's own `page.go_back()`), and wired a DOM-first attempt (`_try_dom_click()`, using the existing `locate_dom()`/`relocate_dom()` self-heal) into `_run_click_audit()`, falling back to the exact original OCR/OS path unchanged whenever no live browser page exists.
+- Built `agents/vision/form_fuzzer.py` for the autonomous signup-fuzzing request: detects fillable fields via the existing DOM snapshot, classifies each by keyword, generates realistic or deliberately-malformed values by reusing (not duplicating) the existing Faker-backed `agents/data_synth/generator.py`, fills and submits, and reports what happened (URL change, new tab, success/error wording) without asserting pass/fail itself. Caught and fixed a real ordering bug during its own test-writing: an early draft called the new tab-aware back-navigation immediately after submit, which would have erased the very post-submit page state being observed.
+- Wired both behind explicit opt-in flags (`--fuzz-forms`, `--fuzz-mode`) exactly matching the existing `--check-links` pattern — zero change to default `aura explore` behavior.
+- Wrote 13 new tests (4 smart-back, 6 form-fuzzer, 3 explore-cmd), all executed for real, all passing. Re-ran the full suite: 531 passed / 26 failed / 5 errored — same pre-existing Chromium-download-blocked set as the baseline, confirmed line-for-line, zero regressions. Ran `ruff check` on every changed/new file — one unused-import fix, otherwise clean.
+- Cross-checked `docs/external_repos.md` against the actual code (not just re-read the doc): only `D4Vinci/Scrapling`'s relocate pattern and `ponytail`/`q-agent-harness`'s process-instruction adoptions had actually made it into the repo; every other extracted repo remains documented-as-idea only. `alibaba/page-agent`'s `target="_blank"` handling was the direct model for this session's fix.
+
+**Verification:** pytest run live before and after (baseline 518/26/5 → final 531/26/5, diffed test-by-test, zero new failures). `ruff check` run on all touched files. The DOM-first branch inside `_run_click_audit()` itself still needs a live Chromium binary to exercise end-to-end (blocked in this sandbox, same as several pre-existing test files) — reviewed by reading and unit-tested at the `dom_smart_back()`/`form_fuzzer` orchestration level, not exercised through a real browser this session; disclosed here rather than claimed as fully executed.
+
+**Revisit when:** a real Chromium binary is available (outside this sandbox) — run `test_dom_locator.py`, `test_executor_dom_path.py`, and a new live end-to-end pass of `_run_click_audit()`'s DOM branch and `fuzz_form()` against a real signup page to close the one remaining verification gap. Also noted as a natural follow-up (not done here): wiring `agents.planner.spec_generator`'s existing `SpecBackend` (Local/Cloud LLM) as a fallback for `form_fuzzer.classify_field()`'s keyword misses.
+
+---
+
 ## 2026-07-17 — Verification pass: real pytest run confirms Phase V, one stale test fixed (D-045)
 
 **What happened:**

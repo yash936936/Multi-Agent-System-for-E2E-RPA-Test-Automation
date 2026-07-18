@@ -2561,3 +2561,151 @@ browser-dependent integration tests carrying the disclosed sandbox gap
 R–V has an outstanding "never actually run through pytest" gap anymore —
 only the long-standing, environment-specific Chromium binary limitation
 remains, which is infrastructure, not code.
+
+## D-046 — Tab-aware smart-back for the click-audit path (aura explore / --ui-audit)
+
+**Context:** requested line-by-line debug pass on the whole repo, with a
+specific ask to check "cursor handling" -- whether a clicked link is
+verified as working, and whether AURA correctly closes/returns when a
+click opens a new tab rather than navigating the same page.
+
+**What was found, verified by actually reading the code (not assumed):**
+`orchestrator/ui_audit_runner.py`'s `_run_click_audit()` -- the engine
+behind both `aura explore` and `aura execute --ui-audit` -- had two real,
+confirmed gaps:
+
+1. It only ever used the older OCR/pixel path (`agents.vision.locator
+   .locate_text` + `runtime.hooks.interact.click(x, y)` +
+   `interact.browser_back()`'s OS-level Alt+Left), even though Phase C
+   already added a Playwright accessibility-tree-first locator with
+   Scrapling-style self-heal (`agents/vision/dom_locator.py`) for
+   spec-driven `aura execute` runs. That migration never reached
+   `aura explore`, leaving the zero-instruction exploration mode -- the
+   mode most likely to hit unpredictable real-world pages -- on the more
+   fragile path.
+2. `browser_back()`'s OS-level Alt+Left has no concept of a new tab.
+   A meaningful share of real nav/footer links use `target="_blank"`.
+   Clicking one opens a new tab; Alt+Left does nothing useful there (no
+   back history) and may not even reach AURA's own window. The audit loop
+   had no way to detect this had happened -- it just diffed the next
+   screenshot, which after a new-tab click is frequently still a picture
+   of the unchanged original page, producing a false "no visible change
+   after click" / "possibly non-functional" verdict on a link that
+   actually worked correctly. Independently cross-checked against
+   `docs/external_repos.md` Batch 6 (`alibaba/page-agent`): that project
+   hit and explicitly handles this exact case ("reports 'opened in a new
+   tab' rather than silently doing nothing") -- confirms this is a known,
+   real class of bug, not a hypothetical.
+
+**Fix:**
+- `runtime/hooks/interact.py`: added `dom_smart_back(page, pages_before)`
+  -- checks `len(page.context.pages)` before/after; if a new tab opened,
+  records its URL, closes it, and refocuses the original tab; otherwise
+  calls Playwright's own `page.go_back(wait_until="commit")` instead of
+  the OS keystroke. `browser_back()` (OS-level) is kept, unchanged, as
+  the fallback for the OCR/pixel path only.
+- `orchestrator/ui_audit_runner.py`: added `_try_dom_click()` (DOM-first
+  locate → relocate-self-heal → click → smart-back) as the first attempt
+  per candidate element, falling back to the exact original OCR/OS path,
+  unchanged, whenever no live Playwright page exists or the DOM path
+  can't resolve the element. `ClickCheckResult` gained
+  `new_tab_opened`/`new_tab_url`/`resolution_strategy` fields so a
+  new-tab click is reported explicitly rather than folded into an
+  ambiguous `state_changed` verdict. `aura/cli/explore_cmd.py`'s console
+  output now prints "opened in a new tab (<url>), closed and returned"
+  for these cases.
+- **Zero behavior change when no browser session is active** (existing
+  OCR-only test suite: 38/38 passing, unchanged) -- the DOM attempt is
+  wrapped in a try/except that returns `None` on any failure, and the
+  original OCR/OS code path is untouched byte-for-byte in that case.
+
+**Verification:** `tests/test_smart_back.py` (4 new tests, fake
+Page/BrowserContext objects, no live browser needed — executed for real
+this session, all passing) covers `dom_smart_back()`'s three branches
+(no new tab → go_back; go_back raising → doesn't propagate; one or more
+new tabs → all closed, original refocused, go_back never called). The
+DOM-first branch inside `_run_click_audit()` itself needs a live
+Chromium binary to exercise end-to-end (same sandbox gap as
+`test_dom_locator.py`/`test_executor_dom_path.py`) — reviewed by reading,
+not executed live this session; flagged here rather than claimed as run.
+
+**Full suite this session: 531/562 passing, 26 failed + 5 errored — the
+exact same pre-existing Chromium-download-blocked set as before this
+session's changes (verified line-for-line against the prior run's
+failure list), zero new failures, zero regressions.**
+
+## D-047 — Autonomous form/signup fuzzing (`aura explore --fuzz-forms`)
+
+**Context:** explicit request for AURA to autonomously test a signup
+page "by entering random things and checking it and buttons if it is
+working or not," using the API/LLM stack already in this repo rather
+than a hand-written spec.
+
+**What was found:** no code path anywhere in this repo actually filled a
+form field and pressed submit without a human-written `TestStep` telling
+it exactly what to type into which target. `orchestrator/ui_audit_runner
+.py`'s click-audit engine clicks and diffs, but never types. This was a
+genuine, confirmed gap, not a design choice to preserve.
+
+**What was added:** `agents/vision/form_fuzzer.py` — `fuzz_form(page,
+submit_label, mode, max_fields)`:
+- Detects every `textbox`/`searchbox`/`combobox` on the current page via
+  the existing `agents.vision.dom_locator.snapshot_elements()` (no new
+  discovery mechanism).
+- Classifies each field's likely type from its accessible name via a new
+  `classify_field()` keyword map (email/password/username/phone/address/
+  dob/zip/name/credit_card), falling back to "generic" rather than
+  guessing wrong.
+- Generates a value via a new public `agents.data_synth.generator
+  .generate_value()` wrapper around the existing (previously private)
+  `_generate_value` — reused, not reimplemented, per `context.md` §6's
+  code-minimalism ladder. `mode="realistic"` uses the existing Faker
+  generators; `mode="edge_case"` uses the existing `edge_case_*`
+  generators (unicode, max-length, malformed email, special characters —
+  PRD FR4's boundary-testing requirement), applied autonomously instead
+  of only when a human spec names a specific edge case.
+- Fills via the existing `runtime.hooks.interact.dom_fill()`, locates a
+  submit-like control via `locate_dom()` (trying "submit" then common
+  real-world alternates: "sign up," "create account," "register,"
+  "continue"), clicks via `dom_click()`.
+- **Ordering bug caught and fixed during this session's own testing:**
+  the first draft called the new `dom_smart_back()` (D-046) immediately
+  after every submit click, which — via its `page.go_back()` branch —
+  would have erased the very post-submit page (a "welcome"/"verify your
+  email" redirect, or a same-page validation message) this function
+  exists to observe, before that state was ever read. Fixed by reading
+  `url_after` and scanning for success/error wording *before* any
+  back-navigation, and only using `dom_smart_back()` for the one case
+  where it's still safe immediately — an actual new tab, since the main
+  page never left in that case.
+- Reports `error_markers_seen`/`success_markers_seen` via a small,
+  disclosed keyword heuristic (not language understanding, matching this
+  file's existing `_check_requirement_prompt()` posture) rather than
+  asserting pass/fail itself — AURA has no way to know what a "correct"
+  signup response looks like for an arbitrary site.
+- Wired as an opt-in `aura explore --fuzz-forms [--fuzz-mode
+  realistic|edge_case]` (mirrors the existing `--check-links` opt-in
+  pattern exactly) — off by default, so it never changes existing
+  `aura explore` behavior unless explicitly requested. Skips cleanly
+  (with a clear console message, not a crash) when no live Playwright
+  page is active.
+
+**Verification:** `tests/test_form_fuzzer.py` (10 new tests: keyword
+classification, full fill-and-submit happy path, edge-case mode,
+no-submit-found handling, new-tab-on-submit handling — each executed for
+real this session; two genuine bugs were caught and fixed by these tests
+before this entry was written, see above and the fake-locator `timeout`
+kwarg fix) plus 3 new tests in `tests/test_explore_cmd.py` (opt-in
+default-off, opt-in-and-active-page, opt-in-but-no-active-page). All 13
+new tests pass. Full suite: same 531/562 figure as D-046 (these tests are
+counted in that total) — zero regressions.
+
+**Not done in this pass, disclosed rather than silently skipped:** no
+LLM call was wired into `classify_field()` — the keyword heuristic
+covers the common signup-field vocabulary and this repo's existing
+`agents/planner/spec_generator.py::SpecBackend` protocol (Local/Cloud LLM
+backends) is the natural place to plug an LLM-backed fallback for
+fields the keyword map misses, but adding that wiring wasn't verified
+end-to-end this session and would need its own test pass — flagged as a
+natural follow-up in `docs/Roadmap.md`, not fabricated as done here.
+

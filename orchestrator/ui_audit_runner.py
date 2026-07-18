@@ -40,6 +40,14 @@ class ClickCheckResult:
     band: str
     clicked: bool
     state_changed: bool | None  # None if we couldn't even locate/click it
+    # Phase C/D-044: True when the click opened a new tab (target="_blank"
+    # or similar) -- AURA closed it and returned, rather than following it
+    # deeper. Only ever populated via the DOM-first path (dom_page is not
+    # None); the OCR/pixel path has no tab concept, so this stays False
+    # there, same as it always implicitly was.
+    new_tab_opened: bool = False
+    new_tab_url: str | None = None
+    resolution_strategy: str = "ocr"  # "dom" | "ocr" -- which path actually resolved/clicked this element
 
 
 @dataclass
@@ -75,6 +83,36 @@ class UIAuditReport:
         return [c for c in self.checked if not c.clicked]
 
 
+def _try_dom_click(page, target_text: str):
+    """
+    Resolves target_text against the live accessibility tree
+    (agents/vision/dom_locator.locate_dom), self-heals once via
+    relocate_dom() if the primary threshold misses (Scrapling-style,
+    per docs/external_repos.md Batch 6 -- same pattern already used by
+    agents/vision/executor.py for spec-driven runs), clicks through the
+    resolved Locator, and returns to the original page via the
+    Playwright-aware, tab-aware dom_smart_back(). Returns None (never
+    raises) on any failure to resolve/click, so the caller falls back to
+    the OCR/pixel path exactly as it did before this function existed.
+    """
+    from agents.vision.dom_locator import locate_dom, relocate_dom
+    from runtime.hooks.interact import dom_click, dom_smart_back
+
+    try:
+        pages_before = len(page.context.pages)
+
+        located = locate_dom(page, target_text)
+        if not located.found:
+            located = relocate_dom(page, {"name": target_text})
+        if not located.found or located.locator is None:
+            return None
+
+        dom_click(located.locator)
+        return dom_smart_back(page, pages_before)
+    except Exception:
+        return None  # any failure here (stale page, navigation mid-click, etc.) -- OCR fallback handles it, same as a plain "couldn't locate" result
+
+
 def _run_click_audit(
     screenshot_provider: ScreenshotProvider,
     run_id: str,
@@ -86,6 +124,29 @@ def _run_click_audit(
     from agents.vision.page_health import detect_page_issues
     from agents.vision.ui_audit import audit_screenshot
     from runtime.errors import NoDisplayError, display_guard
+
+    # Debug pass (D-044): this engine previously only used the OCR/pixel
+    # path (locate_text + interact.click(x, y) + OS-level browser_back()),
+    # even though Phase C added a Playwright DOM-first locator
+    # (agents/vision/dom_locator.py) with Scrapling-style self-heal to
+    # agents/vision/executor.py for spec-driven `aura execute` runs. That
+    # migration never reached `aura explore`/`--ui-audit`, so the
+    # zero-instruction exploration mode -- the mode most likely to hit
+    # unpredictable real-world pages -- was left on the more fragile,
+    # older path. When a live Playwright page is available (browser mode,
+    # runtime/hooks/browser.get_page()), this now resolves and clicks
+    # through the DOM-first path first, with the exact same OCR/OS
+    # fallback as before for anything it can't resolve (native desktop /
+    # no accessibility tree, or no active page at all) -- this preserves
+    # every existing OCR-only test's behavior unchanged.
+    dom_page = None
+    try:
+        from runtime.hooks import browser as _browser_hook
+
+        if _browser_hook.has_active_page():
+            dom_page = _browser_hook.get_page()
+    except Exception:
+        dom_page = None  # no Playwright/browser session available -- OCR/OS path handles everything, same as before this change
 
     with display_guard() as guard:
         guard.value = screenshot_provider(run_id, 8000)
@@ -125,16 +186,29 @@ def _run_click_audit(
     all_seen_text: list[str] = [e.text for e in all_elements]
 
     for i, element in enumerate(candidates):
-        result = locate_text(baseline_path, element.text)
-        if not result.found:
-            report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=False, state_changed=None))
-            continue
+        dom_click_result = _try_dom_click(dom_page, element.text) if dom_page is not None else None
 
-        try:
-            interact.click(result.x, result.y)
-        except NoDisplayError:
-            report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=False, state_changed=None))
-            continue
+        if dom_click_result is None:
+            # Either no live Playwright page, or the DOM path couldn't
+            # resolve this element (relocate_dom() already tried and
+            # missed) -- fall back to the original OCR/pixel path exactly
+            # as before this change.
+            result = locate_text(baseline_path, element.text)
+            if not result.found:
+                report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=False, state_changed=None))
+                continue
+            try:
+                interact.click(result.x, result.y)
+            except NoDisplayError:
+                report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=False, state_changed=None))
+                continue
+            resolution_strategy = "ocr"
+            new_tab_opened = False
+            new_tab_url = None
+        else:
+            resolution_strategy = "dom"
+            new_tab_opened = dom_click_result.new_tab_opened
+            new_tab_url = dom_click_result.new_tab_url
 
         with display_guard() as after_guard:
             after_guard.value = screenshot_provider(run_id, 8100 + i)
@@ -144,12 +218,19 @@ def _run_click_audit(
             # succeeded in a race against a display disconnect) -- record
             # this element as clicked-but-unverifiable and stop the audit
             # rather than crashing the whole run on the next iteration too.
-            report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=True, state_changed=None))
+            report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=True, state_changed=None, new_tab_opened=new_tab_opened, new_tab_url=new_tab_url, resolution_strategy=resolution_strategy))
             break
         after_path = after_guard.value
         after_hash = file_hash(after_path)
-        state_changed = after_hash != baseline_hash
-        report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=True, state_changed=state_changed))
+        # A new tab opening (and being closed again) is itself proof the
+        # click worked, even if the original page's own screenshot ends up
+        # byte-identical to the baseline -- report it as changed/working
+        # rather than the old "no visible change" false negative.
+        state_changed = new_tab_opened or (after_hash != baseline_hash)
+        report.checked.append(ClickCheckResult(
+            label=element.text, band=element.band, clicked=True, state_changed=state_changed,
+            new_tab_opened=new_tab_opened, new_tab_url=new_tab_url, resolution_strategy=resolution_strategy,
+        ))
         report.page_issues.extend(issue for issue in detect_page_issues(after_path) if issue not in report.page_issues)
 
         after_landmarks = audit_screenshot(after_path)
@@ -158,14 +239,18 @@ def _run_click_audit(
         )
 
         # Best-effort return to the original page before testing the next
-        # element -- if this fails (no display, or the shortcut doesn't
+        # element. DOM path: Playwright-aware, tab-aware go-back
+        # (runtime/hooks/interact.dom_smart_back) already ran inside
+        # _try_dom_click() below. OCR path: same OS-level shortcut as
+        # before -- if this fails (no display, or the shortcut doesn't
         # apply), subsequent locate_text() calls will simply fail to find
         # their target and be recorded as clicked=False rather than
         # crashing the whole audit.
-        try:
-            interact.browser_back()
-        except NoDisplayError:
-            pass
+        if resolution_strategy == "ocr":
+            try:
+                interact.browser_back()
+            except NoDisplayError:
+                pass
 
     if requirement_prompt:
         report.requirement_match, report.requirement_notes = _check_requirement_prompt(
