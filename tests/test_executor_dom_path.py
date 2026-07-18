@@ -145,32 +145,13 @@ def test_dual_verification_disagreement_falls_back_when_winner_dispatch_fails(mo
     miss -- verified here by forcing the DOM dispatch to fail and
     confirming the OCR fallback (which independently found the same
     on-screen text) still completes the click.
-
-    interact.click() drives the real OS-level mouse via pyautogui using
-    screen-absolute coordinates; locate_text() here measures coordinates
-    relative to live_page.screenshot() (the page's own content, not the
-    physical screen). Those two coordinate spaces only coincide if the
-    browser window happens to sit at screen (0, 0) with no title bar --
-    not guaranteed on any real desktop, and not what this test is about.
-    Production always pairs OCR with runtime/hooks/capture.py's mss-based
-    full-screen capture, where the two spaces genuinely match; that
-    physical-window-placement concern is out of scope here. What this
-    test verifies is the dispatch *decision* -- did the code correctly
-    fall back to the OCR-found candidate -- so interact.click is replaced
-    with Playwright's own page-relative mouse click, which exercises that
-    decision without depending on where the window sits on screen.
     """
     import agents.vision.executor as executor_mod
-    from runtime.hooks import interact as interact_mod
 
     def _dispatch_dom_returns_false(dom_result, action_taken, value):
         return False
 
-    def _click_via_playwright_mouse(x, y):
-        live_page.mouse.click(x, y)
-
     monkeypatch.setattr(executor_mod, "_dispatch_dom", _dispatch_dom_returns_false)
-    monkeypatch.setattr(interact_mod, "click", _click_via_playwright_mouse)
 
     shot_path = tmp_path / "dual_fallback.png"
     live_page.screenshot(path=str(shot_path))

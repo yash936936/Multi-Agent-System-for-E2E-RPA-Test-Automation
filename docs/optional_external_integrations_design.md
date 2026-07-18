@@ -1,6 +1,10 @@
 # Optional external integrations — design doc (proposed D-046)
 
-**Status:** design only, no code written against this doc yet.
+**Status:** Composio implemented (agents/capability/composio_adapter.py,
+config/settings.py, tests/test_composio_adapter.py — 11 passing tests,
+mocked against the composio package since it isn't installed by
+default). crabbox/CubeSandbox, browser-harness, and open-webui remain
+design-only, per the sequencing/priority section below.
 **Context:** docs/external_repos.md established that Composio, crabbox,
 CubeSandbox, open-webui, and browser-use/browser-harness were reviewed
 but never integrated, because AURA is offline-by-construction (D-018
@@ -59,39 +63,55 @@ loosely-related changes instead of four well-scoped ones:
 
 ---
 
-## 1. Composio — outbound capability adapter
+## 1. Composio — outbound capability adapter (IMPLEMENTED)
 
-**What it would actually do:** post run results/reports to an external
-tool (Slack, Jira, Linear, etc.) after a run completes — an *outbound
-notification*, not something in AURA's core execution loop.
+**Correction from this doc's first draft:** the original pitch here was
+"post results to Slack/Jira" — checking the actual codebase found that's
+already covered natively (agents/capability/chatops_adapter.py for
+Slack/Teams, agents/capability/defect_tracker_adapter.py for
+Jira/TestRail/Zephyr/Xray-style tools), both via plain REST with a
+static credential, no new SDK dependency. Building Composio for that
+would have been a redundant, heavier second path to a place AURA can
+already reach.
 
-**Where it fits:** `agents/capability/` already has this exact shape —
-`link_checker.py` is a `CapabilityAdapter` subclass that makes an
-outbound HTTP call, is registered in the capability router, and is
-gated by `capability_adapters_enabled` + `allowed_capability_hosts`.
-A `composio_adapter.py` would be a new adapter in the same family, not
-a new subsystem.
+**What it actually does now:** appends run-result rows to a Google
+Sheet — the concrete case where Composio earns its place, because real
+usage needs an OAuth2 access token refreshed against a refresh token on
+an expiry clock, which neither of the generic adapters' static-header
+model can do at all. Composio's own hosted OAuth connection management
+is what's being reused; AURA never handles the OAuth consent screen
+itself, only a `connected_account_id` for an already-granted connection
+created out-of-band via Composio's dashboard/Connect Link flow.
 
-**Proposed shape:**
-```python
-# config/settings.py
-enable_composio: bool = False   # requires COMPOSIO_API_KEY env var + network egress
+**Where it fits:** `agents/capability/composio_adapter.py`,
+`CapabilityType.COMPOSIO_SHEETS`, registered in
+`orchestrator/capability_adapter.py`'s `default_registry()` alongside
+every other adapter.
 
-# agents/capability/composio_adapter.py (new)
-class ComposioAdapter(CapabilityAdapter):
-    capability_type = "composio_notify"
-    def run(self, input: CapabilityCheckInput) -> CapabilityCheckResult:
-        if not settings.enable_composio:
-            raise CapabilityDisabledError(...)  # same pattern link_checker.py already uses for capability_adapters_enabled
-        from composio import ComposioToolSet  # import deferred inside the gated branch -- package need not even be installed otherwise
-        ...
-```
-**Real work involved:** ~1 new adapter file, 1 settings field, router
-registration, tests using a mocked Composio client (this sandbox
-couldn't hit their real API anyway — same limitation as Chromium).
-**Risk:** low. Failure mode is "notification didn't send," never a test
-result getting corrupted, since this only runs after a run's own
-pass/fail verdict is already final.
+**Gating:** two independent opt-ins, same shape as
+`db_seed_adapter.py`'s `allow_db_seeding` — `settings.enable_composio`
+(default `False`, `AURA_ENABLE_COMPOSIO=true`) checked inside the
+adapter itself, on top of the router's general
+`capability_adapters_enabled` kill switch. `settings.composio_api_key`
+(`AURA_COMPOSIO_API_KEY`) is AURA's own key for calling Composio's API,
+separate from the end user's Google OAuth grant.
+
+**Not hardcoded:** the exact Composio tool slug for the append action
+(`GOOGLESHEETS_BATCH_UPDATE` by default) is overridable per-call via
+`params["tool_slug"]`, since Composio's own tool registry can rename or
+version action slugs independently of this file — same "caller supplies
+the exact identifier, adapter doesn't guess" posture
+`defect_tracker_adapter.py` already takes for field-mapping.
+
+**Verified:** 11 tests (`tests/test_composio_adapter.py`) cover the gate,
+missing-param validation, a mocked successful call (the `composio`
+package is injected via `sys.modules`, not actually pip-installed — this
+sandbox can't reach Composio's real API any more than it can reach
+`cdn.playwright.dev`), tool-slug override, error handling, and audit
+logging. **Not verified:** an actual live call against Composio's real
+API or a real Google Sheet — that requires a real `COMPOSIO_API_KEY`
+and a real OAuth-connected account, neither of which exist in this
+sandbox.
 
 ## 2. crabbox / CubeSandbox — remote sandboxed execution
 

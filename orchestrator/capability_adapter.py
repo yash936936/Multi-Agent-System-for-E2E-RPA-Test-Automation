@@ -83,6 +83,7 @@ def default_registry() -> CapabilityAdapterRegistry:
     from agents.capability.performance_adapter import PerformanceAdapter
     from agents.capability.defect_tracker_adapter import DefectTrackerAdapter
     from agents.capability.db_seed_adapter import DbSeedAdapter
+    from agents.capability.composio_adapter import ComposioAdapter
 
     registry = CapabilityAdapterRegistry()
     registry.register(FakeAdapter())
@@ -106,4 +107,5 @@ def default_registry() -> CapabilityAdapterRegistry:
     registry.register(PerformanceAdapter())
     registry.register(DefectTrackerAdapter())
     registry.register(DbSeedAdapter())
+    registry.register(ComposioAdapter())
     return registry

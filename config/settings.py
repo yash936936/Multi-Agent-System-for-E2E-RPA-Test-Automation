@@ -305,6 +305,31 @@ class Settings(BaseSettings):
     # for every user's first run.
     enable_dom_extractor: bool = False
 
+    # --- Optional external integration: Composio (proposed D-046) ---
+    # Off by default -- an explicit opt-in for the one thing this
+    # codebase's own generic capability adapters structurally can't do:
+    # OAuth2-token-lifecycle-managed tool access. agents/capability/
+    # chatops_adapter.py (Slack/Teams) and defect_tracker_adapter.py
+    # (Jira/TestRail/Zephyr/Xray-style tools) already cover static-
+    # credential (webhook URL / bearer token / API key) integrations with
+    # zero new dependencies -- Composio is deliberately NOT used for those,
+    # it would just be a heavier second path to the same place. It's used
+    # only for tools where the caller can't reasonably hand AURA a
+    # long-lived static credential, e.g. Google Sheets: real usage needs
+    # an OAuth2 access token refreshed against a refresh token on an
+    # expiry clock, which neither of those adapters' "here's a header
+    # dict, send it" model can do. Composio's own hosted OAuth connection
+    # management is what's actually being reused here, not its wider
+    # 250+-tool catalog -- see agents/capability/composio_adapter.py's
+    # module docstring for the full scope boundary.
+    enable_composio: bool = False
+    composio_api_key: str | None = None  # populate via AURA_COMPOSIO_API_KEY
+    # Composio's own identifier for which pre-authorized account/connection
+    # to act through (created out-of-band via Composio's dashboard/CLI at
+    # OAuth-grant time) -- AURA never handles the OAuth redirect/consent
+    # flow itself, only ever a resolved connection to already-granted access.
+    composio_connected_account_id: str | None = None
+
     # --- Phase U: OCR-then-DOM dual verification (decisions.md D-043) ---
     # Both OCR and DOM locators now always run (when a browser session
     # exists) rather than DOM-first/OCR-fallback -- see
