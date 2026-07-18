@@ -6,6 +6,29 @@ from agents.vision.executor import execute_step
 from orchestrator.schemas import ActionType, TestStep, VisionStepInput
 from tests.conftest_local_server import make_server, server_url
 
+
+def _production_screenshot(run_id: str, step_id: int) -> str:
+    """
+    Captures via the actual production path (runtime.hooks.capture.
+    capture_screenshot -> mss, full-OS-screen-space pixels) instead of
+    live_page.screenshot() (Playwright, viewport-relative CSS-pixel
+    space). This distinction only matters for tests that exercise the
+    OCR-dispatch fallback path (_dispatch_ocr -> runtime.hooks.interact.
+    click, which uses pyautogui in OS-screen-space) -- production always
+    pairs OCR coordinates with an mss-captured screenshot, so the two
+    share one coordinate space by construction. A Playwright-viewport
+    screenshot fed into that same OCR-then-pyautogui-click path produces
+    coordinates in the wrong space entirely, an artifact of how these
+    tests capture their screenshot, not a real production bug (see the
+    real Windows pytest failure this was found from: OCR "found" the
+    right text, at a screenshot-relative coordinate, but the resulting
+    OS-level click missed because the browser window isn't positioned at
+    the OS screen's origin).
+    """
+    from runtime.hooks.capture import capture_screenshot
+
+    return str(capture_screenshot(run_id, step_id))
+
 PAGE = b"""
 <html><body>
   <button onclick="document.title='clicked'">Login Button</button>
@@ -94,8 +117,7 @@ def test_dual_verification_both_agree_reports_dual_method_confirmed(live_page, t
     the live accessibility tree) should independently find "Login Button"
     at the same on-screen location -- real agreement, not mocked.
     """
-    shot_path = tmp_path / "dual_agree.png"
-    live_page.screenshot(path=str(shot_path))
+    shot_path = _production_screenshot("dual_agree_test", 1)
 
     step = TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Login Button")
     payload = VisionStepInput(step=step, screenshot_path=str(shot_path))
@@ -120,8 +142,7 @@ def test_dual_verification_only_dom_finds_offscreen_target_is_single_method(live
     still dispatch, tagged single-method, not silently dropped because OCR
     didn't confirm it.
     """
-    shot_path = tmp_path / "dual_single.png"
-    live_page.screenshot(path=str(shot_path))
+    shot_path = _production_screenshot("dual_single_test", 2)
 
     step = TestStep(step_id=2, action=ActionType.TYPE_TEXT, field_description="Username Field")
     payload = VisionStepInput(step=step, screenshot_path=str(shot_path), value="jane.doe")
@@ -153,8 +174,7 @@ def test_dual_verification_disagreement_falls_back_when_winner_dispatch_fails(mo
 
     monkeypatch.setattr(executor_mod, "_dispatch_dom", _dispatch_dom_returns_false)
 
-    shot_path = tmp_path / "dual_fallback.png"
-    live_page.screenshot(path=str(shot_path))
+    shot_path = _production_screenshot("dual_fallback_test", 1)
 
     step = TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Login Button")
     payload = VisionStepInput(step=step, screenshot_path=str(shot_path))
