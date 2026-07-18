@@ -178,8 +178,20 @@ def locate_text(
         x0, y0, x1, y1 = search_region
         offset_x, offset_y = x0, y0
 
-    ocr = _ocr_data(image)
+    # Tesseract misreads small default-UI-font text (e.g. an un-styled
+    # <button> at native browser resolution: "Login Button" -> "Cooin
+    # Baton") at native scale -- a 2x upscale before OCR is the standard
+    # fix and reliably clears it up without touching detection logic.
+    # Line centers are computed in upscaled-pixel space, then divided back
+    # down so returned coordinates still map to the original screenshot.
+    OCR_UPSCALE = 2
+    ocr_image = image.resize((image.width * OCR_UPSCALE, image.height * OCR_UPSCALE), Image.LANCZOS)
+
+    ocr = _ocr_data(ocr_image)
     lines = _group_lines(ocr)
+    for line in lines:
+        line["cx"] //= OCR_UPSCALE
+        line["cy"] //= OCR_UPSCALE
 
     target_norm = target_description.strip().lower()
     best: tuple[dict, float] | None = None
