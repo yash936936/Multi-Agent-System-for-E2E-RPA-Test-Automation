@@ -324,7 +324,18 @@ def execute_step(payload: VisionStepInput) -> VisionActionResult:
     # exists at all, DOM simply isn't attempted (dom_attempted=False) and
     # this collapses back to OCR-only, exactly as it always has.
     region = _region_from_skill_hint(payload.skill_hint)
-    ocr_result = locate_text(payload.screenshot_path, target_text, search_region=region)
+    try:
+        ocr_result = locate_text(payload.screenshot_path, target_text, search_region=region)
+    except (OSError, ValueError) as exc:
+        # Missing/unreadable screenshot shouldn't crash the whole step --
+        # this is exactly the "one of two independent methods couldn't run"
+        # case, same as _resolve_dom's NoDisplayError -> found=False. DOM
+        # alone can still confirm the step (single-method) when a live
+        # browser session exists.
+        from agents.vision.locator import LocateResult
+
+        _logger.warning("OCR locate skipped: could not read screenshot %r (%s)", payload.screenshot_path, exc)
+        ocr_result = LocateResult(found=False)
 
     from runtime.hooks import browser as browser_hook
 
