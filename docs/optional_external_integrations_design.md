@@ -167,29 +167,55 @@ itself. Recommend: skip a formal integration; revisit only if a
 specific browser-harness capability (not yet identified) turns out to
 solve something `browser.py` genuinely can't.
 
-## 4. open-webui — not a backend dependency at all
+## 4. open-webui — not a backend dependency at all (IMPLEMENTED as docs — no code needed)
 
-**Not a candidate for "optional dependency" in the same sense as the
-other three.** open-webui is a separate frontend application; the
-integration point would be AURA's existing REST API (already consumed
-by `webui/`), not a Python import anywhere in AURA's own code. If
-someone wanted to run open-webui as an alternative to `webui/`, that's
-a deployment choice (point it at AURA's existing `/test-runs` etc.
-endpoints) requiring zero AURA-side code changes. Worth documenting as
-"yes, this is possible today, here's the API surface" rather than
-building anything.
+**Confirmed by reading the actual router files** (`api/routers/*.py`,
+mounted in `api/main.py`): AURA already exposes everything an
+alternative frontend needs, all under `/api/v1`, all bearer-JWT
+authenticated (`Authorization: Bearer <token>` from `/api/v1/auth/login`).
+No AURA-side code change is needed for open-webui or any other
+third-party frontend to talk to AURA — it's a deployment/configuration
+choice, not an integration:
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/v1/auth/login` | POST | `{username, password}` → `{access_token, tenant_id, role}` |
+| `/api/v1/auth/signup` | POST | Same response shape, creates a new user |
+| `/api/v1/auth/oauth/{provider}/login` | GET | Google/GitHub OAuth redirect start (`google_client_id`/`github_client_id` in `config/settings.py`) |
+| `/api/v1/auth/oauth/{provider}/callback` | GET | OAuth callback completion |
+| `/api/v1/test-runs/` | POST | Create a run (`{mode: "guided"\|"autonomous", ...}` body) — role-gated to `admin`/`executor` |
+| `/api/v1/test-runs/` | GET | List runs — `admin`/`executor`/`viewer` |
+| `/api/v1/test-runs/{run_id}` | GET | Single run detail |
+| `/api/v1/test-runs/{run_id}/steps` | GET | Per-step results for a run |
+| `/api/v1/test-runs/analytics/tests` | GET | Aggregate test analytics |
+| `/api/v1/test-runs/analytics/flaky` | GET | Flaky-test analytics (Phase H2 quarantine data) |
+| `/api/v1/test-runs/analytics/tests/{test_key}` | GET | Per-test analytics |
+| `/api/v1/adapters/status` | GET | Capability adapter registry status (now includes Composio, see §1 above) |
+| `/api/v1/webhooks/cicd` | POST | CI/CD trigger webhook |
+| `/api/v1/users/{username}/project-tags` | PUT | Project-tag/access management |
+
+**To point open-webui (or any OpenAPI-aware tool) at AURA:** the FastAPI
+app auto-generates a schema at `/openapi.json` (default FastAPI
+behavior, not something this codebase disabled) — open-webui's generic
+"connect a REST API" tooling can consume that directly, or a thin
+per-endpoint config can be built by hand from the table above.
+
+**Nothing to implement.** This confirms the design doc's original
+assessment was correct: open-webui was never a "does AURA need new
+code" question, only a "here's what's already there" one.
 
 ---
 
 ## Recommended sequencing, if/when this moves to code
 
-1. **Composio** — smallest, cleanest fit into an existing pattern.
-   Good first real target.
-2. **open-webui** — zero code, just a short doc section on AURA's API
-   surface for third-party frontends.
+1. ~~**Composio**~~ — done (§1). Smallest, cleanest fit into an existing
+   pattern.
+2. ~~**open-webui**~~ — done (§4). Turned out to need zero code, just
+   the API surface table above.
 3. **crabbox/CubeSandbox** — real, valuable, but meaningfully larger;
    do only when there's an actual driving use case (e.g. "CI runs are
-   polluting the runner box"), not speculatively.
+   polluting the runner box"), not speculatively. Next real candidate
+   if this continues.
 4. **browser-harness** — recommend not integrating unless a specific
    gap in `browser.py` is identified first.
 

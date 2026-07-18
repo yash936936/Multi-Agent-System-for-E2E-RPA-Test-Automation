@@ -43,12 +43,40 @@ def _ocr_data(image: Image.Image) -> dict:
 
 
 def _group_lines(ocr: dict) -> list[dict]:
-    """Groups OCR word-boxes into lines (block/par/line), each with joined text + bbox."""
+    """
+    Groups OCR word-boxes into lines (block/par/line), each with joined
+    text + bbox.
+
+    Low-confidence word detections are excluded from both the joined text
+    and the bbox computation. Tesseract's image_to_data reports a per-word
+    confidence (0-100, or -1 for structural/non-text rows, already
+    filtered out by the `if not word` check below since those carry no
+    text). A stray noise glyph -- a misread border/icon fragment as `|` or
+    `[`, confidently placed on the *same* detected text line as a real
+    button label -- previously widened that line's bbox to span from the
+    real text's edge out to the noise glyph's position, shifting the
+    line's centroid (and therefore the click coordinate) away from the
+    actual clickable text. Verified against a real case: OCR line text
+    "[Login Button |)" scored a 0.99 match against target "Login Button"
+    (agents/vision/locator.py's _match_score correctly tokenizes away the
+    punctuation, so the words alone are a perfect match) but the *click
+    landed at the wrong position* because the bbox included the noise
+    glyphs' coordinates. Excluding sub-threshold-confidence words from the
+    bbox (not just relying on _match_score's tokenizer to ignore them
+    textually) fixes the coordinate, not just the text match.
+    """
+    _MIN_WORD_CONF = 40  # tesseract confidence is 0-100; empirically, real printed UI text is consistently well above this, isolated noise-glyph misreads are consistently well below it
     lines: dict[tuple, dict] = {}
     n = len(ocr["text"])
     for i in range(n):
         word = ocr["text"][i].strip()
         if not word:
+            continue
+        try:
+            conf = float(ocr["conf"][i])
+        except (KeyError, TypeError, ValueError):
+            conf = 100.0  # no confidence field available (e.g. a hand-built test fixture) -- don't filter out text this code can't evaluate
+        if conf < _MIN_WORD_CONF:
             continue
         key = (ocr["block_num"][i], ocr["par_num"][i], ocr["line_num"][i])
         x, y, w, h = ocr["left"][i], ocr["top"][i], ocr["width"][i], ocr["height"][i]
@@ -67,6 +95,7 @@ def _group_lines(ocr: dict) -> list[dict]:
             "cy": (v["y0"] + v["y1"]) // 2,
         }
         for v in lines.values()
+        if v["words"]  # a line where every word was filtered out for low confidence contributes nothing real
     ]
 
 
@@ -169,9 +198,20 @@ def locate_text(
     # deletion of the file/its parent tmp dir while the handle is still
     # live -- .load() forces pixel data into memory before the `with`
     # block exits, so OCR below still has valid image data to work with.
-    with Image.open(screenshot_path) as opened:
-        opened.load()
-        image = opened.crop(search_region) if search_region else opened.copy()
+    #
+    # Phase U's dual-verification design (agents/vision/executor.py)
+    # intentionally always attempts OCR alongside DOM whenever a browser
+    # session exists, even for calls where the caller expects DOM alone
+    # to resolve the target. That means a missing/placeholder/unreadable
+    # screenshot_path must not crash the whole step -- it should simply
+    # mean "OCR found nothing," the same fail-closed contract this
+    # function already has for a real screenshot with no matching text.
+    try:
+        with Image.open(screenshot_path) as opened:
+            opened.load()
+            image = opened.crop(search_region) if search_region else opened.copy()
+    except (FileNotFoundError, OSError):
+        return LocateResult(found=False, confidence=0.0)
 
     offset_x, offset_y = 0, 0
     if search_region:
