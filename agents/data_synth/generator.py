@@ -65,3 +65,15 @@ def _generate_value(field: str) -> str:
 
 def generate_data(fields: list[str]) -> dict[str, str]:
     return {field: _generate_value(field) for field in fields}
+
+
+def generate_value(field: str) -> str:
+    """
+    Public single-field wrapper around _generate_value() (D-045) -- added
+    so other modules (agents/vision/form_fuzzer.py) can reuse this
+    module's realistic/edge-case generation without importing a private
+    (underscore-prefixed) function, per context.md §6's rule to reuse
+    existing code rather than re-implement it, without breaking this
+    module's own naming convention for what's public.
+    """
+    return _generate_value(field)
