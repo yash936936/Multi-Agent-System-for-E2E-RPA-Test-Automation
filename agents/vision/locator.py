@@ -64,6 +64,15 @@ def _group_lines(ocr: dict) -> list[dict]:
     glyphs' coordinates. Excluding sub-threshold-confidence words from the
     bbox (not just relying on _match_score's tokenizer to ignore them
     textually) fixes the coordinate, not just the text match.
+
+    A second, independent case (real Windows run, headed browser): a
+    noise glyph scored *above* the confidence cutoff too -- real
+    anti-aliased edge rendering can fool Tesseract's own confidence
+    scoring, not just push it low. So symbol-only tokens (no letters or
+    digits at all) are now also excluded from the bbox unconditionally,
+    on top of the confidence filter, since a token like "{" or "|{" is
+    never real button text regardless of how confidently Tesseract read
+    it.
     """
     _MIN_WORD_CONF = 40  # tesseract confidence is 0-100; empirically, real printed UI text is consistently well above this, isolated noise-glyph misreads are consistently well below it
     lines: dict[tuple, dict] = {}
@@ -77,6 +86,19 @@ def _group_lines(ocr: dict) -> list[dict]:
         except (KeyError, TypeError, ValueError):
             conf = 100.0  # no confidence field available (e.g. a hand-built test fixture) -- don't filter out text this code can't evaluate
         if conf < _MIN_WORD_CONF:
+            continue
+        # Confidence alone isn't a reliable signal here -- on a real
+        # screen capture, anti-aliased border/outline glyph noise (stray
+        # "{", "|", "[" misreads from a button's rendered edge) can score
+        # just as confidently as real text (verified on a real Windows
+        # run: a noise glyph scored high enough to survive the
+        # _MIN_WORD_CONF filter above and still dragged this line's bbox
+        # centroid off the actual button, producing a real on-screen
+        # click miss even though the *text* match was correct). A token
+        # with no letters or digits at all is never real button text, so
+        # drop it from bbox contribution unconditionally, regardless of
+        # its reported confidence.
+        if not any(ch.isalnum() for ch in word):
             continue
         key = (ocr["block_num"][i], ocr["par_num"][i], ocr["line_num"][i])
         x, y, w, h = ocr["left"][i], ocr["top"][i], ocr["width"][i], ocr["height"][i]

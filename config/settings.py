@@ -250,6 +250,25 @@ class Settings(BaseSettings):
     # a cryptic AttributeError deep inside browser.py's getattr() lookup.
     playwright_browser: str = "chromium"
 
+    # --- Phase W gap-closure: Playwright must render on-screen, not just
+    # in-process (decisions.md D-043's dual verification requires OCR --
+    # a real mss capture of the OS screen, runtime/hooks/capture.py -- to
+    # actually be able to see the same page the DOM locator is reading).
+    # A headless=True browser is invisible to mss by construction: the
+    # DOM side would keep working (it talks to Playwright directly), but
+    # OCR would silently be scoring against whatever's on the real
+    # desktop instead, never finding the target and quietly collapsing
+    # every dual-verification case down to "single-method" (DOM-only) --
+    # exactly the failure this setting fixes. Defaults to False (headed)
+    # to match docs/README.md's existing requirement that "the target
+    # application must be visible and the screen unlocked while AURA
+    # runs." Set AURA_PLAYWRIGHT_HEADLESS=true to opt back into headless
+    # for environments that only ever exercise the DOM path (e.g. CI
+    # without a real display, where OCR/mss would raise NoDisplayError
+    # anyway and dual verification never attempted OCR in the first
+    # place).
+    playwright_headless: bool = False
+
     # --- Phase I2: video recording (decisions.md D-030) ---
     # Off by default -- opt-in, since video files are meaningfully larger
     # than screenshots and most runs don't need them. When True and the

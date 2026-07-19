@@ -34,10 +34,13 @@ from runtime.errors, not a module-local lookalike -- see runtime/errors.py.
 """
 from __future__ import annotations
 
+import logging
 import time
 
 from config.settings import PLAYWRIGHT_BROWSER_CHOICES, settings
 from runtime.errors import NoDisplayError
+
+_logger = logging.getLogger(__name__)
 
 __all__ = ["NoDisplayError"]  # re-exported for existing `from runtime.hooks.browser import NoDisplayError` call sites
 
@@ -98,7 +101,7 @@ class _BrowserSession:
                 self._playwright = sync_playwright().start()
             if self._browser is None:
                 engine = getattr(self._playwright, engine_name)
-                self._browser = engine.launch(headless=True)
+                self._browser = engine.launch(headless=settings.playwright_headless)
             if self._context is None:
                 context_kwargs = {}
                 if settings.record_video:
@@ -159,11 +162,26 @@ class _BrowserSession:
             try:
                 video = self._page.video
                 if video is not None:
+                    # Headed Chromium's video recorder is CDP-screencast
+                    # based and attaches slightly after first paint --
+                    # measurably later than headless's software path. A
+                    # page that opens and closes within ~0.1s (this is a
+                    # real gap seen on a real Windows/headed run, not
+                    # theoretical) can beat that attach, leaving `video`
+                    # non-None but with nothing ever actually recorded to
+                    # back it. A small settle delay here costs nothing in
+                    # the (far more common) longer-running real-run case.
+                    time.sleep(0.3)
                     self._page.close()
                     self._last_video_path = str(video.path())
                     self._page = None
             except Exception:
-                pass  # advisory only -- never let video bookkeeping break teardown
+                _logger.warning(
+                    "Vision browser session: settings.record_video was on but "
+                    "the video file path could not be resolved at close() -- "
+                    "get_last_video_path() will report None this run.",
+                    exc_info=True,
+                )
 
         # Phase Q (decisions.md D-038): unlike video (finalized on page
         # close), tracing.stop(path=...) both finalizes *and* writes the
@@ -265,5 +283,21 @@ def open_url(url: str, wait_seconds: float = 2.5, new_window: bool = False) -> s
 
     # Small additional settle time mirrors the old webbrowser-based
     # behavior's `wait_seconds` contract for callers/tests that rely on it.
-    time.sleep(max(0.0, min(wait_seconds, 1.0)))
+    #
+    # Headed mode (settings.playwright_headless=False, the default -- see
+    # config/settings.py's Phase W gap-closure note) needs a floor on top
+    # of whatever wait_seconds a caller passes: mss (runtime/hooks/
+    # capture.py) captures the *real* compositor output, and real OS-level
+    # window creation + GPU compositing has genuine, variable paint
+    # latency that headless never had to account for. A caller tuned for
+    # headless's near-zero latency (e.g. a test passing wait_seconds=0.1)
+    # can otherwise race a still-unpainted window often enough to be a
+    # real, observed intermittent failure -- confirmed on a real Windows
+    # run where the same test passed 6/6 once and then failed once out
+    # of 15 shortly after, the signature of a timing race rather than a
+    # logic bug. 0.35 was chosen empirically as comfortably above ordinary
+    # compositor paint latency without meaningfully slowing headless
+    # (unaffected) or already-slower (>0.35s) callers.
+    settle_floor = 0.35 if not settings.playwright_headless else 0.0
+    time.sleep(max(settle_floor, min(wait_seconds, 1.0)))
     return normalized
