@@ -2684,3 +2684,46 @@ per-channel/perceptual diff threshold D-027 also flagged (today's
 comparison is still "any channel differs at all," strict) -- a genuinely
 separate, larger change to the comparison algorithm itself, left for a
 future phase if wanted.
+
+---
+
+## D-053 — real bug: `llm_semantic` tie-break's CloudLLM path bypassed the
+## egress allowlist (2026-07-19)
+
+Found by driving `agents/vision/llm_verifier.py::semantic_verify()` and
+`agents/planner/spec_generator.py::CloudLLMBackend` against a real local
+HTTP server (not mocks) to verify the documented wire format end-to-end.
+`CloudLLMBackend.generate()` correctly calls
+`orchestrator.capability_router.is_egress_host_allowed()` before every
+request (D-044). `llm_verifier.py`'s `_get_backend_client()` builds a
+small `_ChatAdapter` that reuses `CloudLLMBackend`'s underlying `httpx`
+client directly (to avoid re-parsing the response as a `TestSpec`, which
+is the wrong shape for this module's `{"winner": ...}` contract) --  but
+that adapter built and sent its own request without ever calling the
+allowlist check. Live-reproduced: with `settings.allowed_capability_hosts`
+set to exclude the configured `cloud_llm_base_url` host,
+`CloudLLMBackend.generate()` correctly raised
+`CloudLLMEgressBlockedError`, while `semantic_verify()`'s CloudLLM path
+still made the real network call and returned a real answer. The sibling
+Hermes path (`HermesAgentClient.chat()`) was not affected -- it calls
+`self._check_egress()` internally regardless of caller.
+
+Fix: `_ChatAdapter.chat()` now calls `is_egress_host_allowed()` itself
+before sending, raising (caught by `semantic_verify()`'s existing
+fail-soft `except Exception`, so the module's "never raises, worst case
+falls back to `highest_confidence`" contract is unchanged) rather than
+silently completing the disallowed request. 2 new regression tests in
+`tests/test_phase_w_hermes_and_llm_verifier.py` --
+`test_semantic_verify_cloud_llm_path_respects_egress_allowlist` asserts
+`fake_client.post.assert_not_called()`, not just the return value, so a
+future regression that still made the call but discarded the result
+would also be caught. `test_semantic_verify_uses_cloud_llm_when_hermes_not_enabled`
+covers the previously-untested legitimate CloudLLM path itself (only the
+Hermes path had a passing-case test before this).
+
+Full suite: 584/584 passing (all non-Chromium-dependent tests; Chromium
+binary unavailable in this sandbox session, same class of gap noted
+throughout this file -- confirmed via a full run before touching this
+fix that the 26 failed/5 errored baseline was 100% Chromium-launch
+related, zero relation to this change).
+

@@ -310,6 +310,68 @@ def test_semantic_verify_fails_soft_on_unparseable_response(monkeypatch):
     monkeypatch.setattr(global_settings, "enable_hermes_agent", False)
 
 
+def test_semantic_verify_uses_cloud_llm_when_hermes_not_enabled(monkeypatch):
+    """CloudLLMBackend is the second-priority path in _get_backend_client()
+    -- exercised via a real (mocked-transport) request through its
+    _ChatAdapter, not just the Hermes path above."""
+    monkeypatch.setattr(global_settings, "enable_llm_semantic_verifier", True)
+    monkeypatch.setattr(global_settings, "enable_hermes_agent", False)
+    monkeypatch.setattr(global_settings, "enable_cloud_planner", True)
+    monkeypatch.setattr(global_settings, "cloud_llm_base_url", "http://localhost:11434/v1")
+    monkeypatch.setattr(global_settings, "cloud_llm_model", "mock-model")
+    monkeypatch.setattr(global_settings, "allowed_capability_hosts", None)
+
+    fake_response = MagicMock(status_code=200)
+    fake_response.json.return_value = {
+        "choices": [{"message": {"content": '{"winner": "dom", "reason": "accessible name is exact"}'}}]
+    }
+    fake_client = MagicMock()
+    fake_client.post.return_value = fake_response
+
+    ocr = _FakeLocateResult(matched_text="Submit")
+    dom = _FakeLocateResult(matched_text="Submit form", role="button")
+
+    with patch("httpx.Client", return_value=fake_client):
+        winner = llm_verifier.semantic_verify("the submit button", ocr, dom)
+
+    assert winner == "dom"
+    monkeypatch.setattr(global_settings, "enable_cloud_planner", False)
+
+
+def test_semantic_verify_cloud_llm_path_respects_egress_allowlist(monkeypatch):
+    """Regression test: the CloudLLM path of semantic_verify() used to
+    build and send its own httpx request without ever calling
+    is_egress_host_allowed(), even though CloudLLMBackend.generate() (the
+    sibling class it borrows its client from) enforces that allowlist.
+    A disallowed cloud_llm_base_url must fail soft to None here -- and,
+    just as importantly, must never actually reach the network -- exactly
+    like every other egress-controlled call site in this codebase."""
+    monkeypatch.setattr(global_settings, "enable_llm_semantic_verifier", True)
+    monkeypatch.setattr(global_settings, "enable_hermes_agent", False)
+    monkeypatch.setattr(global_settings, "enable_cloud_planner", True)
+    monkeypatch.setattr(global_settings, "cloud_llm_base_url", "http://localhost:11434/v1")
+    monkeypatch.setattr(global_settings, "cloud_llm_model", "mock-model")
+    monkeypatch.setattr(global_settings, "allowed_capability_hosts", ["some-other-host.example.com"])
+
+    fake_response = MagicMock(status_code=200)
+    fake_response.json.return_value = {
+        "choices": [{"message": {"content": '{"winner": "dom", "reason": "should never be reached"}'}}]
+    }
+    fake_client = MagicMock()
+    fake_client.post.return_value = fake_response
+
+    ocr = _FakeLocateResult(matched_text="Submit")
+    dom = _FakeLocateResult(matched_text="Submit form", role="button")
+
+    with patch("httpx.Client", return_value=fake_client):
+        winner = llm_verifier.semantic_verify("the submit button", ocr, dom)
+
+    assert winner is None
+    fake_client.post.assert_not_called()  # the whole point of the fix: never even try
+    monkeypatch.setattr(global_settings, "enable_cloud_planner", False)
+    monkeypatch.setattr(global_settings, "allowed_capability_hosts", None)
+
+
 # --------------------------------------------------------------------------
 # executor._apply_tie_break's llm_semantic mode
 # --------------------------------------------------------------------------

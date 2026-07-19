@@ -87,6 +87,29 @@ def _get_backend_client():
 
             def chat(self, system_prompt: str, user_prompt: str) -> str:
                 import httpx
+                from urllib.parse import urlparse
+
+                from orchestrator.capability_router import is_egress_host_allowed
+
+                # Bug fix: this adapter builds its own request instead of
+                # calling CloudLLMBackend.generate() (which would double-parse
+                # the response as a TestSpec JSON payload, wrong shape for this
+                # module's {"winner": ...} contract) -- but that meant it never
+                # ran CloudLLMBackend.generate()'s egress-allowlist check
+                # either. Verified live: with settings.allowed_capability_hosts
+                # set to exclude the configured cloud_llm host,
+                # CloudLLMBackend.generate() correctly raised
+                # CloudLLMEgressBlockedError while this adapter's un-gated
+                # chat() still went ahead and made the call. Since this
+                # function is the one making the actual HTTP request, the
+                # check belongs here, not just in the sibling class.
+                host = urlparse(cloud_backend.base_url).hostname
+                if not is_egress_host_allowed(host):
+                    raise RuntimeError(
+                        f"LLM semantic tie-break: host '{host}' (from "
+                        "cloud_llm_base_url) is not in "
+                        "settings.allowed_capability_hosts -- refusing to call it."
+                    )
 
                 client = cloud_backend._get_client()
                 headers = {"Content-Type": "application/json"}
