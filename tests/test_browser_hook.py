@@ -69,38 +69,3 @@ def test_open_url_no_display_raises_no_display_error(monkeypatch, server):
 
     with pytest.raises(browser.NoDisplayError):
         browser.open_url(server_url(server))
-
-
-# --------------------------------------------------------------------------
-# is_headless() (D-046 bug fix) -- agents/vision/executor.py's OCR-skip
-# gate reads this. These don't need a real browser: the "no session
-# launched yet" default and the reset-on-close behavior are both testable
-# without ever calling get_page().
-# --------------------------------------------------------------------------
-
-def test_is_headless_defaults_true_before_any_session_launched():
-    # No browser has been launched at all -- "assume can't see it" is the
-    # safe default, same direction as settings.playwright_headless itself.
-    from runtime.hooks import browser
-
-    assert browser.is_headless() is True
-
-
-def test_is_headless_resets_to_default_after_close():
-    # A stale False (headed) from a previous session must not leak into
-    # the next one just because close() forgot to clear it -- this is
-    # exactly the class of bug flagged for _last_video_path/_last_trace_path
-    # in close()'s own comments; is_headless() needs the same discipline.
-    from runtime.hooks import browser
-
-    browser._session._headless = False  # simulate a just-finished headed session
-    assert browser.is_headless() is False
-    browser.close()
-    assert browser.is_headless() is True
-
-
-def test_playwright_headless_setting_defaults_true():
-    from config.settings import Settings
-
-    assert Settings().playwright_headless is True
-

@@ -76,7 +76,6 @@ class _BrowserSession:
         self._last_video_path: str | None = None
         self._last_trace_path: str | None = None
         self._tracing_started = False
-        self._headless: bool | None = None  # set when _browser is actually launched; None until then
 
     def get_page(self):
         if self._page is not None:
@@ -99,8 +98,7 @@ class _BrowserSession:
                 self._playwright = sync_playwright().start()
             if self._browser is None:
                 engine = getattr(self._playwright, engine_name)
-                self._browser = engine.launch(headless=settings.playwright_headless)
-                self._headless = settings.playwright_headless
+                self._browser = engine.launch(headless=True)
             if self._context is None:
                 context_kwargs = {}
                 if settings.record_video:
@@ -137,17 +135,6 @@ class _BrowserSession:
 
     def has_active_page(self) -> bool:
         return self._page is not None
-
-    def is_headless(self) -> bool:
-        """
-        True if the active session's browser was launched headless. False
-        if launched headed (settings.playwright_headless=False). If no
-        browser has actually been launched yet (self._headless is None),
-        conservatively returns True -- "assume OCR can't see it" is the
-        safe default absent better information, same direction as the
-        settings default itself.
-        """
-        return self._headless if self._headless is not None else True
 
     def get_last_video_path(self) -> str | None:
         """Path to the most recently finalized video file, if any (set by close())."""
@@ -209,7 +196,6 @@ class _BrowserSession:
         self._context = None
         self._browser = None
         self._playwright = None
-        self._headless = None
 
 
 _session = _BrowserSession()
@@ -231,19 +217,6 @@ def get_page(new: bool = False):
 def has_active_page() -> bool:
     """True once a Playwright page has been successfully created this run."""
     return _session.has_active_page()
-
-
-def is_headless() -> bool:
-    """
-    True if the active browser session was launched headless (or if no
-    session has been launched yet -- see _BrowserSession.is_headless's
-    docstring for why that's the safe default). agents/vision/executor.py
-    uses this to skip attempting OCR against a headless session's
-    screenshot, since a headless browser's rendered content never reaches
-    the OS-level framebuffer an OS screenshot tool (mss) can capture --
-    see decisions.md D-046.
-    """
-    return _session.is_headless()
 
 
 def get_last_video_path() -> str | None:

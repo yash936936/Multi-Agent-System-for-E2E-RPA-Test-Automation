@@ -23,7 +23,7 @@ see the [Docs](#docs) section at the bottom.
   - [`aura schedule`](#aura-schedule)
   - [`aura skills`](#aura-skills)
 - [Configuration (.env)](#configuration-env)
-- [Local LLM planner backend (optional, offline)](#local-llm-planner-backend-optional-offline)
+- [Planner backends](#planner-backends)
 - [Reports & output locations](#reports--output-locations)
 - [Option 2 — Standalone Windows .exe (PyInstaller)](#option-2--standalone-windows-exe-pyinstaller)
 - [Troubleshooting (Windows)](#troubleshooting-windows)
@@ -348,12 +348,15 @@ All settings live in `config\settings.py` and can be overridden via a `.env` fil
 | `AURA_TESSERACT_CMD` | *(none — relies on PATH)* | Full path to `tesseract.exe`; set this on Windows to avoid PATH issues |
 | `AURA_VISION_CONFIDENCE_THRESHOLD` | `0.75` | Minimum OCR match confidence before a click/assertion is trusted without asking |
 | `AURA_COMPRESSION_MODE` | `max` | `max` \| `balanced` \| `off` — resource usage philosophy (no fixed hardware baseline assumed) |
-| `AURA_PLANNER_BACKEND` | `heuristic` | `heuristic` \| `local_llm` — see [Local LLM backend](#local-llm-planner-backend-optional-offline) below |
+| `AURA_PLANNER_BACKEND` | *(auto-detect)* | `heuristic` \| `local_llm` \| `cloud_llm` \| `hermes_agent` — see [Planner backends](#planner-backends) below |
 | `AURA_LOCAL_LLM_MODEL_PATH` | *(none)* | Path to a local `.gguf` model file, required if `planner_backend=local_llm` |
+| `AURA_ENABLE_CLOUD_PLANNER` | `false` | Enables `cloud_llm` (generic OpenAI-compatible HTTP client) |
+| `AURA_CLOUD_LLM_BASE_URL` / `_API_KEY` / `_MODEL` | *(none)* | Config for `cloud_llm` |
+| `AURA_ENABLE_HERMES_AGENT` | `false` | Enables `hermes_agent` (talks to a real, running Hermes Agent instance) |
+| `AURA_HERMES_AGENT_BASE_URL` / `_API_KEY` / `_MODEL` | *(none)* | Config for `hermes_agent`, e.g. `http://localhost:4141` for a locally-run `hermes api-server` |
+| `AURA_ENABLE_LLM_SEMANTIC_VERIFIER` | `false` | Enables the `llm_semantic` dual-verification tie-break mode (uses whichever LLM backend above is enabled) |
 | `AURA_PROJECT_ROOT` | repo root | Override where AURA looks for/writes `runtime\`, `reports\`, etc. |
 | `AURA_ENV` | *(none)* | Environment profile name (e.g. `staging`, `prod`) — see [Environment profiles](#environment-profiles-devstagingprod) below |
-| `AURA_PLAYWRIGHT_BROWSER` | `chromium` | `chromium` \| `firefox` \| `webkit` — which Playwright engine `runtime/hooks/browser.py` launches for browser-target steps |
-| `AURA_PLAYWRIGHT_HEADLESS` | `true` | Set `false` on a machine with a real, visible display for genuine OCR+DOM dual verification (Phase U) — with the default `true`, OCR is automatically skipped for browser-target steps (not attempted-and-failed, genuinely skipped) since a headless browser's rendered content is never visible to an OS-level screenshot, and DOM-only verification is used instead. See `decisions.md` D-046. |
 | `AURA_CAPABILITY_ADAPTERS_ENABLED` | `true` | Hard kill switch for **all** capability adapters (API/DB/Email/File/Excel/PDF/Cloud/Workflow/SharePoint/Automation Anywhere) at once, for a fully air-gapped deployment. Vision/Playwright/Planner are unaffected — this only gates the intentionally network-or-filesystem-facing adapters. |
 | `AURA_ALLOWED_CAPABILITY_HOSTS` | *(unset = no restriction)* | Comma-separated host allowlist restricting API/webhook/cloud adapters to known targets. Enforced at `orchestrator/capability_router.py`'s single chokepoint. Note: `azure_adapter`/`gcp_adapter` use SDK default-credential auth with no explicit host param, so they can't be host-allowlisted yet — the kill switch above still covers them. |
 
@@ -385,7 +388,7 @@ AURA_VISION_CONFIDENCE_THRESHOLD=0.8
 
 ---
 
-## Local LLM planner backend (optional, offline)
+## Planner backends
 
 By default, AURA parses requirement docs with a deterministic heuristic parser — zero dependencies, but can be brittle against loosely-structured real-world requirement text. For better natural-language understanding while staying fully offline, you can switch to a small local LLM:
 
@@ -432,6 +435,80 @@ AURA_LOCAL_LLM_MODEL_PATH=<REPLACE_WITH_YOUR_ACTUAL_.gguf_FILE_PATH>
 ⚠️ **Do not copy-paste the line above as-is** — `<REPLACE_WITH_YOUR_ACTUAL_.gguf_FILE_PATH>` is a placeholder, not a real path. If you leave `AURA_PLANNER_BACKEND=local_llm` set without pointing `AURA_LOCAL_LLM_MODEL_PATH` at a `.gguf` file that actually exists on disk, `aura execute` will fail with `LocalLLMModelNotFoundError` on every run. If you don't want the local LLM backend, leave `AURA_PLANNER_BACKEND` unset (or set it to `heuristic`) — that's the zero-dependency default and what most setups should use.
 
 No model is downloaded automatically — you control exactly what model runs on your machine, which matters if you're in a compliance-sensitive environment. Runs entirely on-device via `llama-cpp-python`; no network call is made at any point.
+
+---
+
+### Cloud / self-hosted OpenAI-compatible backend (`cloud_llm`)
+
+For a bigger model than local hardware can run, or to reuse an
+already-running self-hosted server (Ollama, vLLM, llama.cpp's own server
+mode) rather than embedding one in-process: `cloud_llm` is a generic HTTP
+client against any server implementing the OpenAI Chat Completions shape
+(`POST {base_url}/chat/completions`) — no vendor SDK, works the same
+whether the endpoint is actually remote or just a local server on the
+same machine. Off by default.
+
+```
+AURA_ENABLE_CLOUD_PLANNER=true
+AURA_CLOUD_LLM_BASE_URL=http://localhost:11434/v1     # e.g. Ollama's OpenAI-compat endpoint
+AURA_CLOUD_LLM_MODEL=qwen2.5:3b-instruct
+AURA_CLOUD_LLM_API_KEY=                                # leave blank for local servers that don't need one
+```
+
+Every request is checked against `AURA_ALLOWED_CAPABILITY_HOSTS` (the same
+egress allowlist capability adapters use) before it's sent — leave that
+setting unset to allow any host, or list specific hosts to lock it down.
+
+### Hermes Agent backend (`hermes_agent`)
+
+If you already run [Hermes Agent](https://github.com/NousResearch/hermes-agent)
+(Nous Research's open-source agent framework) for other purposes, AURA can
+route spec generation through it instead of a bare completion endpoint —
+you get Hermes's own persistent memory, skill recall, and tool/MCP access
+on the far end, rather than a second, separate LLM connection. Start
+Hermes's own API server (`hermes api-server`, or see Hermes's docs for the
+exact command in your installed version) and point AURA at it:
+
+```
+AURA_ENABLE_HERMES_AGENT=true
+AURA_PLANNER_BACKEND=hermes_agent
+AURA_HERMES_AGENT_BASE_URL=http://localhost:4141
+AURA_HERMES_AGENT_API_KEY=                             # Hermes's API_SERVER_KEY, if it requires one
+```
+
+Unlike `local_llm`/`cloud_llm`, `hermes_agent` is never auto-detected —
+you must set `AURA_PLANNER_BACKEND=hermes_agent` explicitly. A Hermes
+instance happening to be reachable on the network isn't a strong enough
+signal to silently route test-spec generation through it.
+
+If you'd rather have it auto-detected anyway (e.g. Hermes is always running in your environment), opt in explicitly:
+
+```
+AURA_PLANNER_PRIORITY=hermes_first
+```
+
+This is the only priority value that puts `hermes_agent` into the auto-detection matrix, ahead of `local_llm`/`cloud_llm`. The default (`local_first`) and `cloud_first` behave exactly as before.
+
+### LLM semantic dual-verification tie-break
+
+Separately from planner backends: when both the OCR and DOM locators find
+a plausible match at genuinely different locations on the page (Phase U's
+dual-verification "disagreement" case), AURA normally resolves it via a
+numeric rule (`highest_confidence` by default). If you'd rather have an
+LLM weigh in — "does the OCR match or the DOM match actually fit what this
+test step is describing?" — enable:
+
+```
+AURA_ENABLE_LLM_SEMANTIC_VERIFIER=true
+AURA_DUAL_VERIFICATION_TIE_BREAK=llm_semantic
+```
+
+This reuses whichever of `cloud_llm`/`hermes_agent` is already enabled
+above (no separate connection needed) and is text-only (matched text/role,
+not a screenshot) so it stays fast and cheap. If neither backend is
+enabled, or the call fails for any reason, this falls back to
+`highest_confidence` automatically — enabling it can only add accuracy, it
+can never make dual verification less reliable than the default.
 
 ---
 

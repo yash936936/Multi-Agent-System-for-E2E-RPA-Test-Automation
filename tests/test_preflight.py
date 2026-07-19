@@ -181,13 +181,14 @@ def test_spec_generator_has_no_anthropic_backend():
     # uses). The two assertions that actually matter -- no AnthropicBackend
     # class exists, "anthropic" isn't a registry key -- are unchanged and
     # still the real point of this test; only the exact-membership check
-    # below needed updating to reflect the now-intentional three-backend
-    # registry.
+    # below needed updating twice now -- once for cloud_llm (Phase V), and
+    # again for hermes_agent (Phase W, decisions.md D-047) -- to reflect
+    # the now-intentional four-backend registry.
     import agents.planner.spec_generator as sg
 
     assert not hasattr(sg, "AnthropicBackend")
     assert "anthropic" not in sg._BACKEND_REGISTRY
-    assert set(sg._BACKEND_REGISTRY) == {"heuristic", "local_llm", "cloud_llm"}
+    assert set(sg._BACKEND_REGISTRY) == {"heuristic", "local_llm", "cloud_llm", "hermes_agent"}
 
 
 def test_check_planner_backend_unknown_value(monkeypatch):

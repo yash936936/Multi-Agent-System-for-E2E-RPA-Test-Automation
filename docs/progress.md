@@ -9,43 +9,6 @@ project: AURA
 
 ---
 
-## 2026-07-19 (later same day) — D-046 follow-up: live re-run confirmed the fix, one more real gap found and closed
-
-**What happened:**
-- The person re-ran the exact same `pytest` suite on the Windows machine that found the original 3 bugs, after the D-046 fix. Bug 3 (PyAutoGUI fail-safe crash) confirmed gone — 595 passing, up from 585.
-- Bugs 1 and 2 (both dual-verification tests) still failed, with the exact same symptom as before. Root cause: not a new bug, an incomplete one — those two tests use the `live_page` fixture (correctly headless by default per D-046's fix), but their entire purpose is proving OCR and DOM independently agree, which requires the browser to actually be rendering visible pixels. The fix was correctly *skipping* OCR in headless mode; these two tests needed headed mode to test what they claim.
-- Added `headed_live_page`, a second fixture identical to `live_page` except it forces `settings.playwright_headless = False` before the browser launches. Used only by the two tests that structurally need it — `live_page`'s default (correct, headless) behavior is unchanged for every other test.
-
-**What changed:**
-- `tests/test_executor_dom_path.py` — new `headed_live_page` fixture; the two originally-failing tests switched to use it.
-- `docs/decisions.md` — D-046 addendum.
-
-**What should happen next:**
-- One more live-Windows re-run to fully confirm all three original failures are gone — this sandbox still can't verify a headed browser session itself.
-
----
-
-## 2026-07-19 — Three real bugs found on a live Windows run, fixed at their shared root cause (D-046)
-
-**What happened:**
-- A real `pytest` run on a Windows machine with a genuinely working Chromium binary — the first session in this project's history to actually exercise the dual-verification code path against a live browser rather than a sandbox blocked from downloading one — surfaced three failures.
-- Traced all three to one hardcoded line: `runtime/hooks/browser.py`'s `engine.launch(headless=True)`, with no way to override it. A headless browser's rendered content never reaches the OS-level framebuffer OCR's screenshot tool (`mss`) can capture — so OCR was searching the real desktop, not the page.
-- Fixed with a new `settings.playwright_headless` (default `True`, unchanged behavior) plus `agents/vision/executor.py` now computes `ocr_attempted` and skips OCR entirely — not attempts-and-fails — whenever the active session is headless. This directly closes off the PyAutoGUI fail-safe crash too, since the only pyautogui-touching dispatch path is never reached when OCR isn't attempted.
-- Caught and fixed a self-introduced regression during this same pass: the first version of the fix added a new required parameter to a private helper, breaking 7 existing tests that correctly assumed the old "OCR always runs" behavior — fixed by giving it a default instead of requiring every caller to change.
-- 9 new tests added, all mock-based so they run in any sandbox. Full suite: 566 passing, same pre-existing Chromium-binary-download limitation as every session before this one, zero new regressions.
-
-**What changed:**
-- `config/settings.py` — `playwright_headless: bool = True`.
-- `runtime/hooks/browser.py` — reads the setting; `is_headless()` (module + session method), reset on `close()`.
-- `agents/vision/executor.py` — `ocr_attempted` gate, threaded through `_compile_dual_result` (now defaults `ocr_attempted=True` for backward compatibility) and the dispatch-fallback logic.
-- `tests/test_executor_dom_path.py`, `tests/test_dual_verification_compile.py`, `tests/test_browser_hook.py` — new tests.
-- `docs/decisions.md` — D-046 added.
-
-**What should happen next:**
-- The real confirmation is a live re-run on the Windows machine that originally found these bugs — this sandbox still can't download Chromium to verify end-to-end itself.
-
----
-
 ## 2026-07-17 — Verification pass: real pytest run confirms Phase V, one stale test fixed (D-045)
 
 **What happened:**
@@ -586,3 +549,19 @@ project: AURA
 **What should happen next:**
 - Confirm the open items in `STATUS.md` (next action, runtime choice, blockers).
 - Once confirmed, log that decision in `decisions.md` and update `STATUS.md` accordingly.
+
+## 2026-07-19 — Phase W: real Hermes Agent integration + LLM semantic tie-break
+Added `orchestrator/hermes_client.py` (HermesAgentClient, talks to a real
+Hermes Agent instance's OpenAI-compatible API server), a fourth planner
+backend `HermesAgentBackend` (`agents/planner/spec_generator.py`,
+explicit-select only via `AURA_PLANNER_BACKEND=hermes_agent`), and a new
+`"llm_semantic"` dual-verification tie-break mode
+(`agents/vision/llm_verifier.py`) that asks a configured LLM backend which
+OCR/DOM candidate better matches a step's plain-English description,
+falling back to `highest_confidence` on any failure. Both features off by
+default. 14 new tests, zero regressions (599/602 passing; 3 pre-existing
+`mss`-module sandbox failures unrelated). See `docs/decisions.md` D-047.
+This closes the "Hermes Agent" half of the gap-closure request; the
+remaining backlog (auto-detection wiring, multimodal verifier, service-
+layer persistence/secrets gaps, a full pass over every other partial
+feature) is tracked in `docs/Roadmap.md` §11 as Phases X/Y/Z.

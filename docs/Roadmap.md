@@ -542,3 +542,57 @@ actually built; the existing test suite stays green throughout.
 **Current status (2026-07-17): R, S, T, U, and V are all done. The entire
 fourth remediation roadmap (Phases R–V) is complete. No further phases are
 currently planned.**
+
+## §11 — Phases X/Y/Z: gap-closure & fusion roadmap (proposed, not started)
+
+Phase W (D-047) delivered a real Hermes Agent integration and an
+LLM-semantic dual-verification tie-break. It deliberately left the
+following out of scope, tracked here rather than silently dropped:
+
+**Phase X — Hermes/LLM depth**
+- X1: Multimodal LLM verifier variant — send the actual screenshot crop
+  (not just OCR/DOM text metadata) to a vision-capable model for
+  tie-break, gated behind a separate `enable_llm_vision_verifier` setting.
+  Needs a real vision-capable endpoint available in the verification
+  environment to validate properly (not available in this sandbox as of
+  Phase W).
+- X2: Optional auto-detection wiring for `hermes_agent` as a third
+  detection-matrix entry, behind an explicit opt-in flag (e.g.
+  `AURA_PLANNER_PRIORITY` gaining a `hermes_first` value) so operators who
+  want it in the matrix can ask for that, without changing the
+  conservative default Phase W shipped.
+  **DONE (D-048)** -- `AURA_PLANNER_PRIORITY=hermes_first` now opts hermes_agent into the detection matrix, ahead of local_llm/cloud_llm; default behavior unchanged.
+- X3: Wire `HermesAgentClient` into `Planner.diagnose` (root-cause
+  diagnosis) as well as spec generation, so Hermes's own memory/skill
+  recall can inform self-healing diagnoses, not just initial spec
+  authoring.
+
+**Phase Y — Service-layer gap closure (carried over from earlier phases' STATUS.md notes)**
+- Y1: Confirm/replace the in-memory API run store with real persistence
+  (the CLI path already has `orchestrator/memory.py`; the API path's
+  `api/run_store.py` should be checked against the current codebase for
+  whether this was already addressed, and closed out either way with a
+  test).
+- Y2: Split the `SecretVault` Fernet key from the JWT HMAC signing key
+  (`api/security.py`) — flagged in earlier STATUS.md revisions as a
+  secrets-hygiene gap, not yet confirmed closed.
+- Y3: `azure_adapter`/`gcp_adapter` host-allowlisting — both currently
+  rely on SDK default-credential chains rather than an explicit host
+  param, so Phase D's allowlist can't cover them (the kill switch still
+  does). Needs either an explicit endpoint-override param on both
+  adapters or a documented decision that this gap is accepted long-term.
+
+**Phase Z — Full partial-feature audit**
+A systematic pass through every entry in `docs/decisions.md` and
+`docs/STATUS.md`'s history that used language like "proposed," "not
+started," "plan-only," or "incomplete," converting each into one of:
+(a) a completed phase with tests, (b) an explicitly scoped-out decision
+with a written reason, or (c) a newly-lettered phase added to this
+roadmap. This is bookkeeping as much as engineering — the goal is that
+after Phase Z, `docs/STATUS.md` contains zero features described as
+"proposed but not implemented" without a corresponding roadmap entry
+explaining why.
+
+None of X/Y/Z is started. This section exists so the next work session
+(or the next `debug-qa-finalize` pass) has a concrete, prioritized
+backlog instead of an open-ended "make it more complete" instruction.

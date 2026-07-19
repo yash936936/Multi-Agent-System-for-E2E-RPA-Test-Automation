@@ -508,6 +508,71 @@ class CloudLLMBackend:
         return _extract_json_object(text)
 
 
+class HermesAgentConfigError(RuntimeError):
+    pass
+
+
+class HermesAgentBackend:
+    """
+    Phase W (decisions.md D-047): spec generation via a real, running
+    Hermes Agent instance (https://github.com/NousResearch/hermes-agent),
+    through orchestrator/hermes_client.py::HermesAgentClient.
+
+    This is distinct from CloudLLMBackend in what it buys you: CloudLLMBackend
+    talks to a bare OpenAI-compatible completion endpoint (no memory, no
+    tools, no skills on the far end). HermesAgentBackend talks to an actual
+    Hermes Agent process, which brings its own persistent memory, skill
+    recall, and (if configured) tool/MCP access -- useful if an operator is
+    already running Hermes Agent for other purposes and wants AURA's
+    spec-generation to benefit from it, rather than standing up a second,
+    separate LLM connection.
+
+    Off by default (settings.enable_hermes_agent); same egress-allowlist
+    enforcement as CloudLLMBackend, via HermesAgentClient itself (not
+    duplicated here). Selectable explicitly via
+    `AURA_PLANNER_BACKEND=hermes_agent` -- deliberately NOT added to the
+    local_first/cloud_first auto-detection matrix in config/settings.py,
+    since "a Hermes Agent instance happens to be reachable" is a much
+    weaker signal of intent than "a .gguf file was deliberately placed in
+    models/" or "cloud_llm_base_url was deliberately set" -- auto-selecting
+    it could silently route spec generation through a shared/multi-tenant
+    Hermes instance nobody meant to involve. Escalation (generate_spec's
+    settings.enable_cloud_planner fallback) is also untouched -- Hermes
+    Agent is a third, independent backend a caller opts into explicitly,
+    not a silent additional rung on the existing local->cloud ladder.
+    """
+
+    def __init__(
+        self,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        self.base_url = base_url or settings.hermes_agent_base_url
+        self.api_key = api_key or settings.hermes_agent_api_key
+        self.model = model or settings.hermes_agent_model
+
+    def generate(self, requirement_text: str) -> dict:
+        from agents.planner.prompts import SPEC_GENERATION_SYSTEM_PROMPT, SPEC_GENERATION_USER_TEMPLATE
+        from orchestrator.hermes_client import HermesAgentClient
+
+        if not self.base_url:
+            raise HermesAgentConfigError(
+                "HermesAgentBackend requires settings.hermes_agent_base_url "
+                "(or AURA_HERMES_AGENT_BASE_URL / a .env entry) -- the base "
+                "URL of a running Hermes Agent API server, e.g. "
+                "'http://localhost:4141'. Start one with `hermes api-server` "
+                "(see https://github.com/NousResearch/hermes-agent)."
+            )
+
+        client = HermesAgentClient(base_url=self.base_url, api_key=self.api_key, model=self.model)
+        text = client.chat(
+            SPEC_GENERATION_SYSTEM_PROMPT,
+            SPEC_GENERATION_USER_TEMPLATE.format(requirement_text=requirement_text),
+        )
+        return _extract_json_object(text)
+
+
 # --------------------------------------------------------------------------
 # Public entrypoint
 # --------------------------------------------------------------------------
@@ -516,6 +581,7 @@ _BACKEND_REGISTRY: dict[str, type] = {
     "heuristic": LocalHeuristicBackend,
     "local_llm": LocalLLMBackend,
     "cloud_llm": CloudLLMBackend,
+    "hermes_agent": HermesAgentBackend,
 }
 
 

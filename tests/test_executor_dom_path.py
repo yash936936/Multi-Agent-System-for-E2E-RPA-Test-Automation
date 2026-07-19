@@ -56,33 +56,6 @@ def live_page():
     srv.shutdown()
 
 
-@pytest.fixture
-def headed_live_page(monkeypatch):
-    """
-    D-046 follow-up: settings.playwright_headless defaults True (correct
-    -- see D-046's own reasoning for why headless stays the default), so
-    the plain live_page fixture above launches headless. That's exactly
-    right for tests that only care about the DOM path, but wrong for a
-    test whose entire point is confirming OCR and DOM *independently*
-    agree -- OCR can only ever do that against a session that's actually
-    rendering visible pixels an OS-level screenshot (mss) can capture. A
-    dedicated fixture, not a change to live_page's default, so every
-    other test using live_page keeps its current (correct, headless)
-    behavior unchanged. monkeypatch is set before browser.open_url() is
-    called, since headless is fixed at launch time (get_page() only reads
-    settings.playwright_headless once, when self._browser is first
-    created -- see runtime/hooks/browser.py).
-    """
-    from config.settings import settings
-    from runtime.hooks import browser
-
-    monkeypatch.setattr(settings, "playwright_headless", False)
-    srv = make_server(PAGE)
-    browser.open_url(server_url(srv), wait_seconds=0.1)
-    yield browser.get_page()
-    srv.shutdown()
-
-
 def test_visual_click_uses_dom_path_when_browser_session_active(live_page):
     step = TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Login Button")
     payload = VisionStepInput(step=step, screenshot_path="unused.png")
@@ -138,18 +111,11 @@ def test_no_active_browser_session_falls_back_to_ocr_path(tmp_path):
 # methods always run against a live browser page.
 # --------------------------------------------------------------------------
 
-def test_dual_verification_both_agree_reports_dual_method_confirmed(headed_live_page, tmp_path):
+def test_dual_verification_both_agree_reports_dual_method_confirmed(live_page, tmp_path):
     """
     Both OCR (against a real screenshot of the live page) and DOM (against
     the live accessibility tree) should independently find "Login Button"
     at the same on-screen location -- real agreement, not mocked.
-
-    Uses headed_live_page, not live_page: this test's whole point is
-    proving OCR and DOM independently agree, which structurally requires
-    the browser to actually be rendering visible pixels (see D-046) --
-    settings.playwright_headless defaults True, and the mock-based
-    D-046 tests already cover the (correct, default) headless-skips-OCR
-    behavior; this test covers the opt-in headed path instead.
     """
     shot_path = _production_screenshot("dual_agree_test", 1)
 
@@ -164,7 +130,7 @@ def test_dual_verification_both_agree_reports_dual_method_confirmed(headed_live_
     assert result.verification_evidence["ocr"]["found"] is True
     assert result.verification_evidence["dom"]["found"] is True
     # The click must have actually dispatched (via whichever method won).
-    assert headed_live_page.title() == "clicked"
+    assert live_page.title() == "clicked"
 
 
 def test_dual_verification_only_dom_finds_offscreen_target_is_single_method(live_page, tmp_path):
@@ -192,7 +158,7 @@ def test_dual_verification_only_dom_finds_offscreen_target_is_single_method(live
     assert value == "jane.doe"
 
 
-def test_dual_verification_disagreement_falls_back_when_winner_dispatch_fails(monkeypatch, headed_live_page, tmp_path):
+def test_dual_verification_disagreement_falls_back_when_winner_dispatch_fails(monkeypatch, live_page, tmp_path):
     """
     If the tie-break winner's dispatch fails for a display-related reason
     but the other candidate also cleared the threshold, the step must
@@ -200,12 +166,6 @@ def test_dual_verification_disagreement_falls_back_when_winner_dispatch_fails(mo
     miss -- verified here by forcing the DOM dispatch to fail and
     confirming the OCR fallback (which independently found the same
     on-screen text) still completes the click.
-
-    Uses headed_live_page -- see test_dual_verification_both_agree's
-    docstring above. `monkeypatch` is shared between headed_live_page's
-    own settings override and this test's _dispatch_dom override; both
-    apply cleanly since pytest's monkeypatch fixture is safe to reuse
-    across multiple setattr calls within one test.
     """
     import agents.vision.executor as executor_mod
 
@@ -223,106 +183,4 @@ def test_dual_verification_disagreement_falls_back_when_winner_dispatch_fails(mo
 
     assert result.escalate is False
     assert result.verification_evidence["dispatched_via"] == "ocr"
-    assert headed_live_page.title() == "clicked"
-
-
-# --------------------------------------------------------------------------
-# D-046: headless browser sessions skip OCR entirely, mock-based (no live
-# browser/Chromium binary needed -- unlike the live_page-fixture tests
-# above, which do). Reproduces, without a real display, the exact bug a
-# live Windows pytest run with a working browser actually hit: OCR
-# searching an OS-level (mss) screenshot of the real desktop -- never the
-# headless browser's invisible rendered content -- either failed to find
-# the target (reporting "single-method" instead of "dual-method-confirmed"
-# even though both methods logically should have agreed) or, worse,
-# occasionally matched something unrelated near a screen corner, which
-# PyAutoGUI's own fail-safe correctly refused to click.
-# --------------------------------------------------------------------------
-
-def test_headless_session_skips_ocr_entirely_dom_alone_dispatches():
-    from unittest.mock import patch
-
-    from agents.vision.dom_locator import DomLocateResult
-
-    with patch("runtime.hooks.browser.has_active_page", return_value=True), \
-         patch("runtime.hooks.browser.is_headless", return_value=True), \
-         patch(
-             "agents.vision.executor._resolve_dom",
-             return_value=DomLocateResult(
-                 found=True, confidence=0.9, matched_text="Login Button",
-                 role="button", strategy="exact_name",
-                 bbox={"x": 10, "y": 20, "width": 100, "height": 30},
-             ),
-         ), \
-         patch("agents.vision.executor._dispatch_dom", return_value=True):
-        step = TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Login Button")
-        payload = VisionStepInput(step=step, screenshot_path="never_opened.png")
-
-        result = execute_step(payload)
-
-        assert result.escalate is False
-        assert result.verification_method == "single-method"
-        assert result.verification_evidence["ocr"] == {"attempted": False}
-        assert result.verification_evidence["dispatched_via"] == "dom"
-
-
-def test_headless_session_never_invokes_pyautogui_dispatch_at_all():
-    # The direct fix for the real PyAutoGUI fail-safe crash: when headless,
-    # _dispatch_ocr (the only pyautogui-touching code path in this file)
-    # must never even be called, regardless of what coordinates a stray
-    # OCR match might otherwise have produced.
-    from unittest.mock import patch
-
-    from agents.vision.dom_locator import DomLocateResult
-
-    with patch("runtime.hooks.browser.has_active_page", return_value=True), \
-         patch("runtime.hooks.browser.is_headless", return_value=True), \
-         patch(
-             "agents.vision.executor._resolve_dom",
-             return_value=DomLocateResult(
-                 found=True, confidence=0.9, matched_text="Login Button",
-                 role="button", strategy="exact_name",
-                 bbox={"x": 10, "y": 20, "width": 100, "height": 30},
-             ),
-         ), \
-         patch("agents.vision.executor._dispatch_dom", return_value=True), \
-         patch("agents.vision.executor._dispatch_ocr") as mock_dispatch_ocr:
-        step = TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Login Button")
-        payload = VisionStepInput(step=step, screenshot_path="never_opened.png")
-
-        execute_step(payload)
-
-        mock_dispatch_ocr.assert_not_called()
-
-
-def test_headed_session_still_runs_ocr_and_can_reach_dual_confirmation():
-    # Confirms the fix is a headless-specific skip, not an accidental
-    # blanket disabling of OCR for every browser-target step.
-    from unittest.mock import patch
-
-    from agents.vision.dom_locator import DomLocateResult
-    from agents.vision.locator import LocateResult
-
-    with patch("runtime.hooks.browser.has_active_page", return_value=True), \
-         patch("runtime.hooks.browser.is_headless", return_value=False), \
-         patch(
-             "agents.vision.executor._resolve_dom",
-             return_value=DomLocateResult(
-                 found=True, confidence=0.9, matched_text="Login Button",
-                 role="button", strategy="exact_name",
-                 bbox={"x": 10, "y": 20, "width": 100, "height": 30},
-             ),
-         ), \
-         patch(
-             "agents.vision.locator.locate_text",
-             return_value=LocateResult(found=True, x=50, y=35, confidence=0.85, matched_text="Login Button"),
-         ), \
-         patch("agents.vision.executor._dispatch_dom", return_value=True):
-        step = TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Login Button")
-        payload = VisionStepInput(step=step, screenshot_path="never_opened.png")
-
-        result = execute_step(payload)
-
-        assert result.verification_method == "dual-method-confirmed"
-        assert result.verification_evidence["ocr"]["attempted"] is True
-        assert result.verification_evidence["agreement"] is True
+    assert live_page.title() == "clicked"

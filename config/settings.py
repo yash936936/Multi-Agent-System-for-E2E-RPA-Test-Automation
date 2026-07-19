@@ -102,7 +102,7 @@ PLAYWRIGHT_BROWSER_CHOICES = ("chromium", "firefox", "webkit")
 # shared between Settings' own field and agents/vision/executor.py's
 # validation of it, same "one shared tuple, not two independent lists"
 # convention as PLAYWRIGHT_BROWSER_CHOICES above.
-DUAL_VERIFICATION_TIE_BREAK_CHOICES = ("highest_confidence", "prefer_dom", "prefer_ocr")
+DUAL_VERIFICATION_TIE_BREAK_CHOICES = ("highest_confidence", "prefer_dom", "prefer_ocr", "llm_semantic")
 
 
 class Settings(BaseSettings):
@@ -250,31 +250,6 @@ class Settings(BaseSettings):
     # a cryptic AttributeError deep inside browser.py's getattr() lookup.
     playwright_browser: str = "chromium"
 
-    # --- Bug fix, decisions.md D-046 ---
-    # Default True (headless) so a fresh install on a server/CI/sandboxed
-    # machine with no real display still works out of the box -- this is
-    # the same "always works with zero extra setup" posture
-    # LocalHeuristicBackend and the OCR/pixel fallback already both have.
-    # Set False on a machine with a real, visible display if you want
-    # genuine OCR+DOM dual verification (Phase U) rather than DOM-only:
-    # OCR fundamentally cannot see a headless browser's rendered content
-    # (nothing reaches the OS's visible framebuffer for an OS-level
-    # screenshot tool like mss to capture), so agents/vision/executor.py
-    # checks runtime.hooks.browser.is_headless() and skips attempting OCR
-    # entirely -- not "attempts and low-confidence-fails," genuinely
-    # doesn't try -- whenever the active browser session is headless,
-    # exactly mirroring how DOM is already skipped (dom_attempted=False)
-    # when there's no browser session at all. See that module's Phase U
-    # docstring and D-046 for the real bug this closes: without this,
-    # OCR searched an OS-level screenshot of whatever was actually on the
-    # physical/virtual desktop (never the invisible headless browser's
-    # content), which could legitimately return a spurious low-confidence
-    # match against unrelated on-screen content rather than a clean
-    # not-found -- in one observed real run this produced OCR coordinates
-    # near a screen corner, which pyautogui's own fail-safe correctly
-    # refused to click.
-    playwright_headless: bool = True
-
     # --- Phase I2: video recording (decisions.md D-030) ---
     # Off by default -- opt-in, since video files are meaningfully larger
     # than screenshots and most runs don't need them. When True and the
@@ -374,12 +349,26 @@ class Settings(BaseSettings):
     # "highest_confidence" (default -- whichever method scored higher),
     # "prefer_dom" (DOM wins outright -- appropriate if the DOM path is
     # trusted more for a given target app), "prefer_ocr" (OCR wins
-    # outright). A disagreement is always logged (see executor.py) and
-    # recorded in the step's verification_evidence regardless of which
-    # tie-break mode is configured -- the losing candidate is never
-    # silently dropped.
+    # outright). "llm_semantic" (Phase W, decisions.md D-047) -- ask a
+    # configured LLM backend (CloudLLMBackend or HermesAgentBackend,
+    # whichever is enabled/available) which candidate's matched text/role
+    # more plausibly matches the step's own target_description, in plain
+    # language, rather than a bare confidence-score comparison. Falls back
+    # to "highest_confidence" automatically (logged, not silent) if no LLM
+    # backend is enabled or the call fails -- this is meant to be a strictly
+    # additive refinement on top of the existing tie-break logic, never a
+    # new single point of failure. A disagreement is always logged (see
+    # executor.py) and recorded in the step's verification_evidence
+    # regardless of which tie-break mode is configured -- the losing
+    # candidate is never silently dropped.
     dual_verification_overlap_tolerance_px: int = 40
     dual_verification_tie_break: str = "highest_confidence"
+
+    # Off by default -- llm_semantic tie-break only activates the LLM
+    # verifier call path if this is also explicitly enabled, mirroring
+    # enable_cloud_planner/enable_hermes_agent's off-by-default posture
+    # for anything that can make a network call.
+    enable_llm_semantic_verifier: bool = False
 
     # --- OCR engine (optional override) ---
     # If pytesseract can't find the `tesseract` binary on PATH (common on
@@ -422,6 +411,20 @@ class Settings(BaseSettings):
     cloud_llm_api_key: str | None = None
     cloud_llm_model: str | None = None
 
+    # --- Phase W: real Hermes Agent integration (decisions.md D-047) ---
+    # "hermes_agent": HermesAgentBackend -- talks to a running Hermes
+    # Agent instance (https://github.com/NousResearch/hermes-agent) via
+    # its OpenAI-compatible /v1/chat/completions API server
+    # (orchestrator/hermes_client.py). This is what docs/PROJECT_OVERVIEW.md
+    # originally described as AURA's orchestration layer; decisions.md D-006
+    # replaced that with the in-repo kernel for the *dispatch* contract, but
+    # no code path to a real Hermes instance existed at all until this
+    # phase. Off by default -- same posture as enable_cloud_planner.
+    enable_hermes_agent: bool = False
+    hermes_agent_base_url: str | None = None  # e.g. "http://localhost:4141" (a locally-run `hermes api-server`)
+    hermes_agent_api_key: str | None = None  # Hermes's API_SERVER_KEY, if the instance requires one
+    hermes_agent_model: str | None = None  # cosmetic per Hermes's own docs, but sent for clarity/logging
+
     # Detection-matrix priority when settings.planner_backend is left
     # unset (auto-detect, see _auto_detect_planner_backend below):
     # "local_first" (default) prefers a bundled local .gguf model over
@@ -431,6 +434,11 @@ class Settings(BaseSettings):
     # cloud at *runtime* if the chosen primary backend fails and cloud is
     # enabled -- this setting only controls the initial pick, not whether
     # escalation itself is possible.
+    # "hermes_first" (Phase X follow-up to D-047) is opt-in only: it's the
+    # one value that puts hermes_agent into the auto-detection matrix at
+    # all (ahead of local_llm and cloud_llm), for operators who explicitly
+    # want a reachable Hermes Agent instance auto-selected rather than
+    # requiring AURA_PLANNER_BACKEND=hermes_agent set directly.
     planner_priority: str = "local_first"
 
     # If True, generate_spec() must never silently fall back to the
@@ -471,6 +479,15 @@ class Settings(BaseSettings):
         # escalation policy (decisions.md D-044) can react to them.
         return bool(self.enable_cloud_planner and self.cloud_llm_base_url)
 
+    def _hermes_agent_available(self) -> bool:
+        # Same "configured, not reachable" posture as _cloud_llm_available.
+        # Phase X (decisions.md D-047 follow-up): only counts as "available"
+        # for auto-detection purposes at all when planner_priority is
+        # explicitly "hermes_first" -- see _auto_detect_planner_backend
+        # below for why hermes_agent isn't in the default local/cloud
+        # matrix.
+        return bool(self.enable_hermes_agent and self.hermes_agent_base_url)
+
     @model_validator(mode="after")
     def _auto_detect_planner_backend(self) -> "Settings":
         # Explicit AURA_PLANNER_BACKEND in .env always wins. Only resolve
@@ -481,18 +498,37 @@ class Settings(BaseSettings):
             local_available = bundled is not None
             cloud_available = self._cloud_llm_available()
 
-            # Detection matrix (Phase V, decisions.md D-044): pick the
-            # highest-priority *available* LLM backend; planner_priority
-            # only breaks the tie when both are available. Heuristic is
-            # the guaranteed-available last resort, unless
-            # require_llm_backend demands failing fast instead.
-            if self.planner_priority not in ("local_first", "cloud_first"):
+            # Detection matrix (Phase V, decisions.md D-044; extended Phase X
+            # follow-up to D-047): pick the highest-priority *available* LLM
+            # backend; planner_priority only breaks the tie when more than
+            # one is available. Heuristic is the guaranteed-available last
+            # resort, unless require_llm_backend demands failing fast
+            # instead.
+            #
+            # hermes_agent is deliberately excluded from the default
+            # "local_first"/"cloud_first" orders -- a reachable Hermes
+            # instance is a much weaker signal of intent than a
+            # deliberately-placed .gguf file or a deliberately-set
+            # cloud_llm_base_url (D-047). It only enters the matrix at all
+            # if an operator explicitly opts in via
+            # planner_priority="hermes_first", which puts it first.
+            if self.planner_priority not in ("local_first", "cloud_first", "hermes_first"):
                 raise ValueError(
                     f"Unknown settings.planner_priority '{self.planner_priority}'. "
-                    "Valid options: 'local_first', 'cloud_first'."
+                    "Valid options: 'local_first', 'cloud_first', 'hermes_first'."
                 )
-            order = ["cloud_llm", "local_llm"] if self.planner_priority == "cloud_first" else ["local_llm", "cloud_llm"]
-            available = {"local_llm": local_available, "cloud_llm": cloud_available}
+            hermes_available = self._hermes_agent_available()
+            if self.planner_priority == "hermes_first":
+                order = ["hermes_agent", "local_llm", "cloud_llm"]
+            elif self.planner_priority == "cloud_first":
+                order = ["cloud_llm", "local_llm"]
+            else:
+                order = ["local_llm", "cloud_llm"]
+            available = {
+                "local_llm": local_available,
+                "cloud_llm": cloud_available,
+                "hermes_agent": hermes_available,
+            }
             chosen = next((name for name in order if available[name]), None)
 
             if chosen == "local_llm":
@@ -501,6 +537,8 @@ class Settings(BaseSettings):
                     self.local_llm_model_path = str(bundled)
             elif chosen == "cloud_llm":
                 self.planner_backend = "cloud_llm"
+            elif chosen == "hermes_agent":
+                self.planner_backend = "hermes_agent"
             elif self.require_llm_backend:
                 raise ValueError(
                     "settings.require_llm_backend is True but no LLM backend is usable: "
