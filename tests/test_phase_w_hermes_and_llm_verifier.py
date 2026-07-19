@@ -35,8 +35,66 @@ from orchestrator.hermes_client import (
     HermesAgentConfigError as ClientConfigError,
     HermesAgentEgressBlockedError,
 )
-from orchestrator.schemas import RequirementInput
+from orchestrator.schemas import RequirementInput, DiagnosisInput, TestStep, ActionType
 from config.settings import Settings
+from agents.planner.diagnoser import HermesAgentDiagnoser, LocalHeuristicDiagnoser, _default_backend as _diagnoser_default_backend
+
+
+# --------------------------------------------------------------------------
+# Phase X3: HermesAgentDiagnoser (decisions.md D-049)
+# --------------------------------------------------------------------------
+
+def _make_diagnosis_input():
+    step = TestStep(
+        step_id=1,
+        action=ActionType.VISUAL_CLICK,
+        target_description="the Submit button",
+    )
+    return DiagnosisInput(
+        failed_step=step,
+        execution_logs=["locate_text: not found", "confidence below threshold"],
+    )
+
+
+def test_diagnose_default_backend_is_heuristic(monkeypatch):
+    monkeypatch.setattr(global_settings, "diagnosis_backend", "heuristic")
+    assert isinstance(_diagnoser_default_backend(), LocalHeuristicDiagnoser)
+
+
+def test_diagnose_default_backend_selects_hermes_when_configured(monkeypatch):
+    monkeypatch.setattr(global_settings, "diagnosis_backend", "hermes_agent")
+    assert isinstance(_diagnoser_default_backend(), HermesAgentDiagnoser)
+
+
+def test_diagnose_default_backend_falls_back_on_unrecognized_value(monkeypatch):
+    monkeypatch.setattr(global_settings, "diagnosis_backend", "something_typo'd")
+    assert isinstance(_diagnoser_default_backend(), LocalHeuristicDiagnoser)
+
+
+def test_hermes_agent_diagnoser_round_trip():
+    fake_client = MagicMock()
+    fake_client.chat.return_value = (
+        '{"root_cause": "Button was relabeled", '
+        '"proposed_fix": "Retry with relaxed OCR matching", '
+        '"fix_type": "retry_strategy", "confidence": 0.75}'
+    )
+    diagnoser = HermesAgentDiagnoser(client=fake_client)
+    result = diagnoser.diagnose(_make_diagnosis_input())
+
+    assert result["root_cause"] == "Button was relabeled"
+    assert result["proposed_fix"] == "Retry with relaxed OCR matching"
+    assert result["fix_type"] == "retry_strategy"
+    assert result["confidence"] == 0.75
+    assert result["created_by"] == "hermes_agent_diagnoser"
+    assert result["skill_id"].startswith("SKILL-")
+
+
+def test_hermes_agent_diagnoser_raises_on_bad_json():
+    fake_client = MagicMock()
+    fake_client.chat.return_value = "not json at all"
+    diagnoser = HermesAgentDiagnoser(client=fake_client)
+    with pytest.raises(Exception):
+        diagnoser.diagnose(_make_diagnosis_input())
 
 
 # --------------------------------------------------------------------------

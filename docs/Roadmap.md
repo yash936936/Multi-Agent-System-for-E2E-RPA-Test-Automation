@@ -566,6 +566,7 @@ following out of scope, tracked here rather than silently dropped:
   diagnosis) as well as spec generation, so Hermes's own memory/skill
   recall can inform self-healing diagnoses, not just initial spec
   authoring.
+  **DONE (D-049)** -- `HermesAgentDiagnoser`, opt-in via `AURA_DIAGNOSIS_BACKEND=hermes_agent`.
 
 **Phase Y — Service-layer gap closure (carried over from earlier phases' STATUS.md notes)**
 - Y1: Confirm/replace the in-memory API run store with real persistence
@@ -573,14 +574,18 @@ following out of scope, tracked here rather than silently dropped:
   `api/run_store.py` should be checked against the current codebase for
   whether this was already addressed, and closed out either way with a
   test).
+  **CONFIRMED DONE** -- `api/run_store.py::ApiRunStore` is SQLite-backed (`api_runs.db`), not in-memory. No action needed; closing this item.
+  **CONFIRMED DONE** -- `api/run_store.py::ApiRunStore` is SQLite-backed (`api_runs.db`), not in-memory. No action needed; closing this item.
 - Y2: Split the `SecretVault` Fernet key from the JWT HMAC signing key
   (`api/security.py`) — flagged in earlier STATUS.md revisions as a
   secrets-hygiene gap, not yet confirmed closed.
+  **CONFIRMED DONE** -- `api/security.py` already keeps `JWT_SECRET` separate from the Fernet vault key, per D-017. No action needed; closing this item.
 - Y3: `azure_adapter`/`gcp_adapter` host-allowlisting — both currently
   rely on SDK default-credential chains rather than an explicit host
   param, so Phase D's allowlist can't cover them (the kill switch still
   does). Needs either an explicit endpoint-override param on both
   adapters or a documented decision that this gap is accepted long-term.
+  **DONE (D-050)** -- fixed a real bug (Azure connection strings weren't being parsed as their actual key=value format at all) and added GCS's fixed default host. Both are now allowlist-restrictable. `sharepoint_adapter` remains a documented, genuine fail-open exception (tenant-specific, no fixed host).
 
 **Phase Z — Full partial-feature audit**
 A systematic pass through every entry in `docs/decisions.md` and

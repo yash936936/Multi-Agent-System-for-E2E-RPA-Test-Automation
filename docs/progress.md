@@ -565,3 +565,11 @@ This closes the "Hermes Agent" half of the gap-closure request; the
 remaining backlog (auto-detection wiring, multimodal verifier, service-
 layer persistence/secrets gaps, a full pass over every other partial
 feature) is tracked in `docs/Roadmap.md` §11 as Phases X/Y/Z.
+
+## 2026-07-19 — Phase X2/X3/Y: Hermes diagnosis, opt-in auto-detect, real egress-allowlist bug fix
+- D-048: `AURA_PLANNER_PRIORITY=hermes_first` opts Hermes Agent into planner auto-detection (off by default).
+- D-049: `HermesAgentDiagnoser` — Planner.diagnose can now route through Hermes Agent too (`AURA_DIAGNOSIS_BACKEND=hermes_agent`, opt-in, raises rather than fails soft since the self-healing loop already retries).
+- Confirmed Y1 (API run store persistence) and Y2 (vault/JWT key separation) were already resolved in earlier phases — no code needed, closed as already-done.
+- D-050: fixed a real bug found while investigating Y3 — Azure connection strings weren't being parsed as their actual `Key=Value;Key=Value` format, so host-allowlisting silently never worked for the common explicit-connection-string case, not just the SDK-default-credential-chain case. Added real parsing plus GCS's fixed default host; both capability types are now genuinely allowlist-restrictable.
+- 27 new tests this batch, zero regressions. Full suite: 614/617 passing (3 pre-existing sandbox-only `mss` failures, unrelated).
+- Remaining: Phase X1 (multimodal LLM verifier — blocked on needing a real vision-capable endpoint to test against) and Phase Z (full partial-feature audit across all docs — not started, the largest remaining item). See `docs/Roadmap.md` §11.

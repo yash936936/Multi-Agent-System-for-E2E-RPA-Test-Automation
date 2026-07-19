@@ -425,6 +425,16 @@ class Settings(BaseSettings):
     hermes_agent_api_key: str | None = None  # Hermes's API_SERVER_KEY, if the instance requires one
     hermes_agent_model: str | None = None  # cosmetic per Hermes's own docs, but sent for clarity/logging
 
+    # Phase X3 (decisions.md D-049): Planner.diagnose backend selection.
+    # "heuristic" (default) is LocalHeuristicDiagnoser -- deterministic
+    # keyword pattern-matching, zero dependencies. "hermes_agent" routes
+    # root-cause diagnosis through the same Hermes Agent instance
+    # configured for enable_hermes_agent/hermes_agent_base_url above,
+    # letting Hermes's own memory/skill recall inform the diagnosis.
+    # Explicit opt-in only -- not auto-detected, same posture as the
+    # planner_backend="hermes_agent" default (D-047).
+    diagnosis_backend: str = "heuristic"
+
     # Detection-matrix priority when settings.planner_backend is left
     # unset (auto-detect, see _auto_detect_planner_backend below):
     # "local_first" (default) prefers a bundled local .gguf model over

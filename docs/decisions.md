@@ -2590,3 +2590,45 @@ the *only* priority value that puts `hermes_agent` into the matrix at all
 is completely unchanged. 4 new tests in
 `tests/test_phase_w_hermes_and_llm_verifier.py`. Full suite: 603/606
 passing (3 pre-existing `mss`-module sandbox failures, unrelated).
+
+---
+
+## D-049 — Phase X3: Hermes Agent wired into Planner.diagnose (2026-07-19)
+
+`HermesAgentDiagnoser` (agents/planner/diagnoser.py) is a new opt-in
+DiagnosisBackend, reusing `orchestrator/hermes_client.py::HermesAgentClient`
+(same client Phase W's spec-generation backend uses). Selected via
+`settings.diagnosis_backend = "hermes_agent"` — explicit opt-in only, not
+auto-detected, matching D-047's posture for planner_backend. Default
+remains `LocalHeuristicDiagnoser` (deterministic, zero dependencies).
+Unlike the LLM semantic tie-break (D-047), this path does NOT fail soft —
+a Hermes transport/parse failure raises, since the self-healing loop
+already has its own retry/guardrail handling (orchestrator/guardrails.py)
+for backend failures; swallowing the error here would hide it one layer
+too early. 5 new tests. Full suite: 608/611 passing (3 pre-existing
+`mss`-module sandbox failures, unrelated).
+
+---
+
+## D-050 — Phase Y3: real Azure connection-string parsing + GCS fixed-host resolution (2026-07-19)
+
+Found and fixed a genuine bug while investigating the "azure/gcp adapters
+can't be host-allowlisted" gap noted in earlier STATUS.md revisions: it
+was worse than documented. Azure Storage connection strings are
+`Key1=Value1;Key2=Value2` pairs, not URLs — `urlparse(conn_str).hostname`
+silently returned `None` even for the common case (an explicit
+`connection_string` param), not just the SDK-default-credential-chain
+case the old docstring described. `orchestrator/capability_router.py`
+now has `_parse_azure_connection_string_host()`, which parses the real
+format (AccountName+EndpointSuffix, or BlobEndpoint directly) the same
+way `BlobServiceClient.from_connection_string` does internally, and
+applies it to both the `connection_string` param and the
+`AZURE_STORAGE_CONNECTION_STRING` env-var fallback. GCP Cloud Storage
+always talks to a fixed, well-known host (`storage.googleapis.com`)
+regardless of credential path, so that capability now resolves to it
+directly rather than being treated as unresolvable.
+`sharepoint_adapter` (tenant-specific, no fixed host) remains a genuine,
+documented fail-open case — not touched by this phase.
+
+8 new tests in `tests/test_capability_egress_controls.py`. Full suite:
+614/617 passing (3 pre-existing `mss`-module sandbox failures, unrelated).

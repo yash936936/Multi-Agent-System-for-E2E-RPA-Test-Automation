@@ -50,16 +50,62 @@ def _get_registry() -> CapabilityAdapterRegistry:
     return _registry
 
 
+def _parse_azure_connection_string_host(conn_str: str) -> str | None:
+    """
+    Phase Y3 (decisions.md D-050): Azure Storage connection strings are
+    `Key1=Value1;Key2=Value2;...` pairs, NOT a URL -- `urlparse(conn_str)
+    .hostname` silently returns None for them even when a connection
+    string genuinely was supplied, which is why AZURE_BLOB egress hosts
+    were falling through to `None` (unblockable by the allowlist) even in
+    the *common* case, not just the SDK-default-credential-chain case the
+    original docstring described. Real fix: parse the key=value pairs
+    Azure's own connection-string format uses and reconstruct the blob
+    endpoint host the same way `BlobServiceClient.from_connection_string`
+    does internally (AccountName + EndpointSuffix, or BlobEndpoint
+    directly if present).
+    """
+    fields: dict[str, str] = {}
+    for part in conn_str.split(";"):
+        if "=" in part:
+            key, _, value = part.partition("=")
+            fields[key.strip()] = value.strip()
+
+    if fields.get("BlobEndpoint"):
+        host = urlparse(fields["BlobEndpoint"]).hostname
+        if host:
+            return host
+
+    account_name = fields.get("AccountName")
+    if account_name:
+        endpoint_suffix = fields.get("EndpointSuffix", "core.windows.net")
+        return f"{account_name}.blob.{endpoint_suffix}"
+
+    return None
+
+
+# Phase Y3 (decisions.md D-050): Google Cloud Storage's default JSON API
+# endpoint -- true regardless of which credential path (service-account
+# JSON file, Application Default Credentials, attached service account)
+# the GCP adapter authenticates with, since none of those change *where*
+# the request goes, only *how* it's authorized. A custom/private endpoint
+# override, if the adapter ever grows one, would still take precedence via
+# the existing `endpoint` key in _URL_PARAM_KEYS, checked first.
+_GCS_DEFAULT_HOST = "storage.googleapis.com"
+
+
 def _extract_egress_host(payload: CapabilityCheckInput) -> str | None:
     """
     Best-effort extraction of the network host a capability call will reach
-    out to, for allowlist-checking and audit logging. Deliberately
-    conservative: adapters that manage their own endpoint resolution
-    internally via an SDK (azure_adapter/gcp_adapter/sharepoint_adapter using
-    default credential chains, for example) may not expose a host here --
-    those calls are still logged (as `host: None`) but can't be
-    allowlist-restricted by this mechanism. That gap is documented, not
-    silently pretended away.
+    out to, for allowlist-checking and audit logging.
+
+    Phase Y3 (decisions.md D-050) closed two real gaps here: Azure
+    connection strings weren't being parsed correctly at all (see
+    `_parse_azure_connection_string_host`'s docstring), and GCP_STORAGE
+    calls always resolve to a fixed, well-known host
+    (`storage.googleapis.com`) regardless of credential path, so there was
+    no reason to treat that capability as unresolvable. `sharepoint_adapter`
+    (SDK-managed, tenant-specific, no fixed host) remains a genuine
+    fail-open case -- documented, not silently pretended away.
     """
     params = payload.params or {}
 
@@ -76,11 +122,30 @@ def _extract_egress_host(payload: CapabilityCheckInput) -> str | None:
             host = urlparse(str(value)).hostname
             if host:
                 return host
+            # Not a URL-shaped connection string -- try Azure's real
+            # Key1=Value1;Key2=Value2 format before giving up on this key.
+            azure_host = _parse_azure_connection_string_host(str(value))
+            if azure_host:
+                return azure_host
 
     for key in _BARE_HOST_PARAM_KEYS:
         value = params.get(key)
         if value:
             return str(value)
+
+    if payload.capability == CapabilityType.AZURE_BLOB:
+        import os
+
+        env_conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+        if env_conn_str:
+            azure_host = _parse_azure_connection_string_host(env_conn_str)
+            if azure_host:
+                return azure_host
+
+    if payload.capability == CapabilityType.GCP_STORAGE:
+        # No 'endpoint' param override was found above -- GCS always talks
+        # to its fixed default host regardless of credential path.
+        return _GCS_DEFAULT_HOST
 
     if payload.target:
         host = urlparse(str(payload.target)).hostname

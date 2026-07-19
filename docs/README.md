@@ -489,6 +489,14 @@ AURA_PLANNER_PRIORITY=hermes_first
 
 This is the only priority value that puts `hermes_agent` into the auto-detection matrix, ahead of `local_llm`/`cloud_llm`. The default (`local_first`) and `cloud_first` behave exactly as before.
 
+Hermes can also power failure diagnosis (root-cause analysis for the self-healing loop), separately from spec generation:
+
+```
+AURA_DIAGNOSIS_BACKEND=hermes_agent
+```
+
+Default is `heuristic` (deterministic keyword pattern-matching, zero dependencies). Unlike the LLM semantic tie-break above, a Hermes diagnosis failure raises rather than failing soft — the self-healing loop already has its own retry/guardrail handling for backend failures.
+
 ### LLM semantic dual-verification tie-break
 
 Separately from planner backends: when both the OCR and DOM locators find

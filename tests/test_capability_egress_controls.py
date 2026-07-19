@@ -214,3 +214,82 @@ def test_rejected_call_is_not_audit_logged(tmp_path, monkeypatch):
     )
 
     assert not log_path.exists()
+
+
+# --------------------------------------------------------------------------
+# Phase Y3 (decisions.md D-050): Azure connection-string parsing + GCS
+# fixed-host resolution
+# --------------------------------------------------------------------------
+
+def test_azure_connection_string_host_extracted_via_account_name():
+    conn_str = (
+        "DefaultEndpointsProtocol=https;AccountName=myaccount;"
+        "AccountKey=fakekey;EndpointSuffix=core.windows.net"
+    )
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.AZURE_BLOB,
+        target="",
+        params={"connection_string": conn_str, "container": "c", "blob_name": "b"},
+    )
+    assert _extract_egress_host(payload) == "myaccount.blob.core.windows.net"
+
+
+def test_azure_connection_string_host_extracted_via_blob_endpoint():
+    conn_str = "BlobEndpoint=https://myaccount.blob.core.windows.net/;AccountName=myaccount;AccountKey=fakekey"
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.AZURE_BLOB,
+        target="",
+        params={"connection_string": conn_str, "container": "c", "blob_name": "b"},
+    )
+    assert _extract_egress_host(payload) == "myaccount.blob.core.windows.net"
+
+
+def test_azure_env_var_connection_string_host_extracted(monkeypatch):
+    monkeypatch.setenv(
+        "AZURE_STORAGE_CONNECTION_STRING",
+        "DefaultEndpointsProtocol=https;AccountName=envaccount;AccountKey=fakekey",
+    )
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.AZURE_BLOB,
+        target="",
+        params={"container": "c", "blob_name": "b"},
+    )
+    assert _extract_egress_host(payload) == "envaccount.blob.core.windows.net"
+
+
+def test_azure_connection_string_can_now_be_allowlist_restricted():
+    settings.allowed_capability_hosts = ["myaccount.blob.core.windows.net"]
+    conn_str = "DefaultEndpointsProtocol=https;AccountName=otheraccount;AccountKey=fakekey"
+    result = route_capability(
+        CapabilityCheckInput(
+            capability=CapabilityType.AZURE_BLOB,
+            target="",
+            params={"connection_string": conn_str, "container": "c", "blob_name": "b"},
+        )
+    )
+    assert result.passed is False
+    assert result.evidence.get("rejected") is True
+    assert "otheraccount.blob.core.windows.net" in result.evidence["reason"]
+
+
+def test_gcp_storage_resolves_to_fixed_default_host():
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.GCP_STORAGE,
+        target="",
+        params={"bucket": "b", "blob_name": "f"},
+    )
+    assert _extract_egress_host(payload) == "storage.googleapis.com"
+
+
+def test_gcp_storage_can_now_be_allowlist_restricted():
+    settings.allowed_capability_hosts = ["some-other-host.example.com"]
+    result = route_capability(
+        CapabilityCheckInput(
+            capability=CapabilityType.GCP_STORAGE,
+            target="",
+            params={"bucket": "b", "blob_name": "f"},
+        )
+    )
+    assert result.passed is False
+    assert result.evidence.get("rejected") is True
+    assert "storage.googleapis.com" in result.evidence["reason"]
