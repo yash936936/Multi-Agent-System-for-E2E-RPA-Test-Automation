@@ -9,6 +9,22 @@ project: AURA
 
 ---
 
+## 2026-07-19 (later same day) — D-046 follow-up: live re-run confirmed the fix, one more real gap found and closed
+
+**What happened:**
+- The person re-ran the exact same `pytest` suite on the Windows machine that found the original 3 bugs, after the D-046 fix. Bug 3 (PyAutoGUI fail-safe crash) confirmed gone — 595 passing, up from 585.
+- Bugs 1 and 2 (both dual-verification tests) still failed, with the exact same symptom as before. Root cause: not a new bug, an incomplete one — those two tests use the `live_page` fixture (correctly headless by default per D-046's fix), but their entire purpose is proving OCR and DOM independently agree, which requires the browser to actually be rendering visible pixels. The fix was correctly *skipping* OCR in headless mode; these two tests needed headed mode to test what they claim.
+- Added `headed_live_page`, a second fixture identical to `live_page` except it forces `settings.playwright_headless = False` before the browser launches. Used only by the two tests that structurally need it — `live_page`'s default (correct, headless) behavior is unchanged for every other test.
+
+**What changed:**
+- `tests/test_executor_dom_path.py` — new `headed_live_page` fixture; the two originally-failing tests switched to use it.
+- `docs/decisions.md` — D-046 addendum.
+
+**What should happen next:**
+- One more live-Windows re-run to fully confirm all three original failures are gone — this sandbox still can't verify a headed browser session itself.
+
+---
+
 ## 2026-07-19 — Three real bugs found on a live Windows run, fixed at their shared root cause (D-046)
 
 **What happened:**

@@ -2614,3 +2614,53 @@ every prior session here, zero new regressions.
 **Not verified in this session:** the actual live-Windows re-run — this
 sandbox cannot download Chromium to confirm end-to-end itself. Same
 disclosed-gap pattern as D-044/D-045.
+
+**Addendum — live-Windows re-run confirmed the fix, found one more real
+gap, now closed:** the person re-ran the exact same `pytest` suite on the
+Windows machine that originally found these bugs. Result: the PyAutoGUI
+fail-safe crash (original bug 3) is confirmed gone — 595 passing, up from
+585. But 2 of the 3 original failures (bugs 1 and 2, both dual-verification
+tests) *still failed*, now with the identical symptom as before
+(`single-method` instead of `dual-method-confirmed`; `dispatched_via: None`
+instead of `"ocr"`).
+
+Root cause of the remaining failures: not a new bug, but an incomplete
+fix. `settings.playwright_headless` correctly defaults to `True` (per this
+entry's own reasoning above for why that has to stay the default), and the
+`live_page` fixture these two tests used doesn't override it -- so they
+were launching headless, and the D-046 fix was doing exactly what it's
+supposed to do: correctly *skipping* OCR rather than letting it fail
+wrong. But these two tests' entire purpose is proving OCR and DOM
+*independently agree*, which structurally requires the browser to
+actually render visible pixels. Skipping OCR (correct default behavior)
+and failing to find it (the old bug) produce the same test symptom by
+coincidence, which is why the fix looked incomplete from the failure
+output alone.
+
+**Fix:** added a second fixture, `headed_live_page`, in
+`tests/test_executor_dom_path.py` -- identical to `live_page` except it
+`monkeypatch.setattr(settings, "playwright_headless", False)` before
+calling `browser.open_url()` (headless is fixed at launch time, so the
+override has to land before the browser actually starts). Deliberately a
+*new* fixture, not a change to `live_page`'s own default, so every other
+test using `live_page` keeps today's correct headless behavior unchanged
+-- only the two tests that structurally need headed rendering to test
+what they claim opt into it. `test_dual_verification_both_agree_reports_dual_method_confirmed`
+and `test_dual_verification_disagreement_falls_back_when_winner_dispatch_fails`
+now use `headed_live_page`.
+
+**Verification:** confirmed via direct inspection that the fixture applies
+the setting override before the browser launches, syntax-checked, and
+re-ran the file in this sandbox -- the 4 mock-based (D-046's original)
+tests still pass with no browser needed, and the 5 fixture-based tests
+(including the 2 just changed) fail with the expected `NoDisplayError:
+... Executable doesn't exist ...` -- the correct, structural,
+already-documented sandbox limitation, not a new logic error. Full suite:
+566 passing, same 26 failed + 5 errored Chromium-binary-download
+limitation as every session in this environment, zero new regressions.
+**A live-Windows re-run is still the real confirmation this fix works**
+(this sandbox cannot verify a headed browser session itself) -- but the
+fix is narrowly scoped to exactly the two tests that failed, changes
+nothing about default behavior, and the failure mode it targets (a
+missing headless override on a test that needs headed rendering) is
+now precisely diagnosed rather than guessed at.
