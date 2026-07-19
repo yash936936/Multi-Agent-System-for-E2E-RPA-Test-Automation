@@ -8,6 +8,12 @@ last_updated: 2026-07-19
 
 > This file should always reflect the *current* state — overwrite freely, don't accumulate history here (that belongs in `progress.md`).
 
+## Where things stand (2026-07-19 update, Phase Z started)
+- **D-051:** fixed stale "proposed" cross-references in `docs/TRD.md` (§10/§11 headers already said "delivered"; two summary blurbs elsewhere in the same file hadn't caught up).
+- **D-052:** added a real `LICENSE` file (MIT) backing `PROJECT_OVERVIEW.md`'s existing claim, which previously had no actual file behind it. Shipped `aura baselines list|approve|reject` — closes D-027's explicitly-flagged "natural, small follow-up" that had been left undone (reviewing/approving a new visual-regression baseline used to require manually deleting a file).
+- **629/632 tests passing** (23 new this batch, zero regressions; same 3 pre-existing `mss`-module sandbox failures).
+- **Phase Z is a continuing sweep, not a one-pass completion** — the two items closed above were the concretely-named, easily-verified ones found so far. Genuinely still open: D-027's per-channel/perceptual diff threshold (a larger algorithm change, not attempted here), Phase X1's multimodal LLM verifier (blocked on a real vision-capable endpoint to test against), and a continued grep-and-fix pass through `decisions.md`/`STATUS.md` history for any remaining stale language.
+
 ## Where things stand (2026-07-19 update, Phase X/Y — done)
 - **Phase X2 (D-048):** opt-in `AURA_PLANNER_PRIORITY=hermes_first` auto-detection for the Hermes Agent planner backend. Default behavior (`local_first`/`cloud_first`) unchanged.
 - **Phase X3 (D-049):** `HermesAgentDiagnoser` — root-cause diagnosis can now route through a real Hermes Agent instance too, not just spec generation. Opt-in via `AURA_DIAGNOSIS_BACKEND=hermes_agent`; default remains the deterministic heuristic diagnoser.
@@ -163,7 +169,7 @@ Everything in the "Since then" section of the previous revision of this file (li
 
 ## Blockers / open questions
 - **Local LLM planner backend still needs a real verification run** (carried over, unchanged — `"heuristic"` remains the default and is fully verified).
-- **Vault/repo conventions** — still no code repository link, license, or naming convention confirmed.
+- **Vault/repo conventions** — repository link/naming convention still informal; license is now confirmed (see below).
 - **Service layer secrets design** — decide whether the vault key and JWT signing key should be split before this goes anywhere near production traffic.
 - **Multi-tenant run store is in-memory** (`runs_store: dict` in `runs.py`) — restarting the API process loses all run history; no persistence layer wired yet despite `orchestrator/memory.py` already existing for the CLI path.
 

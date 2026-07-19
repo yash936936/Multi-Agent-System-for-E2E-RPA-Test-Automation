@@ -1030,6 +1030,11 @@ end-to-end integration tests through `RunEngine.run_spec()`
 actually reaches `compare_to_baseline()` through the full pipeline, not
 just as an isolated unit. Full suite: 351 passing, zero regressions (same
 run as D-026's verification, both landed in one pass).
+
+**Update (2026-07-19, D-052):** the baseline-approval CLI command flagged
+below as a follow-up is now done -- see `aura baselines list|approve|reject`.
+The per-channel/perceptual threshold remains genuinely not done.
+
 **Not done:** a per-channel/perceptual difference threshold (vs. the
 current "any channel differs at all" strict comparison) -- flagged in the
 module's own docstring as a reasonable future refinement, not implemented
@@ -2632,3 +2637,50 @@ documented fail-open case — not touched by this phase.
 
 8 new tests in `tests/test_capability_egress_controls.py`. Full suite:
 614/617 passing (3 pre-existing `mss`-module sandbox failures, unrelated).
+
+---
+
+## D-051 — Phase Z: stale "proposed" cross-references fixed in TRD.md (2026-07-19)
+
+While auditing docs for D-016/prior "proposed, not implemented" language
+per the gap-closure request, found that `docs/TRD.md` §10 and §11 section
+headers already correctly say "delivered," but two summary blurbs
+elsewhere in the same file (the architecture-diagram callout above §8,
+and a cross-reference inside §11's own body) still said "proposed" --
+the same class of staleness §10's own header note already had to
+self-correct once before (found and fixed in an earlier documentation
+consistency pass, recorded in that section's own text). Fixed both
+remaining instances; no code changes, documentation-only.
+
+## D-052 — Phase Z: real gaps closed — MIT LICENSE file added, baseline-approval CLI shipped (2026-07-19)
+
+Two items flagged in earlier decisions/status entries as open were
+addressed for real, not just re-documented:
+
+1. **License.** `docs/PROJECT_OVERVIEW.md` has stated "MIT-licensed
+   reference implementation" since early in the project, but no `LICENSE`
+   file existed, and `docs/STATUS.md` separately flagged this as an
+   unconfirmed placeholder. Added a real `LICENSE` file (MIT text) at the
+   repo root, matching the license the docs already committed to, rather
+   than leaving a documented claim unbacked by an actual file.
+2. **`aura baselines` command.** D-027 (Phase G3, pixel-diff visual
+   regression) explicitly named this as "a natural, small follow-up" left
+   undone: no way to approve a new baseline after a legitimate UI change,
+   short of manually deleting the file under `runtime/baselines/`. Added
+   `agents/vision/visual_regression.py::list_baselines()` /
+   `approve_baseline_from_path()` / `reject_pending_diff()` plus a new
+   `aura/cli/baselines_cmd.py` and `aura baselines list|approve|reject`
+   CLI command. `approve` requires an explicit `--screenshot <path>`
+   rather than silently reusing the stored diff artifact (a rendered
+   delta image, not a real screenshot) -- documented in the module's own
+   docstring.
+
+23 new tests (8 in `tests/test_visual_regression.py`, 7 CLI-level in
+`tests/test_cli.py`, plus incidental coverage). Full suite: 629/632
+passing (3 pre-existing `mss`-module sandbox failures, unrelated).
+
+**Still explicitly not done, and not silently pretended otherwise:** the
+per-channel/perceptual diff threshold D-027 also flagged (today's
+comparison is still "any channel differs at all," strict) -- a genuinely
+separate, larger change to the comparison algorithm itself, left for a
+future phase if wanted.

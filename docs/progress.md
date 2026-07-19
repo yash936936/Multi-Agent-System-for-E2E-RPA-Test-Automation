@@ -573,3 +573,15 @@ feature) is tracked in `docs/Roadmap.md` §11 as Phases X/Y/Z.
 - D-050: fixed a real bug found while investigating Y3 — Azure connection strings weren't being parsed as their actual `Key=Value;Key=Value` format, so host-allowlisting silently never worked for the common explicit-connection-string case, not just the SDK-default-credential-chain case. Added real parsing plus GCS's fixed default host; both capability types are now genuinely allowlist-restrictable.
 - 27 new tests this batch, zero regressions. Full suite: 614/617 passing (3 pre-existing sandbox-only `mss` failures, unrelated).
 - Remaining: Phase X1 (multimodal LLM verifier — blocked on needing a real vision-capable endpoint to test against) and Phase Z (full partial-feature audit across all docs — not started, the largest remaining item). See `docs/Roadmap.md` §11.
+
+## 2026-07-19 — Phase Z (started): stale docs fixed, license added, baseline-approval CLI shipped
+D-051: fixed two stale "proposed" cross-references in TRD.md that hadn't
+caught up with their own section headers already saying "delivered."
+D-052: added a real MIT LICENSE file to back an existing doc claim that
+previously had no file behind it, and shipped `aura baselines
+list|approve|reject` (agents/vision/visual_regression.py +
+aura/cli/baselines_cmd.py) closing D-027's explicitly-named follow-up.
+23 new tests, zero regressions. Full suite: 629/632 passing (3
+pre-existing sandbox-only `mss` failures, unrelated). Phase Z remains a
+continuing sweep -- D-027's perceptual-diff threshold and Phase X1's
+multimodal verifier are still genuinely open, tracked in Roadmap §11.

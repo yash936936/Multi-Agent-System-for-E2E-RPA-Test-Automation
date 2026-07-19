@@ -598,6 +598,6 @@ after Phase Z, `docs/STATUS.md` contains zero features described as
 "proposed but not implemented" without a corresponding roadmap entry
 explaining why.
 
-None of X/Y/Z is started. This section exists so the next work session
-(or the next `debug-qa-finalize` pass) has a concrete, prioritized
-backlog instead of an open-ended "make it more complete" instruction.
+**Phase Z progress (2026-07-19):** started. Closed so far: stale "proposed" cross-references in TRD.md fixed (D-051); a real MIT LICENSE file added to back an existing doc claim, and the `aura baselines list|approve|reject` CLI command shipped to close D-027's explicitly flagged follow-up (both D-052). Genuinely still open: D-027's per-channel/perceptual diff threshold, Phase X1's multimodal verifier, and a continued sweep of `decisions.md`/`STATUS.md` history for any remaining stale "proposed"/"not implemented" language not yet caught.
+
+This section exists so the next work session (or the next `debug-qa-finalize` pass) has a concrete, prioritized backlog instead of an open-ended "make it more complete" instruction.

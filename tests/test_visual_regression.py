@@ -123,3 +123,94 @@ def test_default_tolerance_is_conservative_small(tmp_path):
 
     sig = inspect.signature(compare_to_baseline)
     assert sig.parameters["tolerance"].default == 0.02
+
+
+# --------------------------------------------------------------------------
+# Phase Z (decisions.md D-052): baseline management (list/approve/reject)
+# --------------------------------------------------------------------------
+
+from agents.vision.visual_regression import (
+    BaselineNotFoundError,
+    approve_baseline_from_path,
+    list_baselines,
+    reject_pending_diff,
+)
+
+
+def test_list_baselines_empty_when_none_stored(tmp_path):
+    assert list_baselines() == []
+
+
+def test_list_baselines_reflects_stored_keys(tmp_path):
+    current = _save_solid_image(tmp_path / "current.png", (255, 0, 0))
+    compare_to_baseline(current, baseline_key="widget_list_a")
+
+    rows = list_baselines()
+    assert len(rows) == 1
+    assert rows[0]["baseline_key"] == "widget_list_a"
+    assert rows[0]["has_pending_diff"] is False
+
+
+def test_list_baselines_flags_pending_diff(tmp_path):
+    _save_solid_image(tmp_path / "base.png", (0, 0, 0))
+    compare_to_baseline(tmp_path / "base.png", baseline_key="widget_list_b")
+
+    _save_solid_image(tmp_path / "changed.png", (255, 255, 255))
+    compare_to_baseline(tmp_path / "changed.png", baseline_key="widget_list_b", tolerance=0.0)
+
+    rows = list_baselines()
+    assert rows[0]["has_pending_diff"] is True
+
+
+def test_approve_baseline_replaces_stored_image(tmp_path):
+    _save_solid_image(tmp_path / "base.png", (0, 0, 0))
+    compare_to_baseline(tmp_path / "base.png", baseline_key="widget_approve_a")
+
+    replacement = _save_solid_image(tmp_path / "replacement.png", (10, 20, 30))
+    approve_baseline_from_path("widget_approve_a", str(replacement))
+
+    # Re-comparing the same replacement image now passes cleanly -- it's
+    # the new baseline.
+    result = compare_to_baseline(replacement, baseline_key="widget_approve_a")
+    assert result.passed is True
+    assert result.baseline_created is False
+
+
+def test_approve_baseline_clears_pending_diff(tmp_path):
+    _save_solid_image(tmp_path / "base.png", (0, 0, 0))
+    compare_to_baseline(tmp_path / "base.png", baseline_key="widget_approve_b")
+    _save_solid_image(tmp_path / "changed.png", (255, 255, 255))
+    compare_to_baseline(tmp_path / "changed.png", baseline_key="widget_approve_b", tolerance=0.0)
+    assert list_baselines()[0]["has_pending_diff"] is True
+
+    approve_baseline_from_path("widget_approve_b", str(tmp_path / "changed.png"))
+    assert list_baselines()[0]["has_pending_diff"] is False
+
+
+def test_approve_baseline_raises_when_key_does_not_exist(tmp_path):
+    replacement = _save_solid_image(tmp_path / "replacement.png", (10, 20, 30))
+    with pytest.raises(BaselineNotFoundError):
+        approve_baseline_from_path("never_existed", str(replacement))
+
+
+def test_reject_pending_diff_clears_flag_without_changing_baseline(tmp_path):
+    _save_solid_image(tmp_path / "base.png", (0, 0, 0))
+    compare_to_baseline(tmp_path / "base.png", baseline_key="widget_reject_a")
+    _save_solid_image(tmp_path / "changed.png", (255, 255, 255))
+    compare_to_baseline(tmp_path / "changed.png", baseline_key="widget_reject_a", tolerance=0.0)
+    assert list_baselines()[0]["has_pending_diff"] is True
+
+    cleared = reject_pending_diff("widget_reject_a")
+    assert cleared is True
+    assert list_baselines()[0]["has_pending_diff"] is False
+
+    # Baseline itself is untouched -- comparing the ORIGINAL base image
+    # still passes (it's still the stored baseline).
+    result = compare_to_baseline(tmp_path / "base.png", baseline_key="widget_reject_a")
+    assert result.passed is True
+
+
+def test_reject_pending_diff_returns_false_when_nothing_pending(tmp_path):
+    _save_solid_image(tmp_path / "base.png", (0, 0, 0))
+    compare_to_baseline(tmp_path / "base.png", baseline_key="widget_reject_b")
+    assert reject_pending_diff("widget_reject_b") is False

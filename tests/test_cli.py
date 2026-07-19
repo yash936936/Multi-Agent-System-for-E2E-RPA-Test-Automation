@@ -175,3 +175,80 @@ def test_execute_prompt_forwards_junit_out(monkeypatch):
     monkeypatch.setattr(execute_cmd, "_run_requirement_text", fake_run)
     execute_cmd.execute_prompt("Check the homepage loads correctly", junit_out="/tmp/results.xml")
     assert calls["junit_out"] == "/tmp/results.xml"
+
+
+# --------------------------------------------------------------------------
+# Phase Z (decisions.md D-052): aura baselines list/approve/reject
+# --------------------------------------------------------------------------
+
+def test_baselines_list_empty(isolated_project: Path):
+    result = runner.invoke(app, ["baselines", "list"])
+    assert result.exit_code == 0
+    assert "No visual-regression baselines" in result.stdout
+
+
+def test_baselines_list_shows_stored_key(isolated_project: Path):
+    from PIL import Image
+    from agents.vision.visual_regression import compare_to_baseline
+
+    img_path = isolated_project / "shot.png"
+    Image.new("RGB", (10, 10), (1, 2, 3)).save(img_path)
+    compare_to_baseline(img_path, baseline_key="cli_widget")
+
+    result = runner.invoke(app, ["baselines", "list"])
+    assert result.exit_code == 0
+    assert "cli_widget" in result.stdout
+
+
+def test_baselines_approve_requires_screenshot_flag(isolated_project: Path):
+    result = runner.invoke(app, ["baselines", "approve", "some_key"])
+    assert result.exit_code == 1
+    assert "Usage: aura baselines approve" in result.stdout
+
+
+def test_baselines_approve_replaces_baseline(isolated_project: Path):
+    from PIL import Image
+    from agents.vision.visual_regression import compare_to_baseline
+
+    base_path = isolated_project / "base.png"
+    Image.new("RGB", (10, 10), (0, 0, 0)).save(base_path)
+    compare_to_baseline(base_path, baseline_key="cli_widget_2")
+
+    new_path = isolated_project / "new.png"
+    Image.new("RGB", (10, 10), (200, 200, 200)).save(new_path)
+
+    result = runner.invoke(app, ["baselines", "approve", "cli_widget_2", "--screenshot", str(new_path)])
+    assert result.exit_code == 0
+    assert "Approved new baseline" in result.stdout
+
+
+def test_baselines_approve_unknown_key_fails_cleanly(isolated_project: Path):
+    new_path = isolated_project / "new.png"
+    from PIL import Image
+    Image.new("RGB", (10, 10), (200, 200, 200)).save(new_path)
+
+    result = runner.invoke(app, ["baselines", "approve", "never_existed", "--screenshot", str(new_path)])
+    assert result.exit_code == 1
+
+
+def test_baselines_reject_clears_pending_flag(isolated_project: Path):
+    from PIL import Image
+    from agents.vision.visual_regression import compare_to_baseline
+
+    base_path = isolated_project / "base.png"
+    Image.new("RGB", (10, 10), (0, 0, 0)).save(base_path)
+    compare_to_baseline(base_path, baseline_key="cli_widget_3")
+
+    changed_path = isolated_project / "changed.png"
+    Image.new("RGB", (10, 10), (255, 255, 255)).save(changed_path)
+    compare_to_baseline(changed_path, baseline_key="cli_widget_3", tolerance=0.0)
+
+    result = runner.invoke(app, ["baselines", "reject", "cli_widget_3"])
+    assert result.exit_code == 0
+    assert "Cleared pending diff flag" in result.stdout
+
+
+def test_baselines_unknown_action_fails_cleanly(isolated_project: Path):
+    result = runner.invoke(app, ["baselines", "bogus_action"])
+    assert result.exit_code == 1
+    assert "Unknown action" in result.stdout

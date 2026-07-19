@@ -18,6 +18,7 @@ text matching -- three different questions, three different mechanisms:
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image, ImageChops
@@ -127,3 +128,84 @@ def compare_to_baseline(
         result.diff_image_path = str(diff_out_path)
 
     return result
+
+
+# --------------------------------------------------------------------------
+# Phase Z (decisions.md D-052): baseline management -- the "natural, small
+# follow-up" D-027 explicitly flagged as not yet done ("no CLI command for
+# reviewing/approving a new baseline when a legitimate UI change causes an
+# expected diff -- today, deleting the file under runtime/baselines/ and
+# re-running is the only way to reset one").
+# --------------------------------------------------------------------------
+
+def list_baselines() -> list[dict]:
+    """
+    Returns metadata for every stored baseline: key, file path, size in
+    bytes, last-modified time, and whether a pending (not-yet-approved)
+    diff image exists for it (i.e. the most recent comparison against this
+    baseline failed and hasn't been resolved yet by either approving the
+    new screenshot or leaving the old baseline in place).
+    """
+    settings.baselines_dir.mkdir(parents=True, exist_ok=True)
+    results = []
+    for path in sorted(settings.baselines_dir.glob("*.png")):
+        if path.name.endswith("_diff_latest.png"):
+            continue
+        key = path.stem
+        diff_path = settings.baselines_dir / f"{key}_diff_latest.png"
+        stat = path.stat()
+        results.append({
+            "baseline_key": key,
+            "path": str(path),
+            "size_bytes": stat.st_size,
+            "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            "has_pending_diff": diff_path.exists(),
+        })
+    return results
+
+
+class BaselineNotFoundError(RuntimeError):
+    pass
+
+
+def approve_baseline_from_path(baseline_key: str, replacement_screenshot_path: str) -> Path:
+    """
+    Replaces the stored baseline for `baseline_key` with the image at
+    `replacement_screenshot_path`, and clears any pending diff artifact for
+    that key. Raises BaselineNotFoundError if no baseline currently exists
+    for this key (nothing to approve/replace -- the next
+    `compare_to_baseline` call for a brand-new key already creates one
+    automatically, so this path is specifically for *replacing* an
+    existing one).
+    """
+    settings.baselines_dir.mkdir(parents=True, exist_ok=True)
+    baseline_path = _baseline_path(baseline_key)
+    if not baseline_path.exists():
+        raise BaselineNotFoundError(
+            f"No existing baseline for key '{baseline_key}' at {baseline_path} -- "
+            "nothing to approve/replace. A new baseline is created automatically "
+            "the first time compare_to_baseline() runs for a brand-new key."
+        )
+
+    replacement = Image.open(replacement_screenshot_path).convert("RGB")
+    replacement.save(baseline_path)
+
+    diff_path = _diff_image_path(baseline_key)
+    if diff_path.exists():
+        diff_path.unlink()
+
+    return baseline_path
+
+
+def reject_pending_diff(baseline_key: str) -> bool:
+    """
+    Discards a pending diff artifact without touching the stored baseline
+    -- the "no, that was a real regression, I'm not approving it, just
+    clear the flag once I've filed a bug" case. Returns True if a pending
+    diff existed and was removed, False if there was nothing to clear.
+    """
+    diff_path = _diff_image_path(baseline_key)
+    if diff_path.exists():
+        diff_path.unlink()
+        return True
+    return False

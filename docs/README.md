@@ -333,6 +333,18 @@ aura skills quarantined                                 # list everything curren
 aura skills unquarantine TC-LOGIN-FLOW-001              # clear a quarantine entry
 ```
 
+### `aura baselines`
+
+Review, approve, or reject visual-regression baselines (Phase U pixel-diff comparisons). Closes the "delete the file and re-run" workaround that used to be the only way to accept an intentional UI change.
+
+```powershell
+aura baselines list                                              # show every stored baseline + whether it has a pending (failing) diff
+aura baselines approve dashboard_after_login --screenshot new.png # accept new.png as the new baseline, clearing the pending flag
+aura baselines reject dashboard_after_login                       # confirm a flagged diff WAS a real regression -- clears the flag, leaves the baseline untouched
+```
+
+`approve` always requires an explicit `--screenshot <path>` — it won't silently reuse the saved diff artifact, since that's a rendered delta image (amplified for visibility), not a real screenshot of the current page.
+
 `skills diff` is useful for reviewing what the self-healer learned since your last checkpoint before trusting it in an unattended/CI run — shows skills added, removed, and changed (confidence, applied count, proposed fix).
 
 **Quarantine (Phase H2) is opt-in only.** Nothing in AURA quarantines a test automatically — the API's `/api/v1/test-runs/analytics/flaky` endpoint (and the web dashboard's Analytics view) only ever *surfaces candidates* based on real pass/fail history; a human decides whether to act on that by running `aura skills quarantine <test_id>`. Once quarantined, `aura execute --all` skips that spec by default (printing a visible `Skipped -- ... is quarantined` message) — pass `--include-quarantined` to run it anyway without first unquarantining it.

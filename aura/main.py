@@ -21,7 +21,7 @@ import typer
 from rich.console import Console
 
 from agents.planner.spec_generator import infer_test_id
-from aura.cli import debug_cmd, execute_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd
+from aura.cli import baselines_cmd, debug_cmd, execute_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd
 from config.settings import PLAYWRIGHT_BROWSER_CHOICES, settings
 from orchestrator import quarantine_store
 from orchestrator.schemas import RunReport, RunStatus
@@ -343,6 +343,30 @@ def skills(
         skills_cmd.list_quarantined()
     else:
         console.print(f"[red]Unknown action '{action}'. Use list | export | import | diff | quarantine | unquarantine | quarantined.[/red]")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def baselines(
+    action: str = typer.Argument(..., help="list | approve | reject"),
+    target: str = typer.Argument(None, help="baseline_key -- required for approve/reject"),
+    screenshot: str = typer.Option(None, "--screenshot", help="Path to the new screenshot to approve as the baseline -- required for approve"),
+) -> None:
+    """Review, approve, or reject visual-regression baselines (Phase U pixel-diff). Phase Z (decisions.md D-052)."""
+    if action == "list":
+        baselines_cmd.list_baselines()
+    elif action == "approve":
+        if not target or not screenshot:
+            console.print("[red]Usage: aura baselines approve <key> --screenshot <path>[/red]")
+            raise typer.Exit(code=1)
+        baselines_cmd.approve_baseline(target, screenshot)
+    elif action == "reject":
+        if not target:
+            console.print("[red]Usage: aura baselines reject <key>[/red]")
+            raise typer.Exit(code=1)
+        baselines_cmd.reject_diff(target)
+    else:
+        console.print(f"[red]Unknown action '{action}'. Use list | approve | reject.[/red]")
         raise typer.Exit(code=1)
 
 

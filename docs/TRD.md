@@ -32,7 +32,7 @@ AURA is a **hub-and-spoke multi-agent system** coordinated entirely through the 
 
 Every sub-agent is registered with the Orchestrator as a named tool with a defined input/output schema. The Orchestrator never calls a sub-agent's implementation directly — all dispatch goes through the Hermes Agent API's tool-calling layer, so any sub-agent can be replaced, upgraded, or compressed without changing orchestration logic.
 
-> **Second execution pattern (§11, proposed):** the diagram above covers AURA driving the UI itself via the Vision Execution Core. A second, independent pattern exists for steps where an external Automation Anywhere bot performs the interaction and AURA only triggers and validates: `Playwright Test Suite → trigger AA bot (REST/CLI) → AA bot runs → validate Web App / Database / Files (Playwright + db_adapter + file_adapter)`. See §11 for the full design and how it reconciles with §10's Playwright locator-resolution redesign.
+> **Second execution pattern (§11, delivered):** the diagram above covers AURA driving the UI itself via the Vision Execution Core. A second, independent pattern exists for steps where an external Automation Anywhere bot performs the interaction and AURA only triggers and validates: `Playwright Test Suite → trigger AA bot (REST/CLI) → AA bot runs → validate Web App / Database / Files (Playwright + db_adapter + file_adapter)`. Implemented as `agents/capability/automation_anywhere_adapter.py` + `agents/capability/playwright_validator.py`. See §11 for the full design and how it reconciles with §10's Playwright locator-resolution redesign. (Corrected from a stale "proposed" cross-reference during the Phase Z documentation audit, decisions.md D-051 — the section itself was already marked delivered, only this summary blurb hadn't been updated.)
 
 ---
 
@@ -358,7 +358,7 @@ leg of the diagram once the bot reports a terminal state:
   page/state the bot was expected to produce (e.g. an updated order-status
   screen).
 - Resolves and reads back element/state via Playwright's accessibility
-  snapshot (the same primitive as §10's proposed primary action path),
+  snapshot (the same primitive as §10's now-delivered primary action path),
   asserting against the spec's `expected` block — text content, element
   presence, visual state. This leg is strictly read-only: no clicking or
   typing.
