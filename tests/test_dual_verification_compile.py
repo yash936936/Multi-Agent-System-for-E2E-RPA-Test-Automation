@@ -153,6 +153,68 @@ def test_only_dom_found_is_single_method():
     assert evidence["verification_method"] == "single-method"
 
 
+# --------------------------------------------------------------------------
+# ocr_attempted (D-046 bug fix): mirrors dom_attempted's "not applicable,
+# not attempted-and-failed" pattern for the case where an active browser
+# session is headless -- OCR structurally cannot see a headless browser's
+# rendered content (nothing reaches the OS-level framebuffer an mss-based
+# screenshot reads), so runtime.hooks.browser.is_headless() gates whether
+# OCR is even attempted. This closes three real bugs found via a live
+# Windows pytest run with a working Chromium binary: (1) dual-verification
+# reporting "single-method" instead of "dual-method-confirmed" even when
+# both should have agreed, (2) a forced-DOM-dispatch-failure test getting
+# dispatched_via=None instead of falling back to OCR, and (3) a real
+# PyAutoGUI fail-safe trigger from a spurious near-corner OCR coordinate
+# match against the real (non-browser) desktop content mss actually saw.
+# --------------------------------------------------------------------------
+
+def test_ocr_not_attempted_when_headless_dom_alone_is_single_method():
+    ocr = _ocr(confidence=0.80)  # would have "found" something if it ran
+    dom = _dom(confidence=0.90)
+    decision, confidence, winner, evidence = _compile_dual_result(
+        ocr, dom, dom_attempted=True, threshold=0.55,
+        tie_break_mode="highest_confidence", overlap_tolerance_px=10,
+        ocr_attempted=False,
+    )
+    assert decision == "dispatch"
+    assert winner == "dom"
+    assert confidence == 0.90
+    assert evidence["verification_method"] == "single-method"
+    # The critical assertion: OCR's not-attempted status is recorded
+    # honestly, not conflated with "attempted and didn't find anything."
+    assert evidence["ocr"] == {"attempted": False}
+
+
+def test_ocr_not_attempted_and_dom_also_fails_escalates_without_ocr_confidence():
+    # Confirms a not-attempted OCR result never contributes a confidence
+    # value or a false "found" signal to the escalation path either.
+    ocr = _ocr(confidence=0.95, found=True)  # would win if it were ever consulted
+    dom = _dom(found=False, confidence=0.20, bbox=None)
+    decision, confidence, winner, evidence = _compile_dual_result(
+        ocr, dom, dom_attempted=True, threshold=0.55,
+        tie_break_mode="highest_confidence", overlap_tolerance_px=10,
+        ocr_attempted=False,
+    )
+    assert decision == "escalate"
+    assert winner is None
+    assert confidence == 0.20  # DOM's confidence only -- OCR's 0.95 must not leak in
+    assert evidence["ocr"] == {"attempted": False}
+
+
+def test_ocr_attempted_defaults_to_true_for_backward_compatibility():
+    # Every call site written before D-046 (this file's other tests
+    # included) doesn't pass ocr_attempted at all -- confirms the default
+    # preserves the historical "OCR always ran" behavior exactly.
+    ocr = _ocr(confidence=0.80)
+    dom = _dom(found=False, confidence=0.0, bbox=None)
+    decision, confidence, winner, evidence = _compile_dual_result(
+        ocr, dom, dom_attempted=True, threshold=0.55,
+        tie_break_mode="highest_confidence", overlap_tolerance_px=10,
+    )
+    assert evidence["ocr"]["attempted"] is True
+    assert winner == "ocr"
+
+
 def test_dom_not_attempted_at_all_is_single_method_ocr():
     """No browser session -- DOM path isn't applicable, not "tried and
     failed." Native-desktop/no-session targets must still work exactly as

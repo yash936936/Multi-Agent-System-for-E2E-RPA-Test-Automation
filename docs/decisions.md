@@ -2561,3 +2561,56 @@ browser-dependent integration tests carrying the disclosed sandbox gap
 R–V has an outstanding "never actually run through pytest" gap anymore —
 only the long-standing, environment-specific Chromium binary limitation
 remains, which is infrastructure, not code.
+
+## D-046 — Three real bugs found on a live Windows run, one root cause, one fix
+
+**Date:** 2026-07-19
+**Context:** a real `pytest` run on a Windows machine with a genuinely
+working Chromium binary surfaced three failures with no obvious shared
+cause at first glance:
+
+1. `test_dual_verification_both_agree_reports_dual_method_confirmed` —
+   expected `verification_method == "dual-method-confirmed"`, got
+   `"single-method"`.
+2. `test_dual_verification_disagreement_falls_back_when_winner_dispatch_fails`
+   — expected `verification_evidence["dispatched_via"] == "ocr"`, got `None`.
+3. `test_run_engine_persists_resumable_run_state` — a real, unmocked
+   `RuntimeError: ... PyAutoGUI fail-safe triggered from mouse moving to a
+   corner of the screen.`
+
+**Root cause, traced to one line:** `runtime/hooks/browser.py` hardcoded
+`engine.launch(headless=True)` with no way to override it. A headless
+browser's rendered content never reaches the OS-level framebuffer an
+OS-level screenshot tool (`mss`, what OCR uses) can capture. So Phase U's
+dual verification was running OCR against whatever was really on the
+physical desktop, never the page. That explains all three failures as one
+bug: (1) OCR correctly found nothing, so the compile logic fell to
+single-method instead of dual-confirmed; (2) with OCR already failing, the
+dispatch fallback branch never fired when DOM was forced to fail; (3) in a
+real run, OCR occasionally matched unrelated real-desktop content near a
+screen corner, and PyAutoGUI's fail-safe correctly refused to click there.
+
+**The fix is not "default to headed."** Headless stays the default — it's
+what makes AURA work with zero setup on a server/CI machine with no real
+display. The real fix: `config/settings.py` gets
+`playwright_headless: bool = True` (opt into `False` on a real display for
+genuine dual verification); `runtime/hooks/browser.py` reads it and
+exposes `is_headless()`; `agents/vision/executor.py` computes
+`ocr_attempted = not (dom_attempted and is_headless())` and skips OCR
+entirely when true — mirroring exactly how `dom_attempted=False` already
+means "not applicable," not "attempted and failed." This closes off the
+PyAutoGUI path structurally, not just the reporting symptom.
+
+**Verification:** reproduced all three scenarios via mocks (this sandbox
+also can't download Chromium). 9 new tests across
+`tests/test_executor_dom_path.py`, `tests/test_dual_verification_compile.py`,
+`tests/test_browser_hook.py`. One self-caught regression: the first
+version added `ocr_attempted` as a required positional parameter, breaking
+7 existing calls in `test_dual_verification_compile.py` that correctly
+assumed OCR always ran — fixed by defaulting it to `True`. Full suite: 566
+passing, same 26 failed + 5 errored Chromium-binary-download limitation as
+every prior session here, zero new regressions.
+
+**Not verified in this session:** the actual live-Windows re-run — this
+sandbox cannot download Chromium to confirm end-to-end itself. Same
+disclosed-gap pattern as D-044/D-045.

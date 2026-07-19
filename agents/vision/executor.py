@@ -123,7 +123,11 @@ def _apply_tie_break(ocr_result, dom_result, tie_break_mode: str) -> str:
     return "dom" if dom_result.confidence >= ocr_result.confidence else "ocr"
 
 
-def _compile_dual_result(ocr_result, dom_result, dom_attempted: bool, threshold: float, tie_break_mode: str, overlap_tolerance_px: int):
+def _compile_dual_result(
+    ocr_result, dom_result, dom_attempted: bool,
+    threshold: float, tie_break_mode: str, overlap_tolerance_px: int,
+    ocr_attempted: bool = True,
+):
     """
     The Phase U compilation rule (docs/Roadmap.md "Phase U"). Returns
     (decision, confidence, winner, evidence):
@@ -133,17 +137,32 @@ def _compile_dual_result(ocr_result, dom_result, dom_attempted: bool, threshold:
       winner: "dom" | "ocr" | None -- which method's candidate to dispatch
       evidence: dict for VisionActionResult.verification_evidence, always
         carrying both candidates (never silently dropping the loser)
+
+    D-046: ocr_attempted mirrors dom_attempted -- False whenever the
+    active browser session is headless (runtime.hooks.browser.
+    is_headless()), since OCR searching an OS-level screenshot of a
+    headless browser's (invisible, by construction) rendered content is
+    not "low confidence," it's structurally guaranteed-meaningless, and
+    was observed to occasionally produce a spurious near-zero-coordinate
+    match against unrelated on-screen content rather than a clean
+    not-found. Treated exactly like dom_attempted=False: never even
+    attempted, not attempted-and-failed.
     """
-    ocr_ok = ocr_result.found and ocr_result.confidence >= threshold
+    ocr_ok = ocr_attempted and ocr_result.found and ocr_result.confidence >= threshold
     dom_ok = dom_attempted and dom_result.found and dom_result.confidence >= threshold
 
-    ocr_evidence = {
-        "found": ocr_result.found,
-        "confidence": ocr_result.confidence,
-        "x": ocr_result.x if ocr_result.found else None,
-        "y": ocr_result.y if ocr_result.found else None,
-        "matched_text": ocr_result.matched_text,
-    }
+    ocr_evidence = (
+        {"attempted": False}
+        if not ocr_attempted
+        else {
+            "attempted": True,
+            "found": ocr_result.found,
+            "confidence": ocr_result.confidence,
+            "x": ocr_result.x if ocr_result.found else None,
+            "y": ocr_result.y if ocr_result.found else None,
+            "matched_text": ocr_result.matched_text,
+        }
+    )
     dom_evidence = (
         {"attempted": False}
         if not dom_attempted
@@ -160,7 +179,10 @@ def _compile_dual_result(ocr_result, dom_result, dom_attempted: bool, threshold:
     )
 
     if not ocr_ok and not dom_ok:
-        confidence = max(ocr_result.confidence, dom_result.confidence if dom_attempted else 0.0)
+        confidence = max(
+            ocr_result.confidence if ocr_attempted else 0.0,
+            dom_result.confidence if dom_attempted else 0.0,
+        )
         return "escalate", confidence, None, {
             "verification_method": None,
             "ocr": ocr_evidence,
@@ -323,12 +345,36 @@ def execute_step(payload: VisionStepInput) -> VisionActionResult:
     # chain. For native desktop targets, or when no browser session
     # exists at all, DOM simply isn't attempted (dom_attempted=False) and
     # this collapses back to OCR-only, exactly as it always has.
-    region = _region_from_skill_hint(payload.skill_hint)
-    ocr_result = locate_text(payload.screenshot_path, target_text, search_region=region)
-
+    # --- Phase U: both locators always run when a browser session
+    # exists -- OCR against the screenshot (as before Phase C), and DOM
+    # against the live accessibility tree (including its relocate()
+    # self-heal) -- rather than the old DOM-first/OCR-only-as-fallback
+    # chain. For native desktop targets, or when no browser session
+    # exists at all, DOM simply isn't attempted (dom_attempted=False) and
+    # this collapses back to OCR-only, exactly as it always has.
+    #
+    # D-046: OCR is skipped (ocr_attempted=False), not just low-confidence,
+    # whenever there IS an active browser session but it's headless --
+    # a headless browser's rendered content never reaches the OS-level
+    # framebuffer runtime.hooks.capture's mss-based screenshot reads, so
+    # attempting OCR there searches whatever's actually on the real
+    # desktop, not the page. This mirrors dom_attempted's own "not
+    # attempted when not applicable" pattern rather than letting OCR run
+    # and produce a misleading not-found or, worse, a spurious low-
+    # confidence match against unrelated on-screen content.
     from runtime.hooks import browser as browser_hook
 
     dom_attempted = browser_hook.has_active_page()
+    ocr_attempted = not (dom_attempted and browser_hook.is_headless())
+
+    region = _region_from_skill_hint(payload.skill_hint)
+    if ocr_attempted:
+        ocr_result = locate_text(payload.screenshot_path, target_text, search_region=region)
+    else:
+        from agents.vision.locator import LocateResult
+
+        ocr_result = LocateResult(found=False)
+
     dom_result = _resolve_dom(browser_hook, target_text) if dom_attempted else None
     if dom_result is None:
         from agents.vision.dom_locator import DomLocateResult
@@ -339,6 +385,7 @@ def execute_step(payload: VisionStepInput) -> VisionActionResult:
         ocr_result, dom_result, dom_attempted, threshold,
         settings.dual_verification_tie_break,
         settings.dual_verification_overlap_tolerance_px,
+        ocr_attempted=ocr_attempted,
     )
 
     if decision == "escalate":
@@ -359,7 +406,7 @@ def execute_step(payload: VisionStepInput) -> VisionActionResult:
     # the same fallback behavior Phase C's single-path chain had, just
     # available from either direction now.
     dom_ok = dom_attempted and dom_result.found and dom_result.confidence >= threshold
-    ocr_ok = ocr_result.found and ocr_result.confidence >= threshold
+    ocr_ok = ocr_attempted and ocr_result.found and ocr_result.confidence >= threshold
 
     dispatched_via = None
     if winner == "dom":

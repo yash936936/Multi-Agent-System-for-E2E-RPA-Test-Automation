@@ -1,12 +1,18 @@
 ---
 type: status
 project: AURA
-last_updated: 2026-07-17
+last_updated: 2026-07-19
 ---
 
 # STATUS
 
 > This file should always reflect the *current* state — overwrite freely, don't accumulate history here (that belongs in `progress.md`).
+
+## Where things stand (2026-07-19 update, three real bugs fixed at their shared root cause — see D-046)
+- **A real live-Windows pytest run with a working Chromium binary caught 3 real bugs no sandbox session could have found**, since every sandbox in this project's history has been blocked from downloading a browser binary at all. All three traced to one line: `runtime/hooks/browser.py` hardcoded `headless=True`, and OCR (via `mss`) structurally cannot see a headless browser's rendered content — it was searching the real desktop instead of the page. Fixed with a new opt-in `settings.playwright_headless` + `agents/vision/executor.py` now skips OCR entirely (not "attempts and low-confidence-fails") whenever the active browser session is headless, mirroring how DOM is already skipped when there's no browser session at all. Default stays headless (zero-setup guarantee preserved); a person with a real display can opt into `playwright_headless=False` for genuine OCR+DOM dual verification.
+- This directly fixes: dual-verification incorrectly reporting "single-method" instead of "dual-method-confirmed," a DOM-dispatch-failure test getting `dispatched_via=None` instead of falling back to OCR, and a real PyAutoGUI fail-safe crash from a spurious OCR match against real desktop content.
+- 9 new tests, all mock-based (no live browser needed to verify the logic). Full suite: 566 passing, same 26 failed + 5 errored Chromium-binary-download sandbox limitation as always, zero new regressions.
+- **Not verified end-to-end in this session** — the actual live-Windows re-run that would confirm all three original failures are gone is still needed; this sandbox can't download Chromium to do that itself.
 
 ## Where things stand (2026-07-17 update, Phase V verification closed — see D-045)
 - **Ran the real `pytest` suite D-044 explicitly asked for** (this session has full tooling: `pytest`, `pydantic`, `httpx`, `sqlalchemy`, real `playwright`). `tests/test_phase_v_cloud_llm.py tests/test_planner.py` — **50/50 passing, first run** — the hand-verification from D-044's constrained session held up exactly.

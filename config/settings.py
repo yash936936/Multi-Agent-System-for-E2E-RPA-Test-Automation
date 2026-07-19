@@ -250,6 +250,31 @@ class Settings(BaseSettings):
     # a cryptic AttributeError deep inside browser.py's getattr() lookup.
     playwright_browser: str = "chromium"
 
+    # --- Bug fix, decisions.md D-046 ---
+    # Default True (headless) so a fresh install on a server/CI/sandboxed
+    # machine with no real display still works out of the box -- this is
+    # the same "always works with zero extra setup" posture
+    # LocalHeuristicBackend and the OCR/pixel fallback already both have.
+    # Set False on a machine with a real, visible display if you want
+    # genuine OCR+DOM dual verification (Phase U) rather than DOM-only:
+    # OCR fundamentally cannot see a headless browser's rendered content
+    # (nothing reaches the OS's visible framebuffer for an OS-level
+    # screenshot tool like mss to capture), so agents/vision/executor.py
+    # checks runtime.hooks.browser.is_headless() and skips attempting OCR
+    # entirely -- not "attempts and low-confidence-fails," genuinely
+    # doesn't try -- whenever the active browser session is headless,
+    # exactly mirroring how DOM is already skipped (dom_attempted=False)
+    # when there's no browser session at all. See that module's Phase U
+    # docstring and D-046 for the real bug this closes: without this,
+    # OCR searched an OS-level screenshot of whatever was actually on the
+    # physical/virtual desktop (never the invisible headless browser's
+    # content), which could legitimately return a spurious low-confidence
+    # match against unrelated on-screen content rather than a clean
+    # not-found -- in one observed real run this produced OCR coordinates
+    # near a screen corner, which pyautogui's own fail-safe correctly
+    # refused to click.
+    playwright_headless: bool = True
+
     # --- Phase I2: video recording (decisions.md D-030) ---
     # Off by default -- opt-in, since video files are meaningfully larger
     # than screenshots and most runs don't need them. When True and the
