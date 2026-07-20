@@ -31,6 +31,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from config.settings import settings
 from orchestrator.schemas import RunReport
+from reports.process_report import build_process_report, render_json  # noqa: F401 - re-exported
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -113,6 +114,12 @@ def render_html(run_id: str, spec: dict | None = None, autoscan_report=None, ui_
             # never let a malformed/partial spec dict block report rendering.
             spec_explanation = None
 
+    # Process-oriented view (request / step-by-step decision basis /
+    # elements interacted / human-in-the-loop adequacy / outcome / proof of
+    # work) -- same builder that also backs render_json(), so the HTML and
+    # JSON outputs never describe the run differently from each other.
+    process = build_process_report(run_id, spec=spec)
+
     html = template.render(
         report=report,
         spec=spec,
@@ -125,6 +132,7 @@ def render_html(run_id: str, spec: dict | None = None, autoscan_report=None, ui_
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         autoscan_report=autoscan_report,
         ui_audit_report=ui_audit_report,
+        process=process,
     )
 
     out_path = _run_dir(run_id) / "report.html"

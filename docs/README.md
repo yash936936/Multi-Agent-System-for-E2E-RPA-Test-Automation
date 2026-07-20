@@ -537,6 +537,7 @@ can never make dual verification less reliable than the default.
 | What | Where |
 |---|---|
 | HTML/PDF reports | `reports\run_<run_id>\report.html` (and `report.pdf` if `--pdf` was used) |
+| Detailed process-oriented JSON report | `reports\run_<run_id>\report_detailed.json` -- request text, per-step decision basis (why AURA considered each step fulfilled), elements interacted with, human-in-the-loop adequacy, outcome summary, proof-of-work references. Same underlying data as report.html's new sections (`reports/process_report.py::build_process_report()`), just machine-readable. Linked from report.html's header once both have been rendered. |
 | Raw JSON results | `reports\run_<run_id>\raw_results.json` |
 | Full audit trace (every tool call) | `reports\run_<run_id>\trace.jsonl` |
 | Screenshots taken during a run | `runtime\screenshots\run_<run_id>\` |

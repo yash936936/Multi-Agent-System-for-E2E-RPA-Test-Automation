@@ -2727,3 +2727,72 @@ throughout this file -- confirmed via a full run before touching this
 fix that the 26 failed/5 errored baseline was 100% Chromium-launch
 related, zero relation to this change).
 
+---
+
+## D-054 — process-oriented report content: request, decision basis,
+## elements interacted, human-in-the-loop adequacy, outcome, proof of
+## work (2026-07-20)
+
+Previously, `report.html`/`report.json` were technically complete (every
+step's confidence, escalation flag, screenshot, and raw verification
+payload were all present) but not *narratively* complete -- a reader had
+to reconstruct "what was actually asked for, and on what basis did AURA
+decide it was done" themselves from scattered fields, and
+`WAIT_FOR_HUMAN_ACTION` steps computed real evidence (elapsed time,
+whether the screen changed, timeout) internally in `run_engine.py` only
+to decide pass/fail and then discard it -- never surfaced to the report.
+
+Added, all additive/backward-compatible (no existing field removed or
+repurposed):
+- `RunReport.request_text` -- the real original plain-English request.
+  Note `TestSpec.requirement_ref` is a test-id-style slug (see
+  `agents/planner/spec_generator.py`'s `LocalHeuristicBackend`), not the
+  original text, so `run_spec()` gained an explicit `requirement_text`
+  param that `run()` passes its own param through to, rather than trying
+  to recover it from the slug.
+- `VisionActionResult.human_action_evidence` -- `elapsed_seconds`,
+  `timeout_seconds`, `timed_out`, `screen_changed`, `expected_state`,
+  `baseline_screenshot_ref`, `acceptance_basis` (one of
+  `verified_against_expected_state` /
+  `screen_change_accepted_no_expected_state` / `no_screen_change_detected`)
+  -- populated in `run_engine.py`'s existing `WAIT_FOR_HUMAN_ACTION`
+  branch, which already computed all of this.
+- `reports/process_report.py` (new module) -- `build_process_report()`
+  assembles one shared structure (request / step-by-step decision basis
+  / elements interacted / human-in-the-loop review / outcome / proof of
+  work) from the same on-disk artifacts `reports/render.py` already
+  reads. Both `render_html()` and the new `render_json()` build from this
+  one function, so HTML and JSON can never describe a run differently
+  from each other. `_decision_basis()` derives an explicit, evidence
+  -grounded "why was this considered fulfilled" reason per step type
+  (dual-verification agreement/tie-break for click/type, adapter evidence
+  for capability_check, OCR-vs-expected_state for assert, the new
+  acceptance_basis for wait_for_human) rather than a generic "confidence
+  >= threshold."
+- `render_json(run_id, spec=None)` -- writes `report_detailed.json`
+  and registers it in `report.json`'s `report_paths["detailed_json"]`.
+  `aura execute` now calls this before `render_html()` (in that order)
+  so the HTML header can link to it.
+- Template additions to `run_report.html.j2`: Request card, Outcome
+  card (with a real one-line summary sentence, not just a status enum),
+  a "Decision basis" box inside every step (renamed heading "Step
+  detail" -> "Step-by-step process" to match), "Elements interacted
+  with" section, "Human-in-the-loop review" section.
+
+Verified with 3 new tests in `tests/test_reports.py`:
+`test_render_json_produces_process_oriented_structure` (request text is
+the real original text, not the slug; every timeline entry has a
+non-empty decision basis; outcome summary references real numbers; proof
+-of-work section points at real artifact paths; `report.json` gets
+updated with the detailed_json path) and
+`test_human_in_the_loop_step_produces_evidence_and_report_section`
+(end-to-end through a real `WAIT_FOR_HUMAN_ACTION` step -- evidence
+survives into both `human_in_the_loop` and the timeline entry's
+`decision_basis`, including for the escalated/not-confirmed case, which
+initially had a bug: the generic `escalate` branch was short-circuiting
+before the human-action-specific reason could be attached, caught by
+this same test on first run and fixed by reordering the branches so
+`wait_for_human` is checked before the generic escalate fallback).
+
+Full suite: 586/586 passing (all non-Chromium-dependent tests).
+

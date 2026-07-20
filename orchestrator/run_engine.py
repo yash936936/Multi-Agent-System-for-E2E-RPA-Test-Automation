@@ -228,7 +228,7 @@ class RunEngine:
                 "DataSynth.generate", DataRequirements(fields=spec.data_requirements, test_id=spec.test_id)
             )
 
-        return self.run_spec(spec, run_id=run_id, data_record=data_record, kernel=kernel, call_tool=call_tool)
+        return self.run_spec(spec, run_id=run_id, data_record=data_record, kernel=kernel, call_tool=call_tool, requirement_text=requirement_text)
 
     def run_spec(
         self,
@@ -237,6 +237,7 @@ class RunEngine:
         data_record: Optional[SyntheticDataRecord] = None,
         kernel: Optional[OrchestratorKernel] = None,
         call_tool: Optional[Callable[[str, Any], Any]] = None,
+        requirement_text: str | None = None,
     ) -> RunEngineResult:
         """
         Executes an already-built TestSpec directly, skipping Planner
@@ -244,6 +245,16 @@ class RunEngine:
         `aura explore` and `--interactive` mode can hand-assemble a spec
         (e.g. a single WAIT_FOR_HUMAN_ACTION step from a typed instruction)
         without needing the heuristic/LLM planner to understand it first.
+
+        `requirement_text`: the original plain-English request, for
+        RunReport.request_text (report-detail pass). Note
+        TestSpec.requirement_ref is a test-id-style slug (see
+        agents/planner/spec_generator.py), not the original text, so
+        callers with the real text (run(), below) should pass it
+        explicitly; callers without it (aura explore/--interactive
+        hand-assembling a spec with no separate original request string)
+        fall back to spec.requirement_ref, which is still more useful
+        than an empty string even though it's a slug.
         """
         run_id = run_id or str(uuid.uuid4())[:8]
         guardrail = LoopGuardrail()
@@ -440,6 +451,24 @@ class RunEngine:
                     escalate=not passed,
                     screenshot_ref=latest_path,
                     assertion_passed=passed if changed else None,
+                    human_action_evidence={
+                        "elapsed_seconds": round(elapsed, 2),
+                        "timeout_seconds": timeout,
+                        "timed_out": bool(timeout) and not changed and elapsed >= timeout,
+                        "screen_changed": changed,
+                        "expected_state": step.expected_state,
+                        "baseline_screenshot_ref": baseline_path,
+                        # Whether the person's action alone was accepted as
+                        # sufficient (no expected_state to check against) or
+                        # was actually verified against a stated expectation --
+                        # the report needs to be able to say which one
+                        # happened, not just "passed."
+                        "acceptance_basis": (
+                            "verified_against_expected_state" if changed and step.expected_state
+                            else "screen_change_accepted_no_expected_state" if changed
+                            else "no_screen_change_detected"
+                        ),
+                    },
                 )
 
                 aggregator.record_step_result(result)
@@ -575,7 +604,7 @@ class RunEngine:
                 )
             )
 
-        report = aggregator.finalize()
+        report = aggregator.finalize(requirement_text=requirement_text if requirement_text is not None else spec.requirement_ref)
         self.memory.finish_run(run_id, report.status.value)
 
         # Phase C: the Playwright browser session (runtime/hooks/browser.py)

@@ -238,6 +238,16 @@ class VisionActionResult(BaseModel):
     # when the two methods disagreed and one was picked over the other.
     verification_method: Optional[Literal["single-method", "dual-method-confirmed"]] = None
     verification_evidence: Optional[Dict[str, Any]] = None
+    # Report-detail pass (2026-07) -- populated only for
+    # ActionType.WAIT_FOR_HUMAN_ACTION steps. run_engine.py already computed
+    # all of this (elapsed time, whether the screen changed, whether it
+    # timed out) to decide pass/fail, but was discarding it once the
+    # decision was made -- a report reader had no way to tell "a human
+    # acted within 4s" apart from "AURA gave up after a 300s timeout" even
+    # though both could produce the same confidence/escalate/assertion_passed
+    # combination. None for every other action type, exactly like
+    # capability_result/verification_evidence's existing convention above.
+    human_action_evidence: Optional[Dict[str, Any]] = None
 
 
 # --------------------------------------------------------------------------
@@ -268,6 +278,13 @@ class RunReport(BaseModel):
     escalated_steps: int = 0
     duration_seconds: float = 0.0
     report_paths: dict[str, str] = Field(default_factory=dict)
+    # Report-detail pass (2026-07) -- the original plain-English requirement
+    # text this run was generated from (TestSpec.requirement_ref already
+    # carries a *reference*, not always the full original text, e.g. when
+    # sourced from a file). "" (default) for any run recorded before this
+    # field existed, or any caller that doesn't have it handy -- every
+    # existing report.json remains valid input to RunReport.model_validate_json.
+    request_text: str = ""
 
 
 # --------------------------------------------------------------------------

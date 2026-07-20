@@ -71,7 +71,7 @@ class ReportAggregator:
             return RunStatus.PASSED_WITH_HEALING
         return RunStatus.PASSED
 
-    def finalize(self, extra_report_paths: dict[str, str] | None = None) -> RunReport:
+    def finalize(self, extra_report_paths: dict[str, str] | None = None, requirement_text: str = "") -> RunReport:
         duration = time.time() - self._started_at
         raw_path = self.run_dir / "raw_results.json"
         raw_path.write_text(
@@ -97,6 +97,7 @@ class ReportAggregator:
             escalated_steps=len(self._escalated_step_ids),
             duration_seconds=round(duration, 2),
             report_paths=report_paths,
+            request_text=requirement_text,
         )
 
         report_path = self.run_dir / "report.json"

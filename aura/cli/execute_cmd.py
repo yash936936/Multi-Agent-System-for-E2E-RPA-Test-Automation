@@ -33,7 +33,7 @@ from orchestrator.schemas import RequirementInput, RunReport, TestStep, VisionAc
 from orchestrator.skill_store import SkillStore
 from orchestrator.spec_validator import SpecValidationError
 from reports.junit import render_junit
-from reports.render import render_html, render_pdf
+from reports.render import render_html, render_json, render_pdf
 from runtime.hooks.browser import normalize_url
 
 
@@ -399,8 +399,13 @@ def _run_requirement_text(
             console.print("[green]UI audit clean — no non-functional elements or error indicators found.[/green]")
 
     # --- §2.6: report + terminal summary ---
+    # render_json first: it writes report_detailed.json AND updates
+    # report.json's report_paths with that path, so render_html (which
+    # re-reads report.json) can link to it in the HTML header.
+    json_path = render_json(result.run_id, spec=spec.model_dump())
     html_path = render_html(result.run_id, spec=spec.model_dump(), autoscan_report=autoscan_report, ui_audit_report=ui_audit_report)
     console.print(f"\nReport: {html_path}")
+    console.print(f"Detailed JSON: {json_path}")
     if export_pdf:
         try:
             pdf_path = render_pdf(html_path)

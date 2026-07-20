@@ -31,6 +31,11 @@
   .screens img { max-width: 260px; border: 1px solid var(--border); border-radius: 4px; }
   .skills { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-top: 1.5rem; }
   .skill { border-left: 3px solid var(--heal); padding-left: .75rem; margin-bottom: .75rem; }
+  .decision-basis { background: #f6f8fa; border: 1px solid var(--border); border-radius: 6px; padding: .5rem .75rem; margin-top: .5rem; font-size: .88rem; }
+  .element-row { border-bottom: 1px solid var(--border); padding: .5rem 0; }
+  .element-row:last-child { border-bottom: none; }
+  .hil-adequate { color: var(--pass); font-weight: 600; }
+  .hil-inadequate { color: var(--fail); font-weight: 600; }
   details.trace { margin-top: 1.5rem; }
   pre { background: #0d1117; color: #c9d1d9; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: .8rem; }
   .muted { color: #57606a; font-size: .85rem; }
@@ -39,13 +44,33 @@
 <body>
 
 <h1>AURA Run Report</h1>
-<div class="subtitle">Run <code>{{ report.run_id }}</code>{% if spec %} · Test <code>{{ spec.test_id }}</code>{% endif %} · generated {{ generated_at }}</div>
+<div class="subtitle">Run <code>{{ report.run_id }}</code>{% if spec %} · Test <code>{{ spec.test_id }}</code>{% endif %} · generated {{ generated_at }}{% if report.report_paths.detailed_json %} · <a href="{{ report.report_paths.detailed_json }}">detailed JSON</a>{% endif %}</div>
+
+<div class="summary-card" style="flex-direction: column; align-items: flex-start; gap: .4rem;">
+  <div><strong>Request</strong></div>
+  <div>{{ process.request.text or 'No request text recorded for this run.' }}</div>
+  {% if process.request.preconditions %}
+  <div class="muted">Preconditions: {{ process.request.preconditions | join('; ') }}</div>
+  {% endif %}
+</div>
+
+<div class="summary-card" style="flex-direction: column; align-items: flex-start; gap: .4rem;">
+  <div><strong>Outcome</strong></div>
+  <div>{{ process.outcome.summary }}</div>
+  {% if process.outcome.human_in_the_loop %}
+  <div class="muted">
+    Human-in-the-loop steps: {{ process.human_in_the_loop | length }} ·
+    {% if process.outcome.human_in_the_loop_all_adequate %}all confirmed adequate{% else %}at least one not confirmed adequate — see "Human-in-the-loop review" below{% endif %}
+  </div>
+  {% endif %}
+</div>
 
 {% if spec_explanation %}
 <div class="summary-card" style="margin-bottom: 1rem;">
   <p class="muted" style="margin: 0;"><strong>What this test does:</strong> {{ spec_explanation }}</p>
 </div>
 {% endif %}
+
 
 <div class="summary-card">
   <div class="stat"><span class="n">{{ report.total_steps }}</span><span class="l">Total steps</span></div>
@@ -56,14 +81,20 @@
   <div class="stat"><span class="status-badge status-{{ report.status.value }}">{{ report.status.value }}</span><span class="l">Status</span></div>
 </div>
 
-<h2>Step detail</h2>
+<h2>Step-by-step process</h2>
+<p class="muted" style="margin-top:-.5rem;">What AURA was asked to do at each step, what it did, and the basis on which it decided the step was fulfilled.</p>
 {% for r in step_results %}
+{% set p = process.process_timeline[loop.index0] %}
 <div class="step">
   <div class="step-header">
-    <strong>Step {{ r.step_id }} — {{ r.action_taken }}</strong>
+    <strong>Step {{ r.step_id }} — {{ p.action_label }}</strong>
     <span class="confidence {{ 'low' if r.confidence < confidence_threshold else '' }}">confidence {{ '%.2f' % r.confidence }}</span>
   </div>
+  {% if p.instruction %}<div class="muted">Instruction: {{ p.instruction }}</div>{% endif %}
   {% if r.escalate %}<div class="badge-escalate">⚠ escalated</div>{% endif %}
+  <div class="decision-basis">
+    <strong>Decision basis ({{ p.decision_basis.decided.replace('_', ' ') }}):</strong> {{ p.decision_basis.reason }}
+  </div>
   {% if r.verification_method %}
     <div class="muted">
       verification: {{ r.verification_method }}
@@ -111,6 +142,48 @@
     <div>Failure: {{ s.failure_signature }}</div>
     <div>Root cause: {{ s.root_cause }}</div>
     <div>Fix: {{ s.proposed_fix }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if process.elements_interacted %}
+<div class="skills">
+  <h2>Elements interacted with</h2>
+  <p class="muted" style="margin-top:0;">The concrete on-screen/DOM element each click or type step actually resolved to and acted on.</p>
+  {% for el in process.elements_interacted %}
+  <div class="element-row">
+    <strong>Step {{ el.step_id }}</strong> — requested: <em>{{ el.requested_target or 'n/a' }}</em>
+    <div class="muted">
+      resolved via {{ el.resolved_via }}
+      {% if el.matched_text %} · matched text: "{{ el.matched_text }}"{% endif %}
+      {% if el.role %} · role: {{ el.role }}{% endif %}
+      {% if el.coordinates %} · coordinates: {{ el.coordinates }}{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if process.human_in_the_loop %}
+<div class="skills">
+  <h2>Human-in-the-loop review</h2>
+  <p class="muted" style="margin-top:0;">Steps where AURA waited for a person to act, and whether that action was confirmed sufficient.</p>
+  {% for h in process.human_in_the_loop %}
+  <div class="skill" style="border-left-color: {{ 'var(--pass)' if h.adequate else 'var(--esc)' }};">
+    <strong>Step {{ h.step_id }}</strong> — {{ h.instruction or 'n/a' }}
+    <div class="{{ 'hil-adequate' if h.adequate else 'hil-inadequate' }}">
+      {{ 'Confirmed adequate' if h.adequate else 'Not confirmed adequate' }}
+    </div>
+    {% if h.evidence %}
+    <div class="muted">
+      elapsed: {{ h.evidence.elapsed_seconds }}s
+      {% if h.evidence.timeout_seconds %} / timeout: {{ h.evidence.timeout_seconds }}s{% endif %}
+      · screen changed: {{ h.evidence.screen_changed }}
+      {% if h.evidence.timed_out %} · timed out waiting for a person to act{% endif %}
+    </div>
+    <div class="muted">basis: {{ h.evidence.acceptance_basis }}</div>
+    {% endif %}
   </div>
   {% endfor %}
 </div>
