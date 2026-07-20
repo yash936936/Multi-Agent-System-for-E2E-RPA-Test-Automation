@@ -52,6 +52,16 @@ def test_close_resets_session(server):
     assert browser.has_active_page() is False
 
 
+def test_dom_scroll_returns_false_when_no_active_page():
+    """No live page yet -- dom_scroll must report failure (not raise) so
+    callers like orchestrator/autoscan.py know to fall back to the
+    OS-level interact.scroll() path."""
+    from runtime.hooks import browser
+
+    assert browser.has_active_page() is False
+    assert browser.dom_scroll(-600) is False
+
+
 def test_normalize_url_adds_scheme():
     from runtime.hooks import browser
 

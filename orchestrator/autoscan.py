@@ -97,9 +97,21 @@ def run_autoscan(
             break
         prev_hash = current_hash
 
-        try:
-            interact.scroll(scroll_amount)
-        except NoDisplayError:
-            break
+        # Prefer a DOM-scoped scroll (window.scrollBy on the live Playwright
+        # page) over the OS-level interact.scroll() fallback: the OS scroll
+        # is a raw wheel event sent to whatever window currently has OS
+        # focus, so a background/non-focused/minimized browser window
+        # simply doesn't receive it -- the screenshot then looks identical
+        # on the next loop, the hash matches, and the scan reports
+        # reached_bottom=True on the very first iteration despite never
+        # having scrolled anything. dom_scroll() has no such dependency: it
+        # runs inside the page's own JS context regardless of OS focus.
+        from runtime.hooks import browser as browser_hook
+
+        if not browser_hook.dom_scroll(scroll_amount):
+            try:
+                interact.scroll(scroll_amount)
+            except NoDisplayError:
+                break
 
     return AutoScanReport(steps=steps, reached_bottom=reached_bottom, display_unavailable=display_unavailable)

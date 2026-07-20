@@ -192,3 +192,67 @@ def test_run_autoscan_handles_no_display_mid_scan(tmp_path, monkeypatch):
     assert report.display_unavailable is True
     assert len(report.steps) == 2
     assert report.reached_bottom is False
+
+
+def test_run_autoscan_prefers_dom_scroll_over_os_scroll_when_page_is_live(tmp_path, monkeypatch):
+    """Regression test for the 'reached_bottom fires instantly, nothing
+    visibly scrolled' bug: when a live Playwright page exists,
+    interact.scroll() (a raw OS wheel event to whatever window has OS
+    focus) must NOT be the thing that scrolls the page -- the DOM-scoped
+    browser_hook.dom_scroll() should be tried first, and OS-level scroll
+    should not run at all in that case."""
+    frames = [b"frame-0", b"frame-1", b"frame-2", b"frame-2"]
+    calls = {"i": 0}
+
+    def fake_provider(run_id: str, index: int) -> str:
+        content = frames[min(calls["i"], len(frames) - 1)]
+        calls["i"] += 1
+        path = tmp_path / f"shot_{calls['i']}.png"
+        path.write_bytes(content)
+        return str(path)
+
+    import runtime.hooks.interact as real_interact
+    import runtime.hooks.browser as real_browser
+
+    os_scroll_calls = {"count": 0}
+    dom_scroll_calls = {"count": 0}
+
+    monkeypatch.setattr(real_interact, "scroll", lambda amount: os_scroll_calls.__setitem__("count", os_scroll_calls["count"] + 1))
+    monkeypatch.setattr(real_browser, "dom_scroll", lambda delta_y: dom_scroll_calls.__setitem__("count", dom_scroll_calls["count"] + 1) or True)
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+
+    report = run_autoscan(fake_provider, run_id="dom-scroll-run", max_scrolls=25)
+
+    assert report.reached_bottom is True
+    assert dom_scroll_calls["count"] > 0
+    assert os_scroll_calls["count"] == 0  # OS-level scroll must not fire when DOM scroll succeeded
+
+
+def test_run_autoscan_falls_back_to_os_scroll_when_no_live_page(tmp_path, monkeypatch):
+    """When there's no live Playwright page (dom_scroll returns False,
+    e.g. running against a native/non-browser target), the OS-level
+    interact.scroll() fallback must still fire -- this preserves pre-fix
+    behavior for non-browser targets."""
+    frames = [b"frame-0", b"frame-1", b"frame-1"]
+    calls = {"i": 0}
+
+    def fake_provider(run_id: str, index: int) -> str:
+        content = frames[min(calls["i"], len(frames) - 1)]
+        calls["i"] += 1
+        path = tmp_path / f"shot_{calls['i']}.png"
+        path.write_bytes(content)
+        return str(path)
+
+    import runtime.hooks.interact as real_interact
+    import runtime.hooks.browser as real_browser
+
+    os_scroll_calls = {"count": 0}
+
+    monkeypatch.setattr(real_interact, "scroll", lambda amount: os_scroll_calls.__setitem__("count", os_scroll_calls["count"] + 1))
+    monkeypatch.setattr(real_browser, "dom_scroll", lambda delta_y: False)
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+
+    report = run_autoscan(fake_provider, run_id="os-fallback-run", max_scrolls=25)
+
+    assert report.reached_bottom is True
+    assert os_scroll_calls["count"] > 0

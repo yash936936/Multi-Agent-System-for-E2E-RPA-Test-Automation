@@ -335,7 +335,15 @@ def _run_requirement_text(
     )
 
     try:
-        result = engine.run(requirement_text, run_id=spec.test_id.lower().replace(" ", "-"))
+        # keep_browser_open=True whenever a post-run pass (--scroll-test /
+        # --ui-audit) is requested: those passes need the same live page
+        # this run just used, not a re-launched/closed one. We close it
+        # ourselves, explicitly, once both optional passes below are done.
+        result = engine.run(
+            requirement_text,
+            run_id=spec.test_id.lower().replace(" ", "-"),
+            keep_browser_open=scroll_test or ui_audit,
+        )
     except SpecValidationError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1)
@@ -397,6 +405,18 @@ def _run_requirement_text(
             console.print(f"[yellow]Page scan flagged: {', '.join(ui_audit_report.page_issues)}[/yellow]")
         if not ui_audit_report.possibly_broken and not ui_audit_report.page_issues:
             console.print("[green]UI audit clean — no non-functional elements or error indicators found.[/green]")
+
+    # If engine.run() was told to keep the browser open for the passes
+    # above (scroll_test/ui_audit), it's now our responsibility to close
+    # it -- both passes are finished, so there's nothing left that needs
+    # the live page.
+    if scroll_test or ui_audit:
+        try:
+            from runtime.hooks import browser as browser_hook
+
+            browser_hook.close()
+        except Exception:
+            pass
 
     # --- §2.6: report + terminal summary ---
     # render_json first: it writes report_detailed.json AND updates

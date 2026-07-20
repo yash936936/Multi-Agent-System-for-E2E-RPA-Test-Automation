@@ -101,9 +101,24 @@ class _BrowserSession:
                 self._playwright = sync_playwright().start()
             if self._browser is None:
                 engine = getattr(self._playwright, engine_name)
-                self._browser = engine.launch(headless=settings.playwright_headless)
+                # Phase (window-sizing fix): headed Chromium otherwise opens
+                # at the engine's own default size/position (small, often
+                # partial-screen on Windows). --start-maximized asks the OS
+                # to maximize the actual OS-level window; that alone doesn't
+                # resize the page's *viewport* though (Playwright decouples
+                # window size from viewport), so we also pass
+                # no_viewport=True below on the context so the page fills
+                # whatever the maximized window's real client area is
+                # instead of being letterboxed to a fixed default viewport.
+                launch_args = ["--start-maximized"] if not settings.playwright_headless else []
+                self._browser = engine.launch(
+                    headless=settings.playwright_headless,
+                    args=launch_args,
+                )
             if self._context is None:
                 context_kwargs = {}
+                if not settings.playwright_headless:
+                    context_kwargs["no_viewport"] = True
                 if settings.record_video:
                     # Phase I2 (decisions.md D-030): Playwright records the
                     # whole context's video natively -- no per-action code
@@ -138,6 +153,22 @@ class _BrowserSession:
 
     def has_active_page(self) -> bool:
         return self._page is not None
+
+    def dom_scroll(self, delta_y: int) -> bool:
+        """
+        Scrolls the live page's own document via JS (window.scrollBy), i.e.
+        scoped to this exact page regardless of OS window focus/z-order.
+        Returns True if it was actually able to scroll (a page exists and
+        the call didn't raise), False otherwise -- callers fall back to the
+        OS-level interact.scroll() when this returns False.
+        """
+        if self._page is None:
+            return False
+        try:
+            self._page.evaluate("(dy) => window.scrollBy(0, dy)", delta_y)
+            return True
+        except Exception:
+            return False
 
     def get_last_video_path(self) -> str | None:
         """Path to the most recently finalized video file, if any (set by close())."""
@@ -235,6 +266,11 @@ def get_page(new: bool = False):
 def has_active_page() -> bool:
     """True once a Playwright page has been successfully created this run."""
     return _session.has_active_page()
+
+
+def dom_scroll(delta_y: int) -> bool:
+    """Scrolls the live page's own document via JS, scoped to this page (not OS focus). See _BrowserSession.dom_scroll."""
+    return _session.dom_scroll(delta_y)
 
 
 def get_last_video_path() -> str | None:

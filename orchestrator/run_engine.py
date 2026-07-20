@@ -204,7 +204,7 @@ class RunEngine:
             if self.on_step_result:
                 self.on_step_result(trigger_step.step_id, trigger_step, corrected)
 
-    def run(self, requirement_text: str, run_id: str | None = None) -> RunEngineResult:
+    def run(self, requirement_text: str, run_id: str | None = None, keep_browser_open: bool = False) -> RunEngineResult:
         run_id = run_id or str(uuid.uuid4())[:8]
         kernel = OrchestratorKernel(registry=self.registry, run_id=run_id)
 
@@ -228,7 +228,15 @@ class RunEngine:
                 "DataSynth.generate", DataRequirements(fields=spec.data_requirements, test_id=spec.test_id)
             )
 
-        return self.run_spec(spec, run_id=run_id, data_record=data_record, kernel=kernel, call_tool=call_tool, requirement_text=requirement_text)
+        return self.run_spec(
+            spec,
+            run_id=run_id,
+            data_record=data_record,
+            kernel=kernel,
+            call_tool=call_tool,
+            requirement_text=requirement_text,
+            keep_browser_open=keep_browser_open,
+        )
 
     def run_spec(
         self,
@@ -238,6 +246,7 @@ class RunEngine:
         kernel: Optional[OrchestratorKernel] = None,
         call_tool: Optional[Callable[[str, Any], Any]] = None,
         requirement_text: str | None = None,
+        keep_browser_open: bool = False,
     ) -> RunEngineResult:
         """
         Executes an already-built TestSpec directly, skipping Planner
@@ -611,12 +620,21 @@ class RunEngine:
         # is persistent *across this run's steps* by design (so DOM
         # resolution/self-heal share one live page), but must not leak into
         # the next run/process -- close it once this run's steps are done.
-        try:
-            from runtime.hooks import browser as browser_hook
+        #
+        # keep_browser_open=True skips this: callers like
+        # aura/cli/execute_cmd.py request it when --scroll-test/--ui-audit
+        # are set, since those post-passes need the *same* live page this
+        # run just used (a live DOM handle + a viewport-scoped screenshot
+        # instead of a full-monitor grab of whatever's on screen after
+        # teardown). Those callers are responsible for calling
+        # browser_hook.close() themselves once they're done with it.
+        if not keep_browser_open:
+            try:
+                from runtime.hooks import browser as browser_hook
 
-            browser_hook.close()
-        except Exception:
-            pass
+                browser_hook.close()
+            except Exception:
+                pass
 
         # Phase I2 (decisions.md D-030): video/slideshow path is only known
         # for certain *after* browser_hook.close() finalizes the recording
