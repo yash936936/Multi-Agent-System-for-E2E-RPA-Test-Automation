@@ -66,18 +66,63 @@ def _resolve_dom(browser_hook, target_text: str):
 
     Returns a DomLocateResult (found=False if no live page, no
     candidates, or neither step cleared its threshold).
+
+    Phase 3 bug fix (next-phase plan, "OCR + DOM working together"):
+    this previously only caught NoDisplayError, raised solely by
+    browser_hook.get_page() when no page exists at all. Everything after
+    that -- locate_dom()/relocate_dom() calling
+    dom_locator.snapshot_elements(), which calls Playwright's
+    page.locator("html").aria_snapshot() with no exception handling of
+    its own -- was completely unguarded. Verified by direct reproduction
+    (not assumed): a page mid-navigation, a closed target, or a detached
+    frame all raise a raw Playwright Error there ("Execution context was
+    destroyed, most likely because of a navigation" is a common one right
+    after a click that triggers page load) -- none of which are
+    NoDisplayError, so they propagated straight through execute_step,
+    orchestrator/kernel.py's call_tool (which re-wraps it as a failed
+    ToolResponse), and back out as a RuntimeError from run_engine.py's
+    call_tool closure, crashing the entire run instead of the documented
+    "only one method clears the threshold -> proceed on that one"
+    single-method fallback. This is a materially better explanation for
+    intermittent "looks like OCR only" behavior than a genuine dual-
+    verification miss: a step whose DOM snapshot happens to land during
+    a navigation doesn't just silently prefer OCR, it can take the whole
+    run down -- which, depending on which steps happen to hit the timing
+    window, looks exactly like unpredictable "sometimes only OCR ran."
+
+    Every DOM-path miss is now logged (not silently swallowed) with which
+    of the three cases it was -- no live page, a genuine no-match, or a
+    caught exception with its actual message -- specifically so a live
+    run's logs can distinguish "DOM never got a chance to run" from "DOM
+    ran and found nothing" the next time this comes up.
     """
     from agents.vision.dom_locator import DomLocateResult, locate_dom, relocate_dom
     from runtime.errors import NoDisplayError
 
     try:
         page = browser_hook.get_page()
-    except NoDisplayError:
+    except NoDisplayError as e:
+        _logger.info("Vision.execute_step: DOM path skipped, no active page (%s).", e)
         return DomLocateResult(found=False)
 
-    dom_result = locate_dom(page, target_text)
+    try:
+        dom_result = locate_dom(page, target_text)
+        if not dom_result.found:
+            dom_result = relocate_dom(page, {"name": target_text})
+    except Exception as e:  # noqa: BLE001 - see docstring: must degrade to single-method, never crash the run
+        _logger.warning(
+            "Vision.execute_step: DOM path raised during resolution (%s: %s) -- "
+            "treating as not-found so OCR's result can still be dispatched, "
+            "instead of crashing the run.",
+            type(e).__name__, e,
+        )
+        return DomLocateResult(found=False)
+
     if not dom_result.found:
-        dom_result = relocate_dom(page, {"name": target_text})
+        _logger.info(
+            "Vision.execute_step: DOM path ran but found no match for %r (top score seen: %s).",
+            target_text, dom_result.top_score_seen,
+        )
     return dom_result
 
 
@@ -248,15 +293,33 @@ def _dispatch_dom(dom_result, action_taken: str, value) -> bool:
 
 def _dispatch_ocr(ocr_result, action_taken: str, value) -> bool:
     """Attempts the OCR/pixel-path interaction. Returns False on
-    NoDisplayError (e.g. headless/no-tkinter environment)."""
+    NoDisplayError (e.g. headless/no-tkinter environment).
+
+    Phase 2 (cursor-coordinate fix, next-phase plan): a live browser
+    session dispatches through the page's own Playwright mouse whenever
+    possible, translating ocr_result's OS/mss-pixel coordinate into that
+    page's CSS/viewport space first (browser.get_click_point_in_page) --
+    never the raw OS coordinate directly when a page exists, since that's
+    what caused the "taskbar jump" bug (see that function's docstring).
+    Falls back to the OS-level interact.click() path only when no page
+    exists at all (a native, non-browser target) or the translation can't
+    be computed -- same fail-soft contract, unchanged for that case.
+    """
     from runtime.errors import NoDisplayError
     from runtime.hooks import interact
+    from runtime.hooks import browser as browser_hook
 
     try:
-        if action_taken == "click":
+        page_point = browser_hook.get_click_point_in_page(ocr_result.x, ocr_result.y)
+        if page_point is not None:
+            page = browser_hook.get_page()
+            page.mouse.click(*page_point)
+        elif action_taken == "click":
             interact.click(ocr_result.x, ocr_result.y)
         else:
             interact.click(ocr_result.x, ocr_result.y)  # focus the field first
+
+        if action_taken == "type":
             interact.type_text(value or "")
         return True
     except NoDisplayError:
@@ -313,8 +376,17 @@ def execute_step(payload: VisionStepInput) -> VisionActionResult:
 
     if step.action == ActionType.SCROLL:
         from runtime.hooks import interact
+        from runtime.hooks import browser as browser_hook
 
-        interact.scroll(-300)
+        # Phase 2 (next-phase plan): prefer the DOM-scoped scroll (JS
+        # window.scrollBy on the live page, orchestrator/autoscan.py
+        # already established this same pattern for its own scroll loop)
+        # over the OS-level interact.scroll() fallback -- a raw OS wheel
+        # event goes to whatever window currently has OS focus, which
+        # silently does nothing useful if that isn't the browser. Only
+        # falls back to the OS path when no live page exists at all.
+        if not browser_hook.dom_scroll(-300):
+            interact.scroll(-300)
         return VisionActionResult(
             step_id=step.step_id,
             action_taken="scroll",

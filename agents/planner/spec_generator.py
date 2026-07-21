@@ -561,8 +561,11 @@ class HermesAgentBackend:
                 "HermesAgentBackend requires settings.hermes_agent_base_url "
                 "(or AURA_HERMES_AGENT_BASE_URL / a .env entry) -- the base "
                 "URL of a running Hermes Agent API server, e.g. "
-                "'http://localhost:4141'. Start one with `hermes api-server` "
-                "(see https://github.com/NousResearch/hermes-agent)."
+                "'http://localhost:8642' (Hermes Agent's own default "
+                "API_SERVER_PORT). Start it with `hermes gateway` after "
+                "setting API_SERVER_ENABLED=true/API_SERVER_KEY in "
+                "~/.hermes/.env -- there is no `hermes api-server` command "
+                "(see https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server)."
             )
 
         client = HermesAgentClient(base_url=self.base_url, api_key=self.api_key, model=self.model)

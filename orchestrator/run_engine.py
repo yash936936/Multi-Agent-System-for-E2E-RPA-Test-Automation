@@ -24,9 +24,11 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from agents.auditor import run_monitor
 from agents.vision.assertions import check_assertion
 from agents.vision.visual_regression import compare_to_baseline
 from config.settings import settings
+
 from orchestrator.guardrails import LoopGuardrail
 from orchestrator.healing_loop import HealingLoop
 from orchestrator.kernel import OrchestratorKernel, ToolRegistry
@@ -204,7 +206,7 @@ class RunEngine:
             if self.on_step_result:
                 self.on_step_result(trigger_step.step_id, trigger_step, corrected)
 
-    def run(self, requirement_text: str, run_id: str | None = None, keep_browser_open: bool = False) -> RunEngineResult:
+    def run(self, requirement_text: str, run_id: str | None = None, keep_browser_open: bool = False, continuous_audit: bool | None = None) -> RunEngineResult:
         run_id = run_id or str(uuid.uuid4())[:8]
         kernel = OrchestratorKernel(registry=self.registry, run_id=run_id)
 
@@ -236,6 +238,7 @@ class RunEngine:
             call_tool=call_tool,
             requirement_text=requirement_text,
             keep_browser_open=keep_browser_open,
+            continuous_audit=continuous_audit,
         )
 
     def run_spec(
@@ -247,6 +250,7 @@ class RunEngine:
         call_tool: Optional[Callable[[str, Any], Any]] = None,
         requirement_text: str | None = None,
         keep_browser_open: bool = False,
+        continuous_audit: bool | None = None,
     ) -> RunEngineResult:
         """
         Executes an already-built TestSpec directly, skipping Planner
@@ -264,8 +268,14 @@ class RunEngine:
         hand-assembling a spec with no separate original request string)
         fall back to spec.requirement_ref, which is still more useful
         than an empty string even though it's a slug.
+
+        `continuous_audit`: None (default) defers to
+        settings.enable_continuous_audit; True/False overrides it for this
+        run only (e.g. a CLI `--continuous-audit` flag). See
+        agents/auditor/run_monitor.py.
         """
         run_id = run_id or str(uuid.uuid4())[:8]
+        do_continuous_audit = settings.enable_continuous_audit if continuous_audit is None else continuous_audit
         guardrail = LoopGuardrail()
         if kernel is None:
             kernel = OrchestratorKernel(registry=self.registry, run_id=run_id)
@@ -332,8 +342,33 @@ class RunEngine:
                         params=current_step.capability_params or {},
                         expected=current_step.expected or {}
                     )
-                    
-                    cap_result = call_tool("Capability.check", capability_input)
+
+                    # Same-class bug fix as Phase 3 (next-phase plan) applied
+                    # to the vision path's _resolve_dom(): most capability
+                    # adapters already catch their own transport errors
+                    # (e.g. agents/capability/api_adapter.py's broad
+                    # `except Exception` around its httpx call), but nothing
+                    # here guaranteed that -- a new or incompletely-guarded
+                    # adapter raising anything at all propagates uncaught
+                    # through orchestrator/kernel.py's call_tool (re-wrapped
+                    # as a failed ToolResponse) and back out as a
+                    # RuntimeError from this file's own call_tool closure,
+                    # crashing the entire run instead of the same
+                    # "escalate this one step, keep going" behavior a
+                    # deliberate cap_result.escalate=True already gets.
+                    # Verified by direct reproduction (a stub adapter that
+                    # raises a plain Exception) before and after this fix.
+                    try:
+                        cap_result = call_tool("Capability.check", capability_input)
+                    except RuntimeError as e:
+                        cap_result = CapabilityCheckResult(
+                            capability=current_step.capability_type,
+                            passed=False,
+                            confidence=0.0,
+                            evidence={"unhealable": True, "adapter_error": str(e)},
+                            escalate=True,
+                        )
+                        break
                     
                     # If passed and not escalated, we're done
                     if cap_result.passed and not cap_result.escalate:
@@ -575,6 +610,35 @@ class RunEngine:
                         "visual_diff_image_ref": diff_result.diff_image_path,
                         "visual_baseline_created": diff_result.baseline_created,
                     })
+
+            # Phase 1 (next-phase plan) -- continuous-audit second opinion.
+            # Runs before this step's result is recorded so that, on
+            # disagreement, the healed (not the premature) result is what
+            # actually gets aggregated/reported -- same principle as the
+            # assertion/visual-diff checks just above, which also mutate
+            # `result` before it's ever recorded. Gated on `not
+            # result.escalate` -- an already-escalated step has nothing new
+            # to second-guess; healing_loop already owns that case.
+            if do_continuous_audit and not result.escalate:
+                verdict = run_monitor.review_step(step, result)
+                run_monitor.log_verdict(run_id, verdict)
+                if not verdict.agrees:
+                    disputed_result = result.model_copy(update={"escalate": True})
+                    execution_logs = [
+                        f"step {step.step_id} continuous-audit disagreement: {verdict.reason}"
+                    ]
+                    heal_result = healing_loop.heal(
+                        step=step,
+                        failed_result=disputed_result,
+                        screenshot_path=screenshot_path,
+                        execution_logs=execution_logs,
+                        value=value,
+                    )
+                    result = heal_result.final_result
+                    if heal_result.skill_used_or_learned is not None:
+                        aggregator.record_skill_learned(heal_result.skill_used_or_learned)
+                        if self.on_skill_learned:
+                            self.on_skill_learned(step.step_id, heal_result.skill_used_or_learned)
 
             aggregator.record_step_result(result)
             if self.on_step_result:

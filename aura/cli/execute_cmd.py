@@ -23,6 +23,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from rich.console import Console
 
 from agents.planner.tool import generate_spec as planner_generate_spec
 from aura.tui import live_view
@@ -35,6 +36,8 @@ from orchestrator.spec_validator import SpecValidationError
 from reports.junit import render_junit
 from reports.render import render_html, render_json, render_pdf
 from runtime.hooks.browser import normalize_url
+
+console = Console()
 
 
 def _find_requirement_file(test_id: str) -> Path:
@@ -113,6 +116,7 @@ def execute_prompt(
     scroll_test: bool = False,
     ui_audit: bool = False,
     junit_out: str | None = None,
+    continuous_audit: bool | None = None,
 ) -> "RunReport":
     """
     `aura execute --prompt "<plain English>"` -- fully unattended: the
@@ -133,6 +137,7 @@ def execute_prompt(
         scroll_test=scroll_test,
         ui_audit=ui_audit,
         junit_out=junit_out,
+        continuous_audit=continuous_audit,
     )
 
 
@@ -144,6 +149,7 @@ def execute_url(
     scroll_test: bool = False,
     ui_audit: bool = False,
     junit_out: str | None = None,
+    continuous_audit: bool | None = None,
 ) -> "RunReport":
     """
     `aura execute --url <url>` with no test_id/spec file: the "just give
@@ -162,6 +168,7 @@ def execute_url(
         scroll_test=scroll_test,
         ui_audit=ui_audit,
         junit_out=junit_out,
+        continuous_audit=continuous_audit,
     )
 
 
@@ -251,6 +258,7 @@ def execute_test(
     ui_audit: bool = False,
     junit_out: str | None = None,
     junit_suite_collector: list | None = None,
+    continuous_audit: bool | None = None,
 ) -> RunReport:
     # --- §2.2: ingest requirement, generate spec for preview ---
     req_path = _find_requirement_file(test_id)
@@ -273,6 +281,7 @@ def execute_test(
         ui_audit=ui_audit,
         junit_out=junit_out,
         junit_suite_collector=junit_suite_collector,
+        continuous_audit=continuous_audit,
     )
 
 
@@ -286,6 +295,7 @@ def _run_requirement_text(
     ui_audit: bool = False,
     junit_out: str | None = None,
     junit_suite_collector: list | None = None,
+    continuous_audit: bool | None = None,
 ) -> RunReport:
     console = live_view.console
 
@@ -343,6 +353,7 @@ def _run_requirement_text(
             requirement_text,
             run_id=spec.test_id.lower().replace(" ", "-"),
             keep_browser_open=scroll_test or ui_audit,
+            continuous_audit=continuous_audit,
         )
     except SpecValidationError as e:
         console.print(f"[red]{e}[/red]")

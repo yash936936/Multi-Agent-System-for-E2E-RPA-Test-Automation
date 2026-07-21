@@ -170,6 +170,71 @@ class _BrowserSession:
         except Exception:
             return False
 
+    def get_click_point_in_page(self, screen_x: int, screen_y: int):
+        """
+        Phase 2 (cursor-coordinate fix, next-phase plan). Best-effort
+        translation of a screen-pixel coordinate -- e.g. from OCR run
+        against an OS-level mss screenshot (runtime/hooks/capture.py) --
+        into this page's own CSS/viewport coordinate space, so a click can
+        be dispatched through Playwright's page.mouse (guaranteed on-
+        target) instead of runtime/hooks/interact.click's raw OS pixel
+        coordinate.
+
+        Root cause of the bug this replaces: capture.py's mss screenshot
+        is a full-monitor grab in physical/device screen pixels; OCR's
+        (x, y) result is a pixel offset *into that image*, with no notion
+        of where the Chromium window actually sits on screen or of the
+        display's DPI scale factor. interact.click() hands that same
+        number straight to pyautogui.moveTo() as if it were already a
+        correct absolute OS coordinate. Any DPI scaling, multi-monitor
+        offset, or non-(0,0) window position means the two coordinate
+        spaces don't line up, and the click lands somewhere else on the
+        real desktop (observed: jumping to the taskbar).
+
+        Uses one Chromium DevTools Protocol call (Browser.getWindowForTarget)
+        to get this window's actual on-screen bounds -- CDP reports these in
+        the same physical-pixel space mss captures in, so no separate DPI
+        conversion is needed for that part. window.devicePixelRatio and
+        outerWidth/outerHeight - innerWidth/innerHeight (both CSS pixels,
+        read directly from the page) give the browser chrome's size, which
+        is subtracted before converting the remaining offset into CSS
+        pixels (Playwright's own mouse coordinate space) by dividing by
+        the device pixel ratio once.
+
+        Simplification: assumes standard top-only chrome (title bar/tabs/
+        address bar) with no left/right chrome (devtools panel undocked to
+        the side, a browser sidebar, etc. would violate this). Good enough
+        for AURA's own maximized, devtools-closed launch configuration
+        (see get_page() above); not guaranteed correct for every possible
+        window layout, which is exactly why this fails soft into None
+        rather than ever returning a guessed-wrong point silently.
+
+        Returns None -- never raises -- whenever this can't be computed:
+        no active page, a non-Chromium engine (CDP is Chromium-only), any
+        transform step failing, or the translated point landing outside
+        the page's own content area (negative x/y -- i.e. the original
+        point wasn't actually over the browser window's content at all).
+        Callers fall back to the OS-level interact.click() path exactly as
+        before whenever this returns None.
+        """
+        if self._page is None or settings.playwright_browser != "chromium":
+            return None
+        try:
+            cdp = self._context.new_cdp_session(self._page)
+            bounds = cdp.send("Browser.getWindowForTarget")["bounds"]
+            dpr = self._page.evaluate("window.devicePixelRatio") or 1
+            chrome_w_css = self._page.evaluate("window.outerWidth - window.innerWidth") or 0
+            chrome_h_css = self._page.evaluate("window.outerHeight - window.innerHeight") or 0
+            content_left_screen = bounds["left"] + chrome_w_css * dpr
+            content_top_screen = bounds["top"] + chrome_h_css * dpr
+            viewport_x = (screen_x - content_left_screen) / dpr
+            viewport_y = (screen_y - content_top_screen) / dpr
+            if viewport_x < 0 or viewport_y < 0:
+                return None
+            return (viewport_x, viewport_y)
+        except Exception:
+            return None
+
     def get_last_video_path(self) -> str | None:
         """Path to the most recently finalized video file, if any (set by close())."""
         return self._last_video_path
@@ -271,6 +336,11 @@ def has_active_page() -> bool:
 def dom_scroll(delta_y: int) -> bool:
     """Scrolls the live page's own document via JS, scoped to this page (not OS focus). See _BrowserSession.dom_scroll."""
     return _session.dom_scroll(delta_y)
+
+
+def get_click_point_in_page(screen_x: int, screen_y: int):
+    """Translates an OS/mss-pixel coordinate into this page's CSS/viewport space, or None. See _BrowserSession.get_click_point_in_page."""
+    return _session.get_click_point_in_page(screen_x, screen_y)
 
 
 def get_last_video_path() -> str | None:

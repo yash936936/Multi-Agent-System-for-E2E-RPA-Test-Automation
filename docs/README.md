@@ -365,7 +365,7 @@ All settings live in `config\settings.py` and can be overridden via a `.env` fil
 | `AURA_ENABLE_CLOUD_PLANNER` | `false` | Enables `cloud_llm` (generic OpenAI-compatible HTTP client) |
 | `AURA_CLOUD_LLM_BASE_URL` / `_API_KEY` / `_MODEL` | *(none)* | Config for `cloud_llm` |
 | `AURA_ENABLE_HERMES_AGENT` | `false` | Enables `hermes_agent` (talks to a real, running Hermes Agent instance) |
-| `AURA_HERMES_AGENT_BASE_URL` / `_API_KEY` / `_MODEL` | *(none)* | Config for `hermes_agent`, e.g. `http://localhost:4141` for a locally-run `hermes api-server` |
+| `AURA_HERMES_AGENT_BASE_URL` / `_API_KEY` / `_MODEL` | *(none)* | Config for `hermes_agent`, e.g. `http://localhost:8642` for a locally-run Hermes Agent instance (start with `hermes gateway`, Hermes Agent's own default `API_SERVER_PORT` -- not `hermes api-server`, which doesn't exist) |
 | `AURA_ENABLE_LLM_SEMANTIC_VERIFIER` | `false` | Enables the `llm_semantic` dual-verification tie-break mode (uses whichever LLM backend above is enabled) |
 | `AURA_PROJECT_ROOT` | repo root | Override where AURA looks for/writes `runtime\`, `reports\`, etc. |
 | `AURA_ENV` | *(none)* | Environment profile name (e.g. `staging`, `prod`) — see [Environment profiles](#environment-profiles-devstagingprod) below |
@@ -478,14 +478,17 @@ If you already run [Hermes Agent](https://github.com/NousResearch/hermes-agent)
 route spec generation through it instead of a bare completion endpoint —
 you get Hermes's own persistent memory, skill recall, and tool/MCP access
 on the far end, rather than a second, separate LLM connection. Start
-Hermes's own API server (`hermes api-server`, or see Hermes's docs for the
-exact command in your installed version) and point AURA at it:
+Hermes's own API server -- `hermes gateway`, after setting
+`API_SERVER_ENABLED=true` and `API_SERVER_KEY=<your-key>` in
+`~/.hermes/.env` (there is no `hermes api-server` command; see
+[Hermes Agent's API Server docs](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server)
+for the exact steps in your installed version) -- and point AURA at it:
 
 ```
 AURA_ENABLE_HERMES_AGENT=true
 AURA_PLANNER_BACKEND=hermes_agent
-AURA_HERMES_AGENT_BASE_URL=http://localhost:4141
-AURA_HERMES_AGENT_API_KEY=                             # Hermes's API_SERVER_KEY, if it requires one
+AURA_HERMES_AGENT_BASE_URL=http://localhost:8642        # Hermes Agent's own default API_SERVER_PORT
+AURA_HERMES_AGENT_API_KEY=                             # must match Hermes's API_SERVER_KEY -- required for every Hermes deployment, not optional
 ```
 
 Unlike `local_llm`/`cloud_llm`, `hermes_agent` is never auto-detected —

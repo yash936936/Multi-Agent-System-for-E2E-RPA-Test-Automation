@@ -105,6 +105,7 @@ def execute(
     browser: str = typer.Option("chromium", "--browser", help=f"Phase I1: Playwright browser engine for DOM-path targets. One of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)}."),
     record_video: bool = typer.Option(False, "--record-video", help="Phase I2: record a video of the run (DOM path: real Playwright video; OS/pixel path: an honestly-labeled step-boundary slideshow, not continuous video). Off by default."),
     parallel: int = typer.Option(1, "--parallel", help="Phase J: with --all, run up to N requirement docs concurrently (ThreadPoolExecutor -- this is I/O-bound work, not CPU-bound, so threads are correct here). 1 (default) preserves the original sequential behavior."),
+    continuous_audit: bool = typer.Option(False, "--continuous-audit", help="Phase 1 (next-phase plan): run an independent LLM second opinion on every vision step's self-reported outcome, re-healing on disagreement instead of just trusting the step's own confidence. Off by default -- one extra LLM call per step has a real latency cost. If omitted, falls back to settings.enable_continuous_audit (AURA_ENABLE_CONTINUOUS_AUDIT) rather than forcing it off, so an env-configured default isn't silently overridden by not passing this flag."),
 ) -> None:
     """Execute a test: approval checkpoint -> live vision-execution loop -> report.
 
@@ -125,6 +126,11 @@ def execute(
 
     preflight.run_preflight_or_exit()
     auto_approve = yes or autonomous
+    # None when the flag wasn't passed -- so an env-configured
+    # AURA_ENABLE_CONTINUOUS_AUDIT=true default isn't silently forced back
+    # off just because --continuous-audit wasn't typed this time. See
+    # RunEngine.run_spec()'s continuous_audit param docstring.
+    continuous_audit_override = True if continuous_audit else None
 
     if interactive:
         if not prompt:
@@ -137,7 +143,7 @@ def execute(
         # --prompt is inherently unattended: the person described intent in
         # plain English rather than approving a spec line by line, so there
         # is no meaningful approval checkpoint to show them.
-        report = execute_cmd.execute_prompt(prompt, url=url, export_pdf=pdf, scroll_test=scroll_test, ui_audit=ui_audit, junit_out=junit_out)
+        report = execute_cmd.execute_prompt(prompt, url=url, export_pdf=pdf, scroll_test=scroll_test, ui_audit=ui_audit, junit_out=junit_out, continuous_audit=continuous_audit_override)
         _exit_nonzero_if_failed([report])
         return
 
@@ -179,6 +185,7 @@ def execute(
                 reports.append(execute_cmd.execute_test(
                     str(path), auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf,
                     url=url, scroll_test=scroll_test, ui_audit=ui_audit, junit_suite_collector=junit_suites,
+                    continuous_audit=continuous_audit_override,
                 ))
         else:
             # Phase J (decisions.md D-031): genuinely concurrent batch
@@ -211,6 +218,7 @@ def execute(
                         execute_cmd.execute_test,
                         str(path), auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf,
                         url=url, scroll_test=scroll_test, ui_audit=ui_audit, junit_suite_collector=junit_suites,
+                        continuous_audit=continuous_audit_override,
                     ): path
                     for path in runnable
                 }
@@ -234,13 +242,13 @@ def execute(
 
     if not test_id:
         if url:
-            report = execute_cmd.execute_url(url, auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf, scroll_test=scroll_test, ui_audit=ui_audit, junit_out=junit_out)
+            report = execute_cmd.execute_url(url, auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf, scroll_test=scroll_test, ui_audit=ui_audit, junit_out=junit_out, continuous_audit=continuous_audit_override)
             _exit_nonzero_if_failed([report])
             return
         console.print("[red]Provide a test_id/requirement file, or pass --all, --url, or --prompt.[/red]")
         raise typer.Exit(code=1)
 
-    report = execute_cmd.execute_test(test_id, auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf, url=url, scroll_test=scroll_test, ui_audit=ui_audit, junit_out=junit_out)
+    report = execute_cmd.execute_test(test_id, auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf, url=url, scroll_test=scroll_test, ui_audit=ui_audit, junit_out=junit_out, continuous_audit=continuous_audit_override)
     _exit_nonzero_if_failed([report])
 
 

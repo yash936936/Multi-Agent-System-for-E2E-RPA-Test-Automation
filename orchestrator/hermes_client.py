@@ -61,8 +61,9 @@ class HermesAgentEgressBlockedError(RuntimeError):
 class HermesAgentClient:
     """
     Talks to a running Hermes Agent instance's API server
-    (`hermes api-server` / the built-in FastAPI-based gateway) via its
-    OpenAI-compatible `/v1/chat/completions` endpoint.
+    (started via `hermes gateway` -- not `hermes api-server`, which
+    doesn't exist in the real CLI, see docs/debug_report.md's Phase 5
+    entry) via its OpenAI-compatible `/v1/chat/completions` endpoint.
 
     Deliberately NOT a general Hermes SDK -- AURA only needs one call
     shape (send messages, get back the final assistant message), so this
@@ -107,7 +108,10 @@ class HermesAgentClient:
                 "HermesAgentClient requires settings.hermes_agent_base_url "
                 "(or AURA_HERMES_AGENT_BASE_URL / a .env entry) -- the base "
                 "URL of a running Hermes Agent API server, e.g. "
-                "'http://localhost:4141'."
+                "'http://localhost:8642' (Hermes Agent's own default "
+                "API_SERVER_PORT -- start it with `hermes gateway` after "
+                "setting API_SERVER_ENABLED=true/API_SERVER_KEY in "
+                "~/.hermes/.env; there is no `hermes api-server` command)."
             )
         host = urlparse(self.base_url).hostname
         if not is_egress_host_allowed(host):

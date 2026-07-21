@@ -31,6 +31,14 @@ error falls back to "no opinion" (None) so the caller
 top of dual verification, never a new required dependency or single point
 of failure -- consistent with every other network-capable path in this
 codebase (CloudLLMBackend, HermesAgentBackend, capability adapters).
+
+Phase 4 (next-phase plan): backend selection (which of Hermes/cloud
+handles this, with a real reachability check first) now delegates to
+orchestrator/backend_router.py's select_backend("semantic_tie_break")
+rather than this module resolving it independently -- see that module's
+docstring for the scope/priority/health-check design. This module keeps
+owning the semantic-verification prompt/parsing contract itself; only the
+"which backend" question moved.
 """
 from __future__ import annotations
 
@@ -64,79 +72,6 @@ _USER_TEMPLATE = (
 )
 
 
-def _get_backend_client():
-    """
-    Resolves whichever LLM backend is actually enabled/configured, reusing
-    existing client classes rather than building a third HTTP client.
-    Returns None (not an exception) if nothing usable is configured -- the
-    caller treats that identically to a failed call.
-    """
-    if settings.enable_hermes_agent and settings.hermes_agent_base_url:
-        from orchestrator.hermes_client import HermesAgentClient
-
-        return HermesAgentClient()
-    if settings.enable_cloud_planner and settings.cloud_llm_base_url:
-        from agents.planner.spec_generator import CloudLLMBackend
-
-        cloud_backend = CloudLLMBackend()
-
-        class _ChatAdapter:
-            """Adapts CloudLLMBackend's generate()-shaped client to the
-            simple .chat(system, user) -> str contract this module needs,
-            without duplicating CloudLLMBackend's HTTP logic."""
-
-            def chat(self, system_prompt: str, user_prompt: str) -> str:
-                import httpx
-                from urllib.parse import urlparse
-
-                from orchestrator.capability_router import is_egress_host_allowed
-
-                # Bug fix: this adapter builds its own request instead of
-                # calling CloudLLMBackend.generate() (which would double-parse
-                # the response as a TestSpec JSON payload, wrong shape for this
-                # module's {"winner": ...} contract) -- but that meant it never
-                # ran CloudLLMBackend.generate()'s egress-allowlist check
-                # either. Verified live: with settings.allowed_capability_hosts
-                # set to exclude the configured cloud_llm host,
-                # CloudLLMBackend.generate() correctly raised
-                # CloudLLMEgressBlockedError while this adapter's un-gated
-                # chat() still went ahead and made the call. Since this
-                # function is the one making the actual HTTP request, the
-                # check belongs here, not just in the sibling class.
-                host = urlparse(cloud_backend.base_url).hostname
-                if not is_egress_host_allowed(host):
-                    raise RuntimeError(
-                        f"LLM semantic tie-break: host '{host}' (from "
-                        "cloud_llm_base_url) is not in "
-                        "settings.allowed_capability_hosts -- refusing to call it."
-                    )
-
-                client = cloud_backend._get_client()
-                headers = {"Content-Type": "application/json"}
-                if cloud_backend.api_key:
-                    headers["Authorization"] = f"Bearer {cloud_backend.api_key}"
-                url = f"{cloud_backend.base_url.rstrip('/')}/chat/completions"
-                body = {
-                    "model": cloud_backend.model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.0,
-                    "max_tokens": 200,
-                }
-                response = client.post(url, headers=headers, json=body)
-                if response.status_code != 200:
-                    raise RuntimeError(
-                        f"LLM semantic verifier request to {url} failed with "
-                        f"status {response.status_code}: {response.text[:300]}"
-                    )
-                return response.json()["choices"][0]["message"]["content"]
-
-        return _ChatAdapter()
-    return None
-
-
 def semantic_verify(target_description: str, ocr_result, dom_result) -> str | None:
     """
     Returns "ocr", "dom", or None (no usable opinion -- either the
@@ -147,13 +82,14 @@ def semantic_verify(target_description: str, ocr_result, dom_result) -> str | No
     if not settings.enable_llm_semantic_verifier:
         return None
 
-    client = _get_backend_client()
+    from orchestrator.backend_router import select_backend
+
+    client = select_backend("semantic_tie_break")
     if client is None:
         _logger.info(
-            "LLM semantic tie-break requested but no LLM backend is "
-            "enabled/configured (enable_hermes_agent or enable_cloud_planner "
-            "with their respective base_urls) -- skipping, falling back to "
-            "highest_confidence."
+            "LLM semantic tie-break requested but backend_router found no "
+            "backend both configured and reachable right now -- skipping, "
+            "falling back to highest_confidence."
         )
         return None
 

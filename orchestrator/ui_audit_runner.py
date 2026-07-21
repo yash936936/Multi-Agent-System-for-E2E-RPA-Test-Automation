@@ -271,7 +271,33 @@ def _run_click_audit(
                     pages_before = len(dom_page.context.pages)
                     dom_page.mouse.click(click_x, click_y)
                 else:
-                    interact.click(click_x, click_y)
+                    # Phase 2 (cursor-coordinate fix, next-phase plan):
+                    # click_x/click_y here came from OCR against the
+                    # OS-level baseline screenshot (mss full-monitor
+                    # capture) -- never valid as a raw OS coordinate for
+                    # interact.click (see runtime/hooks/browser.py's
+                    # get_click_point_in_page docstring for the root
+                    # cause: DPI scaling / multi-monitor offset / window
+                    # position all send that number somewhere else on the
+                    # real desktop -- the "taskbar jump" bug). Translate
+                    # into this page's own CSS/viewport space and dispatch
+                    # through Playwright's mouse whenever a live page
+                    # exists; only fall back to the raw OS coordinate when
+                    # it doesn't (a native, non-browser target) or the
+                    # translation itself fails.
+                    page_point = _browser_hook.get_click_point_in_page(click_x, click_y) if dom_page is not None else None
+                    if page_point is not None:
+                        pages_before = len(dom_page.context.pages)
+                        dom_page.mouse.click(*page_point)
+                        # Reuses the dispatch_via_playwright-gated tab-aware
+                        # return (below) and skips the OS-level browser_back
+                        # (further below) -- both paths already exist for
+                        # exactly this "dispatched via Playwright's mouse"
+                        # case, just previously only reachable from the
+                        # dom_extractor_direct strategy.
+                        dispatch_via_playwright = True
+                    else:
+                        interact.click(click_x, click_y)
             except NoDisplayError:
                 report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=False, state_changed=None))
                 continue
@@ -325,11 +351,15 @@ def _run_click_audit(
         # Best-effort return to the original page before testing the next
         # element. DOM path (resolution_strategy == "dom") and the direct
         # DOM-extractor path already went back via dom_smart_back above --
-        # OCR path uses the OS-level shortcut as before; if that fails (no
+        # OCR path uses the OS-level shortcut as before *unless* it was
+        # actually dispatched via Playwright's mouse (dispatch_via_playwright
+        # now covers that case too, see the click dispatch above), in which
+        # case dom_smart_back already handled the return and a second
+        # OS-level back would be redundant. If the OS shortcut fails (no
         # display, or the shortcut doesn't apply), subsequent locate_text()
         # calls simply fail to find their target and get recorded as
         # clicked=False rather than crashing the whole audit.
-        if resolution_strategy == "ocr":
+        if resolution_strategy == "ocr" and not dispatch_via_playwright:
             try:
                 interact.browser_back()
             except NoDisplayError:

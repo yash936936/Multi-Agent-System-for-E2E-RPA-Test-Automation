@@ -389,6 +389,43 @@ class Settings(BaseSettings):
     # for anything that can make a network call.
     enable_llm_semantic_verifier: bool = False
 
+    # Phase 1 (next-phase plan) -- gates agents/auditor/run_monitor.py's
+    # independent second-opinion pass on every vision step's self-reported
+    # outcome. Off by default: one extra LLM call per step has a real
+    # latency cost (module docstring), so this stays opt-in until proven
+    # not to bottleneck real runs. `RunEngine.run_spec(continuous_audit=...)`
+    # can override this per-run (e.g. a CLI `--continuous-audit` flag)
+    # without touching this default.
+    enable_continuous_audit: bool = False
+
+    # Phase 4 (next-phase plan) -- orchestrator/backend_router.py's
+    # priority for the two cross-cutting LLM tasks it covers (semantic
+    # tie-break, continuous-audit monitor). Same "hermes_first"/
+    # "cloud_first" naming as planner_priority above, but this is a
+    # separate setting -- deliberately not reusing planner_priority,
+    # since Planner's own selection system is untouched by this router
+    # (see backend_router.py's module docstring for why) and conflating
+    # the two settings would make changing one silently affect the other.
+    backend_router_priority: str = "hermes_first"
+
+    # None (default) means "inherit backend_router_priority" -- set either
+    # of these explicitly only if you want that specific task to use a
+    # different backend order than the shared default (e.g. a fast local
+    # Hermes instance for the frequent per-step tie-break, a stronger
+    # cloud model for the much-less-frequent audit monitor).
+    semantic_tie_break_backend_priority: str | None = None
+    continuous_audit_backend_priority: str | None = None
+
+    # backend_router.py sends a real (minimal) chat call to verify a
+    # configured backend is actually reachable before committing a task
+    # to it, rather than just checking "is it configured" -- this bounds
+    # how long that probe is allowed to take before giving up and trying
+    # the next candidate. Deliberately short: this is a reachability
+    # check, not the real task call (which uses each client's own normal,
+    # longer timeout).
+    backend_router_health_check_timeout_s: float = 3.0
+
+
     # --- OCR engine (optional override) ---
     # If pytesseract can't find the `tesseract` binary on PATH (common on
     # Windows), set this to the full path to tesseract.exe, either here or
@@ -440,7 +477,7 @@ class Settings(BaseSettings):
     # no code path to a real Hermes instance existed at all until this
     # phase. Off by default -- same posture as enable_cloud_planner.
     enable_hermes_agent: bool = False
-    hermes_agent_base_url: str | None = None  # e.g. "http://localhost:4141" (a locally-run `hermes api-server`)
+    hermes_agent_base_url: str | None = None  # e.g. "http://localhost:8642" (Hermes Agent's own default API_SERVER_PORT, started via `hermes gateway` -- not `hermes api-server`, which doesn't exist)
     hermes_agent_api_key: str | None = None  # Hermes's API_SERVER_KEY, if the instance requires one
     hermes_agent_model: str | None = None  # cosmetic per Hermes's own docs, but sent for clarity/logging
 

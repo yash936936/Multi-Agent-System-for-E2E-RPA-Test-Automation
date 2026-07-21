@@ -151,10 +151,27 @@ def fuzz_form(
     result = FormFuzzResult(url_before=getattr(page, "url", ""))
     pages_before = len(page.context.pages)
 
-    candidates = [
-        c for c in snapshot_elements(page)
-        if c["role"] in ("textbox", "searchbox", "combobox")
-    ][:max_fields]
+    # Phase 3 bug fix (next-phase plan): this function's own docstring
+    # already promises "never raises on an individual field's
+    # fill/submit failure" -- but snapshot_elements()/locate_dom()/
+    # relocate_dom() (the *resolution* calls, as opposed to the
+    # dom_fill()/dom_click() dispatch calls already wrapped below) had no
+    # exception handling at all. They call Playwright's own
+    # page.locator("html").aria_snapshot() with nothing catching a
+    # mid-navigation "Execution context was destroyed" (or similar) error
+    # -- exactly the kind of thing this function's whole job (fill a form,
+    # submit it, observe what happens, including navigation) makes likely,
+    # not a rare edge case. See agents/vision/executor.py::_resolve_dom's
+    # docstring for the same bug's more consequential twin in the main
+    # execute_step path.
+    try:
+        candidates = [
+            c for c in snapshot_elements(page)
+            if c["role"] in ("textbox", "searchbox", "combobox")
+        ][:max_fields]
+    except Exception as e:
+        result.note = f"Could not snapshot the page's form fields: {e}"
+        return result
 
     for candidate in candidates:
         field_key = classify_field(candidate["name"])
@@ -164,9 +181,12 @@ def fuzz_form(
             lookup_key = field_key
         value = generate_value(lookup_key)
 
-        located = locate_dom(page, candidate["name"])
-        if not located.found:
-            located = relocate_dom(page, {"name": candidate["name"]})
+        try:
+            located = locate_dom(page, candidate["name"])
+            if not located.found:
+                located = relocate_dom(page, {"name": candidate["name"]})
+        except Exception:
+            continue  # same posture as the dom_fill() failure below -- one field's resolution failing shouldn't stop the rest
         if not located.found or located.locator is None:
             continue
 
@@ -179,15 +199,19 @@ def fuzz_form(
         except Exception:
             continue  # one field failing to fill shouldn't stop the rest -- reported implicitly by its absence from `filled`
 
-    submit = locate_dom(page, submit_label)
-    if not submit.found:
-        # Try a couple of common alternates before giving up -- real signup
-        # forms use "Sign up", "Create account", "Register" far more often
-        # than the literal word "submit".
-        for alt in ("sign up", "create account", "register", "continue"):
-            submit = locate_dom(page, alt)
-            if submit.found:
-                break
+    try:
+        submit = locate_dom(page, submit_label)
+        if not submit.found:
+            # Try a couple of common alternates before giving up -- real signup
+            # forms use "Sign up", "Create account", "Register" far more often
+            # than the literal word "submit".
+            for alt in ("sign up", "create account", "register", "continue"):
+                submit = locate_dom(page, alt)
+                if submit.found:
+                    break
+    except Exception as e:
+        result.note = f"Form was filled but the submit button couldn't be resolved: {e}"
+        return result
 
     if not submit.found or submit.locator is None:
         result.note = "No submit-like button found -- form was filled but not submitted."
@@ -221,8 +245,16 @@ def fuzz_form(
     result.url_after = getattr(page, "url", "")
     result.url_changed = bool(result.url_before) and result.url_after != result.url_before
 
-    after_text = " ".join(c["name"].lower() for c in snapshot_elements(page))
-    result.error_markers_seen = [m for m in _ERROR_MARKERS if m in after_text]
-    result.success_markers_seen = [m for m in _SUCCESS_MARKERS if m in after_text]
+    # Same best-effort posture as the wait_for_load_state above: a submit
+    # that navigated the page can leave this snapshot racing a destroyed
+    # execution context. Report no markers seen rather than crash -- the
+    # url_changed/new_tab_opened signals above already captured the
+    # navigation itself either way.
+    try:
+        after_text = " ".join(c["name"].lower() for c in snapshot_elements(page))
+        result.error_markers_seen = [m for m in _ERROR_MARKERS if m in after_text]
+        result.success_markers_seen = [m for m in _SUCCESS_MARKERS if m in after_text]
+    except Exception:
+        pass
 
     return result

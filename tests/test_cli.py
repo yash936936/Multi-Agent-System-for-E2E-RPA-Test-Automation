@@ -143,7 +143,7 @@ def test_execute_prompt_runs_fully_unattended(monkeypatch, tmp_path):
 
     calls = {}
 
-    def fake_run(requirement_text, display_source, auto_approve, refresh_data, export_pdf, scroll_test=False, ui_audit=False, junit_out=None, junit_suite_collector=None):
+    def fake_run(requirement_text, display_source, auto_approve, refresh_data, export_pdf, scroll_test=False, ui_audit=False, junit_out=None, junit_suite_collector=None, continuous_audit=None):
         calls["requirement_text"] = requirement_text
         calls["auto_approve"] = auto_approve
         calls["scroll_test"] = scroll_test
@@ -169,12 +169,53 @@ def test_execute_prompt_forwards_junit_out(monkeypatch):
 
     calls = {}
 
-    def fake_run(requirement_text, display_source, auto_approve, refresh_data, export_pdf, scroll_test=False, ui_audit=False, junit_out=None, junit_suite_collector=None):
+    def fake_run(requirement_text, display_source, auto_approve, refresh_data, export_pdf, scroll_test=False, ui_audit=False, junit_out=None, junit_suite_collector=None, continuous_audit=None):
         calls["junit_out"] = junit_out
 
     monkeypatch.setattr(execute_cmd, "_run_requirement_text", fake_run)
     execute_cmd.execute_prompt("Check the homepage loads correctly", junit_out="/tmp/results.xml")
     assert calls["junit_out"] == "/tmp/results.xml"
+
+
+def test_continuous_audit_flag_reaches_engine_run(monkeypatch):
+    """
+    Phase 1's continuous-audit monitor (agents/auditor/run_monitor.py) is
+    useless if --continuous-audit never actually reaches
+    RunEngine.run_spec()'s continuous_audit param -- confirms the full
+    chain (execute_cmd.execute_prompt -> _run_requirement_text ->
+    engine.run) rather than trusting that each individual forwarding hop
+    compiles.
+    """
+    from aura.cli import execute_cmd
+    from orchestrator.run_engine import RunEngine
+
+    captured = {}
+
+    class _StopHere(Exception):
+        pass
+
+    def fake_run(self, requirement_text, run_id=None, keep_browser_open=False, continuous_audit=None):
+        captured["continuous_audit"] = continuous_audit
+        raise _StopHere  # nothing downstream of engine.run() is relevant to this test
+
+    monkeypatch.setattr(RunEngine, "run", fake_run)
+    monkeypatch.setattr(execute_cmd.live_view, "render_spec_checklist", lambda spec: None)
+    monkeypatch.setattr(
+        execute_cmd, "planner_generate_spec",
+        lambda req: type("Spec", (), {"test_id": "TC-FAKE-001", "steps": []})(),
+    )
+
+    try:
+        execute_cmd.execute_prompt("Check the homepage loads correctly", continuous_audit=True)
+    except _StopHere:
+        pass
+    assert captured["continuous_audit"] is True
+
+    try:
+        execute_cmd.execute_prompt("Check the homepage loads correctly", continuous_audit=None)
+    except _StopHere:
+        pass
+    assert captured["continuous_audit"] is None
 
 
 # --------------------------------------------------------------------------
