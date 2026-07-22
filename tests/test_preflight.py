@@ -201,6 +201,74 @@ def test_check_planner_backend_unknown_value(monkeypatch):
     assert "totally_made_up" in message
 
 
+def test_check_planner_backend_empty_string_is_rejected_not_treated_as_unset(monkeypatch):
+    # Regression test for a real failure a user hit: `AURA_PLANNER_BACKEND=`
+    # (blank value) in .env parses to the literal empty string '', not
+    # None -- so config/settings.py's auto-detect ("if planner_backend is
+    # None") never runs, and '' is correctly rejected here as an unknown
+    # value rather than silently treated as "let auto-detect decide."
+    from aura.cli.preflight import check_planner_backend_available
+    from config.settings import settings as global_settings
+
+    monkeypatch.setattr(global_settings, "planner_backend", "")
+    ok, message = check_planner_backend_available()
+    assert ok is False
+    assert "unknown value ''" in message
+
+
+def test_check_planner_backend_cloud_llm_ok_when_base_url_set(monkeypatch):
+    # Regression test for the real bug: this check predated Phase V's
+    # cloud_llm backend and only ever recognized heuristic/local_llm --
+    # meaning a validly auto-detected/configured cloud_llm backend was
+    # rejected here as "unknown", blocking startup for any operator who
+    # configured it (e.g. pointing cloud_llm at Gemini's OpenAI-compatible
+    # endpoint).
+    from aura.cli.preflight import check_planner_backend_available
+    from config.settings import settings as global_settings
+
+    monkeypatch.setattr(global_settings, "planner_backend", "cloud_llm")
+    monkeypatch.setattr(global_settings, "cloud_llm_base_url", "https://generativelanguage.googleapis.com/v1beta/openai")
+    ok, message = check_planner_backend_available()
+    assert ok is True
+    assert message is None
+
+
+def test_check_planner_backend_cloud_llm_missing_base_url(monkeypatch):
+    from aura.cli.preflight import check_planner_backend_available
+    from config.settings import settings as global_settings
+
+    monkeypatch.setattr(global_settings, "planner_backend", "cloud_llm")
+    monkeypatch.setattr(global_settings, "cloud_llm_base_url", None)
+    ok, message = check_planner_backend_available()
+    assert ok is False
+    assert "AURA_CLOUD_LLM_BASE_URL" in message
+
+
+def test_check_planner_backend_hermes_agent_ok_when_base_url_set(monkeypatch):
+    # Same class of bug as cloud_llm above, for Phase W's hermes_agent
+    # backend (D-047) -- this is the exact case that blocked a real user
+    # whose .env had AURA_PLANNER_PRIORITY=hermes_first configured.
+    from aura.cli.preflight import check_planner_backend_available
+    from config.settings import settings as global_settings
+
+    monkeypatch.setattr(global_settings, "planner_backend", "hermes_agent")
+    monkeypatch.setattr(global_settings, "hermes_agent_base_url", "http://localhost:8642")
+    ok, message = check_planner_backend_available()
+    assert ok is True
+    assert message is None
+
+
+def test_check_planner_backend_hermes_agent_missing_base_url(monkeypatch):
+    from aura.cli.preflight import check_planner_backend_available
+    from config.settings import settings as global_settings
+
+    monkeypatch.setattr(global_settings, "planner_backend", "hermes_agent")
+    monkeypatch.setattr(global_settings, "hermes_agent_base_url", None)
+    ok, message = check_planner_backend_available()
+    assert ok is False
+    assert "AURA_HERMES_AGENT_BASE_URL" in message
+
+
 def test_run_preflight_or_exit_checks_both_tesseract_and_planner_backend(monkeypatch):
     from aura.cli import preflight
 

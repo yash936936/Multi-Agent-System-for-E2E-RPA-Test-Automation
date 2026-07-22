@@ -291,7 +291,18 @@ def test_generate_spec_does_not_escalate_when_primary_is_already_cloud(monkeypat
     monkeypatch.setattr(global_settings, "enable_cloud_planner", False)
 
 
-def test_generate_spec_logs_when_escalation_also_fails(monkeypatch, caplog):
+def test_generate_spec_falls_back_to_heuristic_when_escalation_also_fails(monkeypatch, caplog):
+    """
+    Bug fix (reported from a live run: Hermes connection refused + a
+    transient Cloud 503 in the same run crashed the entire `aura execute`
+    command). When both the primary backend and the CloudLLM escalation
+    fail, generate_spec() now falls back to the fully-offline
+    LocalHeuristicBackend as a last resort -- keeping the run alive with a
+    lower-quality but real spec -- rather than raising and losing the
+    whole run. Uses a real, parseable requirement so the heuristic
+    fallback can genuinely succeed here, matching what a real run's
+    already-decent requirement doc would do.
+    """
     monkeypatch.setattr(global_settings, "planner_backend", "heuristic")
     monkeypatch.setattr(global_settings, "enable_cloud_planner", True)
 
@@ -302,8 +313,35 @@ def test_generate_spec_logs_when_escalation_also_fails(monkeypatch, caplog):
     with patch("agents.planner.spec_generator._default_backend", return_value=_AlwaysFailsBackend()):
         with patch("agents.planner.spec_generator.CloudLLMBackend", return_value=_AlsoFailsBackend()):
             with caplog.at_level(logging.WARNING):
-                with pytest.raises(RuntimeError, match="cloud also down"):
-                    generate_spec(RequirementInput(requirement_text="click the button"))
+                spec = generate_spec(RequirementInput(requirement_text="Click the login button."))
+
+    assert spec.steps  # heuristic fallback actually produced a usable spec, not an empty/crashed run
+    assert any("falling back to the fully-offline LocalHeuristicBackend" in r.message for r in caplog.records)
+    monkeypatch.setattr(global_settings, "enable_cloud_planner", False)
+
+
+def test_generate_spec_raises_original_error_when_heuristic_fallback_also_fails(monkeypatch, caplog):
+    """
+    The other half of the fallback: if even LocalHeuristicBackend fails
+    (e.g. a requirement doc with no parseable actions at all), the
+    original, more actionable network-failure error is what surfaces --
+    not the heuristic's own less-informative parse failure -- with the
+    heuristic failure chained on as __cause__ so it's still visible.
+    """
+    monkeypatch.setattr(global_settings, "planner_backend", "heuristic")
+    monkeypatch.setattr(global_settings, "enable_cloud_planner", True)
+
+    class _AlsoFailsBackend:
+        def generate(self, requirement_text: str) -> dict:
+            raise RuntimeError("cloud also down")
+
+    with patch("agents.planner.spec_generator._default_backend", return_value=_AlwaysFailsBackend()):
+        with patch("agents.planner.spec_generator.CloudLLMBackend", return_value=_AlsoFailsBackend()):
+            with patch.object(LocalHeuristicBackend, "generate", side_effect=ValueError("heuristic also broke")):
+                with caplog.at_level(logging.WARNING):
+                    with pytest.raises(RuntimeError, match="cloud also down"):
+                        generate_spec(RequirementInput(requirement_text="click the button"))
 
     assert any("escalation to CloudLLMBackend also failed" in r.message for r in caplog.records)
+    assert any("fallback to LocalHeuristicBackend also failed" in r.message for r in caplog.records)
     monkeypatch.setattr(global_settings, "enable_cloud_planner", False)

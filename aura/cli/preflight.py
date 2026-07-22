@@ -78,12 +78,22 @@ def check_planner_backend_available() -> tuple[bool, str | None]:
     inside agents/planner/spec_generator.py, partway through spec
     generation -- same failure mode this module already prevents for
     Tesseract. Never raises, same contract as check_tesseract_available.
+
+    Recognizes every backend config/settings.py's own auto-detect matrix
+    can resolve to: 'heuristic', 'local_llm', 'cloud_llm' (Phase V,
+    D-044), and 'hermes_agent' (Phase W, D-047). This check previously
+    only knew about 'heuristic'/'local_llm' and predates the other two --
+    that meant a validly auto-detected 'cloud_llm' or 'hermes_agent'
+    backend was rejected here as "unknown" even though config/settings.py
+    considered it perfectly valid, blocking startup for any operator who
+    configured either of those backends.
     """
     from pathlib import Path
 
     from config.settings import settings
 
     backend = settings.planner_backend
+    valid_backends = ("heuristic", "local_llm", "cloud_llm", "hermes_agent")
 
     if backend == "local_llm":
         path = settings.local_llm_model_path
@@ -106,10 +116,31 @@ def check_planner_backend_available() -> tuple[bool, str | None]:
                 "(Tip: the README's local_llm example path is a placeholder, "
                 "not a real path -- it isn't meant to be used as-is.)"
             )
-    elif backend not in ("heuristic", "local_llm"):
+    elif backend == "cloud_llm":
+        if not settings.cloud_llm_base_url:
+            return False, (
+                "AURA_PLANNER_BACKEND is set to 'cloud_llm', but "
+                "AURA_CLOUD_LLM_BASE_URL isn't set. Point it at an "
+                "OpenAI-compatible endpoint (e.g. "
+                "https://generativelanguage.googleapis.com/v1beta/openai for "
+                "Gemini), or switch back to the default zero-dependency "
+                "parser with:\n"
+                "    AURA_PLANNER_BACKEND=heuristic"
+            )
+    elif backend == "hermes_agent":
+        if not settings.hermes_agent_base_url:
+            return False, (
+                "AURA_PLANNER_BACKEND is set to 'hermes_agent', but "
+                "AURA_HERMES_AGENT_BASE_URL isn't set. Point it at a running "
+                "Hermes Agent instance's API server (started via "
+                "`hermes gateway`, default http://localhost:8642), or switch "
+                "back to the default zero-dependency parser with:\n"
+                "    AURA_PLANNER_BACKEND=heuristic"
+            )
+    elif backend not in valid_backends:
         return False, (
             f"AURA_PLANNER_BACKEND is set to an unknown value '{backend}'. "
-            "Valid options: heuristic | local_llm."
+            f"Valid options: {' | '.join(valid_backends)}."
         )
 
     return True, None

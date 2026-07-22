@@ -455,6 +455,19 @@ def _run_requirement_text(
             pass  # no page_url known, or the check itself failed -- OCR-only result already printed above
         elif "error" in lc:
             console.print(f"[dim]Link check: could not run ({lc['error']})[/dim]")
+        elif "broken_count" not in lc:
+            # Bug fix: link_checker.py has a third evidence shape besides
+            # "error" and a normal _build_result() -- "no navigable <a
+            # href> links found at all" (common on client-rendered SPAs
+            # where the real nav is injected by JS), which never included
+            # broken_count/broken_links/checked in the same shape
+            # _build_result() produces. Assuming broken_count always
+            # existed here caused a real KeyError crash right after
+            # everything else in the run had already succeeded. Print the
+            # adapter's own message, which already explains this case
+            # clearly (including whether a Playwright re-render was
+            # attempted), instead of guessing at fields that aren't there.
+            console.print(f"[dim]Link check: {lc.get('message', 'no navigable links found')}[/dim]")
         elif lc["broken_count"] > 0:
             broken_urls = ", ".join(b["url"] for b in lc["broken_links"][:5])
             more = f" (+{lc['broken_count'] - 5} more)" if lc["broken_count"] > 5 else ""

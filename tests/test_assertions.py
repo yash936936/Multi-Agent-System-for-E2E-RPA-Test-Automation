@@ -100,3 +100,65 @@ def test_non_sentinel_expected_state_still_uses_literal_text_match(monkeypatch):
 
     assert check_assertion("fake.png", "dashboard_visible") is True
     assert calls["target"] == "dashboard visible"
+
+
+def test_llm_generated_sentence_expected_state_is_treated_as_structural(monkeypatch):
+    """
+    Regression test: CloudLLMBackend/HermesAgentBackend planners often
+    synthesize a full descriptive sentence for expected_state -- e.g. "The
+    personal portfolio page is fully loaded and visible" -- instead of a
+    short literal-text slug like "dashboard_visible". No real webpage
+    displays that exact sentence, so the old code (which only special-cased
+    the exact "page_loaded"/"page loaded" slug) treated it as literal OCR
+    text to search for and failed on every real run, regardless of whether
+    the page actually rendered -- confirmed against a real run against a
+    live Vercel-hosted site with 5+ real nav/footer links visible.
+    """
+
+    class FakeImageHandle:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def load(self):
+            pass
+
+    class FakeImage:
+        @staticmethod
+        def open(path):
+            return FakeImageHandle()
+
+    class FakePytesseract:
+        @staticmethod
+        def image_to_string(img):
+            return "Home Work About Contact\nYash - AI Engineer"
+
+    monkeypatch.setitem(__import__("sys").modules, "pytesseract", FakePytesseract)
+    monkeypatch.setitem(__import__("sys").modules, "PIL", type("m", (), {"Image": FakeImage}))
+
+    assert check_assertion("fake.png", "The personal portfolio page is fully loaded and visible") is True
+    assert check_assertion(
+        "fake.png",
+        "The page is fully loaded and elements such as Home, Work, About, and Contact are visible.",
+    ) is True
+
+
+def test_short_literal_expected_state_with_loaded_word_is_not_falsely_structural(monkeypatch):
+    """The generic-sentence heuristic requires several words, so a short,
+    specific literal target that happens to contain 'loaded' (e.g. a
+    genuine on-screen label) still goes through normal literal matching
+    rather than being swallowed by the structural fallback."""
+    from agents.vision import locator
+
+    calls = {}
+
+    def fake_locate_text(screenshot_path, target_description, min_ratio=0.55, search_region=None):
+        calls["target"] = target_description
+        return locator.LocateResult(found=True, matched_text=target_description, confidence=0.9)
+
+    monkeypatch.setattr("agents.vision.assertions.locate_text", fake_locate_text)
+
+    assert check_assertion("fake.png", "upload_loaded") is True
+    assert calls["target"] == "upload loaded"

@@ -30,11 +30,39 @@ from pathlib import Path
 
 from agents.vision.locator import locate_text
 
+import re
+
 # Sentinel expected_state values meaning "some real content rendered",
 # not literal on-screen text to search for. Kept as a set (not a single
 # string) since other generic fallbacks may be added later without
 # needing to touch the check_assertion dispatch logic below.
 _STRUCTURAL_SENTINELS = {"page_loaded", "page loaded"}
+
+# Cloud/local LLM planner backends (agents/planner/spec_generator.py's
+# CloudLLMBackend/HermesAgentBackend) often synthesize a full descriptive
+# sentence for expected_state instead of a short literal-text slug --
+# e.g. "The personal portfolio page is fully loaded and visible" or "The
+# page is fully loaded and elements such as Home, Work, About are
+# visible." No real webpage displays that exact sentence, so treating it
+# as literal OCR text to search for (the locate_text() path below) fails
+# on every real run regardless of whether the page actually rendered --
+# the same class of bug _STRUCTURAL_SENTINELS was introduced for, just
+# not caught by that exact-match set since the LLM's phrasing varies.
+# This regex catches the general shape ("page is/looks loaded/visible/
+# rendered") without trying to enumerate every possible LLM phrasing.
+_GENERIC_LOADED_PATTERN = re.compile(
+    r"\bpage\b.{0,40}\b(loaded|visible|rendered|displayed)\b", re.IGNORECASE
+)
+
+
+def _looks_structural(expected_state: str) -> bool:
+    readable = expected_state.replace("_", " ").strip().lower()
+    if readable in _STRUCTURAL_SENTINELS:
+        return True
+    # Long, sentence-like expected_state values (multiple words, ending
+    # in punctuation or clearly prose) that are just generically asserting
+    # the page rendered are structural, not a literal string to locate.
+    return bool(_GENERIC_LOADED_PATTERN.search(readable)) and len(readable.split()) >= 4
 
 
 def _check_page_rendered(screenshot_path: str | Path) -> bool:
@@ -70,7 +98,7 @@ def _check_page_rendered(screenshot_path: str | Path) -> bool:
 
 def check_assertion(screenshot_path: str | Path, expected_state: str, min_ratio: float = 0.55) -> bool:
     readable = expected_state.replace("_", " ").strip()
-    if readable.lower() in _STRUCTURAL_SENTINELS:
+    if _looks_structural(expected_state):
         return _check_page_rendered(screenshot_path)
     result = locate_text(screenshot_path, readable, min_ratio=min_ratio)
     return result.found

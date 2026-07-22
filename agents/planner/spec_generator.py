@@ -647,11 +647,11 @@ def _build_grounded_text(payload: RequirementInput) -> str:
         "---\n"
         "Elements actually found on the live target page just now "
         "(real accessible names/visible text, not a guess). When a step "
-        "below needs to click or type into something, prefer an exact or "
-        "close match from this list over inventing a plausible-sounding "
-        "label. If nothing in the requirement above corresponds to "
-        "anything in this list, say so via the step's target_description "
-        "rather than fabricating one:\n"
+        "below requires clicking or filling in something, prefer an "
+        "exact or close match from this list over inventing a "
+        "plausible-sounding label. If nothing in the requirement above "
+        "corresponds to anything in this list, say so via the step's "
+        "target_description rather than fabricating one:\n"
         f"{elements_block}"
     )
 
@@ -703,17 +703,64 @@ def generate_spec(payload: RequirementInput, backend: SpecBackend | None = None)
         except Exception as escalation_exc:
             _logger.warning(
                 "Planner.generate_spec: escalation to CloudLLMBackend also failed "
-                "(reason=%s: %s) -- giving up, no further backends to try",
+                "(reason=%s: %s) -- falling back to the fully-offline "
+                "LocalHeuristicBackend as a last resort before giving up.",
                 type(escalation_exc).__name__,
                 escalation_exc,
             )
-            raise
+            # Bug fix, reported directly from a live run: Hermes was down
+            # (connection refused) and Cloud returned a transient 503 --
+            # every network-capable backend failed, and this previously
+            # just re-raised, crashing the entire `aura execute` run
+            # (losing the scroll-test/ui-audit work already completed
+            # before spec generation, since the whole command has to be
+            # re-run from scratch, not just the planning step). 
+            # LocalHeuristicBackend has zero network dependency, so it
+            # can't fail for the same reason -- degrading to it here
+            # keeps the run alive with a lower-quality, regex-extracted
+            # (rather than LLM-authored) spec instead of losing the run
+            # entirely. Skipped when `primary` was already
+            # LocalHeuristicBackend: retrying an identical deterministic
+            # regex parse that already failed would just fail again
+            # identically, so there's nothing to gain by trying it a
+            # second time here.
+            if isinstance(primary, LocalHeuristicBackend):
+                raise escalation_exc
+            try:
+                return _generate_with_retry(payload, LocalHeuristicBackend())
+            except Exception as heuristic_exc:
+                _logger.error(
+                    "Planner.generate_spec: fallback to LocalHeuristicBackend also "
+                    "failed (%s: %s) -- no backend could produce a spec.",
+                    type(heuristic_exc).__name__, heuristic_exc,
+                )
+                # Re-raise the original network failure, not the heuristic
+                # parse failure -- "Hermes connection refused / Cloud 503"
+                # is far more actionable to a person reading the error
+                # than "the regex-based fallback also produced an invalid
+                # spec," and the heuristic failure is chained on as the
+                # __cause__ so it's still visible in the traceback for
+                # anyone who needs that detail too.
+                raise escalation_exc from heuristic_exc
 
 
 def _generate_with_retry(payload: RequirementInput, backend: SpecBackend) -> TestSpec:
-    grounded_text = _build_grounded_text(payload)
+    # Bug fix, verified by direct reproduction (not just reasoned about):
+    # LocalHeuristicBackend has no LLM to interpret instructions -- it
+    # only regex-scans requirement_text line by line
+    # (_CLICK_PATTERNS/_TYPE_PATTERNS/_ASSERT_PATTERNS). The grounding
+    # block's own instructional wording ("...type into something, prefer
+    # an exact or close match...") false-matched _TYPE_PATTERNS's
+    # `type...into...` pattern, and the heuristic backend generated a
+    # fabricated TYPE_TEXT step straight out of AURA's own prompt text
+    # rather than anything the user actually asked for -- a real crash
+    # seen in production, not a hypothetical. Grounding is fed only to
+    # backends that can actually read prose as *context* rather than
+    # *instructions-to-parse* (every LLM-backed one) -- the heuristic
+    # backend always gets the pristine original text.
+    text = payload.requirement_text if isinstance(backend, LocalHeuristicBackend) else _build_grounded_text(payload)
     try:
-        raw = backend.generate(grounded_text)
+        raw = backend.generate(text)
         return TestSpec.model_validate(raw)
     except Exception as first_exc:
         # R3 (Roadmap Phase R, decisions.md D-039): WORKFLOW.md Step 1.3's
@@ -731,5 +778,5 @@ def _generate_with_retry(payload: RequirementInput, backend: SpecBackend) -> Tes
             type(first_exc).__name__,
             first_exc,
         )
-        raw_retry = backend.generate(grounded_text)
+        raw_retry = backend.generate(text)
         return TestSpec.model_validate(raw_retry)

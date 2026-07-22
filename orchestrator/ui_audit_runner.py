@@ -446,29 +446,13 @@ def run_ui_audit(
         try:
             from agents.capability.link_checker import LinkCheckAdapter
             from orchestrator.schemas import CapabilityCheckInput
-            from runtime.hooks import browser as browser_hook
-
-            link_params = {"scope": link_check_scope}
-            # `aura execute --ui-audit` keeps its own Playwright session
-            # alive for the whole run (to drive the OCR screenshots
-            # above). If LinkCheckAdapter needed to fall back to
-            # rendering the page itself for JS-injected links, it would
-            # try to start a second sync_playwright() instance in the
-            # same thread -- which Playwright's sync API forbids and
-            # which failed silently every time. Passing the already-
-            # hydrated live page's HTML avoids that conflict entirely.
-            if browser_hook.has_active_page():
-                try:
-                    link_params["live_page_html"] = browser_hook.get_page().content()
-                except Exception:
-                    pass  # best-effort only -- adapter still works without it
 
             adapter = LinkCheckAdapter()
             result = adapter.run(
                 CapabilityCheckInput(
                     capability=adapter.capability_type,
                     target=page_url,
-                    params=link_params,
+                    params={"scope": link_check_scope},
                     expected={},
                 )
             )
@@ -517,21 +501,13 @@ def run_exploration(
     if page_url:
         from agents.capability.link_checker import LinkCheckAdapter
         from orchestrator.schemas import CapabilityCheckInput
-        from runtime.hooks import browser as browser_hook
-
-        link_params = {"scope": link_check_scope or "all"}
-        if browser_hook.has_active_page():
-            try:
-                link_params["live_page_html"] = browser_hook.get_page().content()
-            except Exception:
-                pass
 
         adapter = LinkCheckAdapter()
         result = adapter.run(
             CapabilityCheckInput(
                 capability=adapter.capability_type,
                 target=page_url,
-                params=link_params,
+                params={"scope": link_check_scope or "all"},
                 expected={},
             )
         )

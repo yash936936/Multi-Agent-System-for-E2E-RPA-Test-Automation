@@ -699,3 +699,85 @@ and returned `None` rather than crashing the audit).
   fully offline with the heuristic backend, this fix doesn't help yet; extending it
   would mean adding fuzzy-matching logic to `_extract_steps` against the element list,
   not yet built.
+
+---
+
+## Post-session hotfixes — two real bugs from live production tracebacks
+
+### 1. Grounding block leaked into a fabricated spec step (heuristic backend)
+
+Live report: a run with no LLM configured produced a fabricated `TYPE_TEXT` step whose
+`field_description`/`value_ref` were literally fragments of the grounding block's own
+instructional text ("...prefer an exact or close match from this list...").
+
+Root cause, confirmed by finding the exact match: `_TYPE_PATTERNS`'s
+`type...into...` regex matched the grounding block's own wording ("...type into
+something, prefer an exact or close match..."), and `LocalHeuristicBackend` — which
+has no LLM to distinguish instructions from content, only regex-scans lines — parsed
+AURA's own injected prompt text as if it were a real user instruction. My earlier claim
+that "the heuristic backend's patterns don't match this block's phrasing" was wrong and
+unverified; this is exactly what direct verification is supposed to catch, and this
+time it took a live user report to surface it instead.
+
+Fix: `LocalHeuristicBackend` now never receives the grounding block at all —
+`_generate_with_retry` checks `isinstance(backend, LocalHeuristicBackend)` and passes
+the pristine, unmodified `payload.requirement_text` in that case; every LLM-backed
+backend still gets the augmented text. Also reworded the grounding block to avoid the
+exact `type...into` trigger phrase as defense in depth, though the primary fix (never
+feeding it to the regex-only backend) is what actually closes the hole. Verified by
+reproducing the exact production scenario (same `page_context`, heuristic backend
+active) before and after: before, 2 steps (1 real + 1 fabricated); after, exactly 1
+real step.
+
+### 2. `KeyError: 'broken_count'` on client-rendered pages with no `<a href>` links
+
+Live report: `link_checker.py`'s evidence dict has a third shape besides `"error"` and
+a normal `_build_result()` — "no navigable links found at all" (common on
+client-rendered SPAs, exactly what triggered it: `client_rendered_suspected: True`,
+`checked: 0`), which never included `broken_count`/`broken_links` in the same shape
+`_build_result()` produces. The console-printing code added for the OCR+link-check
+merge only handled two of the three shapes. Fixed with an explicit `"broken_count" not
+in lc` branch that prints the adapter's own already-clear `message` field (which
+explains whether a Playwright re-render was attempted) instead of assuming fields that
+aren't there. Verified against the exact evidence dict from the production traceback.
+
+### 3. No fallback when every network-capable planner backend fails
+
+Live report: Hermes wasn't running (`ConnectError`, connection refused) and Cloud
+returned a transient 503 ("high demand") in the same run — `generate_spec()`'s
+escalation chain (primary → retry → Cloud → retry → **give up**) had no further
+fallback, crashing the entire `aura execute` command and losing everything already
+completed in that run.
+
+Fix: when the Cloud escalation also fails, `generate_spec()` now falls back to
+`LocalHeuristicBackend()` — zero network dependency, can't fail the same way — as an
+explicit last resort, logged clearly as a degraded-quality (regex-extracted, not
+LLM-authored) spec rather than a silent substitution. Skipped when `primary` was
+already `LocalHeuristicBackend` (retrying an identical deterministic parse that just
+failed has nothing to gain). If even the heuristic fallback fails, the *original*
+network-failure exception is what surfaces (chained with the heuristic failure as
+`__cause__`), since "Hermes refused / Cloud 503" is far more actionable than a generic
+heuristic parse error. Verified by reproducing the exact production scenario
+(`ConnectionError` from Hermes, `RuntimeError` 503 from Cloud) — the run now survives
+via heuristic fallback instead of crashing; also verified the "even heuristic fails"
+edge case surfaces the right chained exception.
+
+Also confirmed and re-verified from the user's request: the two proposed `.env`
+changes (`AURA_PLANNER_PRIORITY=hermes_first` unaffected, `AURA_CLOUD_LLM_MODEL=gemini-3.5-flash-lite`)
+correspond to real settings fields (`planner_priority`, `cloud_llm_model`) with that
+exact `AURA_`-prefixed env var naming — both accurate as proposed.
+
+### Verification
+
+- Direct reproduction of all three bugs against the exact scenarios/evidence shapes
+  from the production tracebacks, confirmed fixed in each case.
+- `tests/test_phase_v_cloud_llm.py::test_generate_spec_logs_when_escalation_also_fails`
+  asserted the old (now intentionally changed) crash-on-double-failure behavior — split
+  into two updated tests: one confirming the heuristic fallback rescues a real run
+  (parseable requirement text, asserts a real spec comes back), one confirming the
+  original network error still surfaces correctly when even the heuristic fallback
+  fails. Both pass; 22/22 in that file overall.
+- `ruff check` clean. Static AST audit: 0 errors, 30 warnings (unchanged).
+- Full suite re-run: **615 passed** (+2 net from the test split), **27 failed, 5
+  errors** — identical established baseline (Chromium-missing environment gap), zero
+  new failures.

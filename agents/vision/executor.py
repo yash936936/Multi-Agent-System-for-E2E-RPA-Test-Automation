@@ -395,6 +395,31 @@ def execute_step(payload: VisionStepInput) -> VisionActionResult:
             screenshot_ref=payload.screenshot_path,
         )
 
+    if step.action == ActionType.ASSERT:
+        # Regression fix: this branch was missing entirely. Assert steps
+        # carry their check in step.expected_state, not
+        # target_description/field_description -- falling through to the
+        # generic click/type path below meant `target_text` was always
+        # None, which unconditionally hit the "no target_text" escalate
+        # case a few lines down. That made every single assert step
+        # report confidence=0.0/escalate=True immediately, with no OCR/DOM
+        # check ever attempted -- which in turn meant run_engine's own
+        # expected_state verification (gated on `not result.escalate`)
+        # never ran either, so a step could never actually pass or fail
+        # on its real content; it just escalated every time, regardless
+        # of what was on screen. No action needs to be *taken* for an
+        # assert step -- the actual pass/fail check happens downstream in
+        # run_engine via check_assertion() against step.expected_state --
+        # so this just needs to hand back a non-escalated result so that
+        # downstream check gets a chance to run at all.
+        return VisionActionResult(
+            step_id=step.step_id,
+            action_taken="none",
+            confidence=1.0,
+            escalate=False,
+            screenshot_ref=payload.screenshot_path,
+        )
+
     target_text = step.target_description or step.field_description
     if not target_text:
         return VisionActionResult(

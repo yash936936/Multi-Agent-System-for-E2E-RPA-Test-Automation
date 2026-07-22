@@ -75,6 +75,26 @@ def test_locate_text_returns_not_found_for_absent_target(tmp_dir: Path):
     assert result.found is False
 
 
+def test_execute_step_assert_does_not_escalate_with_no_target_description(tmp_dir: Path):
+    """
+    Regression test: ASSERT steps carry their check in expected_state, not
+    target_description/field_description. Before this fix, execute_step had
+    no branch for ActionType.ASSERT at all -- it fell through to the
+    click/type path, which always saw target_text=None for assert steps and
+    unconditionally returned confidence=0.0/escalate=True, no matter what
+    was actually on screen. That meant run_engine's own expected_state
+    check (gated on `not result.escalate`) could never run either, so every
+    single assert step escalated regardless of real page content.
+    """
+    path = make_synthetic_screenshot(tmp_dir, [("Welcome", (250, 60))])
+    step = TestStep(step_id=1, action=ActionType.ASSERT, expected_state="page_loaded")
+    payload = VisionStepInput(step=step, screenshot_path=str(path))
+
+    result = execute_step(payload)
+    assert result.escalate is False
+    assert result.action_taken == "none"
+
+
 def test_execute_step_click_above_threshold_reports_success(tmp_dir: Path):
     path = make_synthetic_screenshot(tmp_dir, [("Submit Button", (250, 60))])
     step = TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Submit Button")
