@@ -1,36 +1,27 @@
 import json
-import os
-import uuid
-from datetime import datetime, timezone
-from fastapi import APIRouter, Request
 
-from config.settings import settings
+from fastapi import APIRouter, HTTPException, Request
+
+from orchestrator.webhook_listener import queue_trigger
 
 router = APIRouter(prefix="/api/v1/webhooks")
 
 @router.post("/cicd")
 async def cicd_webhook(request: Request):
-    # Debug Fix: Safely parse JSON, defaulting to empty dict if body is empty/malformed
-    try:
-        payload = await request.json()
-    except Exception:
+    # Bug fix: this previously silently treated any unparseable body as an
+    # empty payload ({}) rather than rejecting it -- inconsistent with the
+    # CLI-mode listener (orchestrator/webhook_listener.py's WebhookHandler),
+    # which correctly returns 400 for malformed JSON. A CI system that
+    # sends a broken payload deserves a clear error back, not a silently
+    # queued trigger with no useful content.
+    raw_body = await request.body()
+    if raw_body:
+        try:
+            payload = json.loads(raw_body)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+    else:
         payload = {}
 
-    trigger_id = str(uuid.uuid4())
-    trigger_dir = settings.triggers_pending_dir
-    trigger_dir.mkdir(parents=True, exist_ok=True)
-
-    record = {
-        "trigger_id": trigger_id,
-        "received_at": datetime.now(timezone.utc).isoformat(),
-        "payload": payload
-    }
-
-    # Atomic write
-    tmp_path = trigger_dir / f"{trigger_id}.tmp"
-    final_path = trigger_dir / f"{trigger_id}.json"
-    with open(tmp_path, "w") as f:
-        json.dump(record, f)
-    os.replace(tmp_path, final_path)
-
+    trigger_id = queue_trigger(payload)
     return {"message": "Trigger queued", "trigger_id": trigger_id}

@@ -8,6 +8,50 @@ from config.settings import settings
 
 TRIGGER_DIR = str(settings.triggers_pending_dir)
 
+
+def queue_trigger(payload: dict) -> str:
+    """
+    Writes one pending CI/CD trigger record to disk and returns its
+    trigger_id. Shared by both live trigger-ingestion entrypoints --
+    this CLI-mode listener's WebhookHandler below, and
+    api/routers/webhooks.py::cicd_webhook (the FastAPI service's
+    equivalent endpoint, mounted at /api/v1/webhooks/cicd). Those two
+    previously reimplemented this exact record-shape-plus-atomic-write
+    logic independently and had quietly drifted apart (this module wrote
+    with indent=2 and a real 400 on malformed JSON at the transport
+    layer; the FastAPI router wrote unindented and silently treated any
+    unparseable body as an empty payload instead of rejecting it) --
+    consolidated here so both trigger-ingestion paths behave identically
+    and any future fix (e.g. real Phase 17 execution wiring) only needs
+    to happen once.
+    """
+    os.makedirs(TRIGGER_DIR, exist_ok=True)
+    trigger_id = str(uuid.uuid4())
+    final_path = os.path.join(TRIGGER_DIR, f"{trigger_id}.json")
+    tmp_path = final_path + ".tmp"
+
+    trigger_record = {
+        "trigger_id": trigger_id,
+        "received_at": datetime.now(timezone.utc).isoformat(),
+        "payload": payload,
+    }
+
+    # Atomic write so the CLI processor (aura trigger process) never reads
+    # a partially-written file. Clean up the tmp file on any failure so a
+    # write error doesn't leave an orphaned .tmp file behind in the
+    # pending-triggers directory.
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(trigger_record, f, indent=2)
+        os.replace(tmp_path, final_path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+
+    return trigger_id
+
+
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == '/webhook/cicd':
@@ -20,29 +64,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 self._send_response(400, {"error": "Invalid JSON"})
                 return
-                
-            trigger_id = str(uuid.uuid4())
-            os.makedirs(TRIGGER_DIR, exist_ok=True)
-            final_path = os.path.join(TRIGGER_DIR, f"{trigger_id}.json")
-            tmp_path = final_path + ".tmp"
-            
-            trigger_record = {
-                "trigger_id": trigger_id,
-                "received_at": datetime.now(timezone.utc).isoformat(),
-                "payload": payload
-            }
-            
-            # Debug Fix: Atomic write to prevent partial reads by the CLI processor
+
             try:
-                with open(tmp_path, 'w') as f:
-                    json.dump(trigger_record, f, indent=2)
-                os.replace(tmp_path, final_path)
+                trigger_id = queue_trigger(payload)
             except Exception as e:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
                 self._send_response(500, {"error": f"Failed to queue trigger: {str(e)}"})
                 return
-                
+
             self._send_response(202, {"message": "Trigger queued", "trigger_id": trigger_id})
         else:
             self._send_response(404, {"error": "Not found"})

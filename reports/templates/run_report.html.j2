@@ -1,0 +1,252 @@
+{# reports/templates/run_report.html.j2
+   Matches APPFLOW.md §2.6: summary card, per-step detail with screenshots/
+   confidence/audit trace, "skills learned this run" section. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AURA Run Report — {{ report.run_id }}</title>
+<style>
+  :root {
+    --pass: #1a7f37; --heal: #9a6700; --fail: #cf222e; --esc: #cf222e;
+    --bg: #f6f8fa; --card: #ffffff; --border: #d0d7de; --text: #1f2328;
+  }
+  body { font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 2rem; }
+  h1 { font-size: 1.4rem; margin-bottom: .25rem; }
+  .subtitle { color: #57606a; margin-bottom: 1.5rem; }
+  .summary-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; display: flex; gap: 2rem; flex-wrap: wrap; }
+  .summary-card .stat { display: flex; flex-direction: column; }
+  .summary-card .stat .n { font-size: 1.6rem; font-weight: 700; }
+  .summary-card .stat .l { font-size: .8rem; color: #57606a; text-transform: uppercase; letter-spacing: .04em; }
+  .status-badge { display: inline-block; padding: .2rem .6rem; border-radius: 999px; font-size: .8rem; font-weight: 600; color: white; }
+  .status-passed { background: var(--pass); }
+  .status-passed_with_healing { background: var(--heal); }
+  .status-failed, .status-escalated { background: var(--esc); }
+  .step { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: .75rem; }
+  .step-header { display: flex; justify-content: space-between; align-items: center; }
+  .confidence { font-variant-numeric: tabular-nums; }
+  .confidence.low { color: var(--fail); font-weight: 600; }
+  .badge-escalate { color: var(--esc); font-weight: 600; }
+  .screens { display: flex; gap: 1rem; margin-top: .5rem; }
+  .screens img { max-width: 260px; border: 1px solid var(--border); border-radius: 4px; }
+  .skills { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-top: 1.5rem; }
+  .skill { border-left: 3px solid var(--heal); padding-left: .75rem; margin-bottom: .75rem; }
+  .decision-basis { background: #f6f8fa; border: 1px solid var(--border); border-radius: 6px; padding: .5rem .75rem; margin-top: .5rem; font-size: .88rem; }
+  .element-row { border-bottom: 1px solid var(--border); padding: .5rem 0; }
+  .element-row:last-child { border-bottom: none; }
+  .hil-adequate { color: var(--pass); font-weight: 600; }
+  .hil-inadequate { color: var(--fail); font-weight: 600; }
+  details.trace { margin-top: 1.5rem; }
+  pre { background: #0d1117; color: #c9d1d9; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: .8rem; }
+  .muted { color: #57606a; font-size: .85rem; }
+</style>
+</head>
+<body>
+
+<h1>AURA Run Report</h1>
+<div class="subtitle">Run <code>{{ report.run_id }}</code>{% if spec %} · Test <code>{{ spec.test_id }}</code>{% endif %} · generated {{ generated_at }}{% if report.report_paths.detailed_json %} · <a href="{{ report.report_paths.detailed_json }}">detailed JSON</a>{% endif %}</div>
+
+<div class="summary-card" style="flex-direction: column; align-items: flex-start; gap: .4rem;">
+  <div><strong>Request</strong></div>
+  <div>{{ process.request.text or 'No request text recorded for this run.' }}</div>
+  {% if process.request.preconditions %}
+  <div class="muted">Preconditions: {{ process.request.preconditions | join('; ') }}</div>
+  {% endif %}
+</div>
+
+<div class="summary-card" style="flex-direction: column; align-items: flex-start; gap: .4rem;">
+  <div><strong>Outcome</strong></div>
+  <div>{{ process.outcome.summary }}</div>
+  {% if process.outcome.human_in_the_loop %}
+  <div class="muted">
+    Human-in-the-loop steps: {{ process.human_in_the_loop | length }} ·
+    {% if process.outcome.human_in_the_loop_all_adequate %}all confirmed adequate{% else %}at least one not confirmed adequate — see "Human-in-the-loop review" below{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if spec_explanation %}
+<div class="summary-card" style="margin-bottom: 1rem;">
+  <p class="muted" style="margin: 0;"><strong>What this test does:</strong> {{ spec_explanation }}</p>
+</div>
+{% endif %}
+
+
+<div class="summary-card">
+  <div class="stat"><span class="n">{{ report.total_steps }}</span><span class="l">Total steps</span></div>
+  <div class="stat"><span class="n">{{ passed_steps }}</span><span class="l">Passed</span></div>
+  <div class="stat"><span class="n">{{ report.self_healed_steps }}</span><span class="l">Self-healed</span></div>
+  <div class="stat"><span class="n">{{ report.escalated_steps }}</span><span class="l">Escalated</span></div>
+  <div class="stat"><span class="n">{{ report.duration_seconds }}s</span><span class="l">Duration</span></div>
+  <div class="stat"><span class="status-badge status-{{ report.status.value }}">{{ report.status.value }}</span><span class="l">Status</span></div>
+</div>
+
+<h2>Step-by-step process</h2>
+<p class="muted" style="margin-top:-.5rem;">What AURA was asked to do at each step, what it did, and the basis on which it decided the step was fulfilled.</p>
+{% for r in step_results %}
+{% set p = process.process_timeline[loop.index0] %}
+<div class="step">
+  <div class="step-header">
+    <strong>Step {{ r.step_id }} — {{ p.action_label }}</strong>
+    <span class="confidence {{ 'low' if r.confidence < confidence_threshold else '' }}">confidence {{ '%.2f' % r.confidence }}</span>
+  </div>
+  {% if p.instruction %}<div class="muted">Instruction: {{ p.instruction }}</div>{% endif %}
+  {% if r.escalate %}<div class="badge-escalate">⚠ escalated</div>{% endif %}
+  <div class="decision-basis">
+    <strong>Decision basis ({{ p.decision_basis.decided.replace('_', ' ') }}):</strong> {{ p.decision_basis.reason }}
+  </div>
+  {% if r.verification_method %}
+    <div class="muted">
+      verification: {{ r.verification_method }}
+      {% if r.verification_evidence and r.verification_evidence.agreement is not none %}
+        ({{ 'OCR/DOM agreed' if r.verification_evidence.agreement else 'OCR/DOM disagreed -- tie-break: ' + (r.verification_evidence.tie_break_applied or 'n/a') + ' -> ' + (r.verification_evidence.winner or 'n/a') }})
+      {% endif %}
+    </div>
+    {% if r.verification_evidence and r.verification_evidence.agreement == false %}
+    <div class="muted">
+      OCR candidate: {{ r.verification_evidence.ocr.matched_text }} (confidence {{ '%.2f' % r.verification_evidence.ocr.confidence }})
+      &middot;
+      DOM candidate: {{ r.verification_evidence.dom.matched_text }} (confidence {{ '%.2f' % r.verification_evidence.dom.confidence }})
+    </div>
+    {% endif %}
+  {% endif %}
+  {% if r.assertion_passed is not none %}
+    <div class="muted">assertion: {{ 'passed ✓' if r.assertion_passed else 'failed ✗' }}</div>
+  {% endif %}
+  {% if r.visual_diff_ratio is not none %}
+    {% if r.visual_baseline_created %}
+    <div class="muted">visual regression: baseline created (first run for this key)</div>
+    {% else %}
+    <div class="muted">visual regression: {{ 'passed ✓' if r.visual_diff_ratio is not none and not r.visual_diff_image_ref else 'diff detected ✗' }} ({{ '%.2f' % (r.visual_diff_ratio * 100) }}% of pixels differ)</div>
+    {% endif %}
+    {% if r.visual_diff_image_ref %}
+    <div class="screens">
+      <img src="{{ r.visual_diff_image_ref }}" alt="step {{ r.step_id }} visual diff (amplified)">
+    </div>
+    {% endif %}
+  {% endif %}
+  {% if r.screenshot_ref %}
+  <div class="screens">
+    <img src="{{ r.screenshot_ref }}" alt="step {{ r.step_id }} screenshot">
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+
+{% if skills_learned %}
+<div class="skills">
+  <h2>Skills learned this run</h2>
+  {% for s in skills_learned %}
+  <div class="skill">
+    <strong>{{ s.skill_id }}</strong> <span class="muted">({{ s.fix_type }}, confidence {{ '%.2f' % s.confidence }})</span>
+    <div>Failure: {{ s.failure_signature }}</div>
+    <div>Root cause: {{ s.root_cause }}</div>
+    <div>Fix: {{ s.proposed_fix }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if process.elements_interacted %}
+<div class="skills">
+  <h2>Elements interacted with</h2>
+  <p class="muted" style="margin-top:0;">The concrete on-screen/DOM element each click or type step actually resolved to and acted on.</p>
+  {% for el in process.elements_interacted %}
+  <div class="element-row">
+    <strong>Step {{ el.step_id }}</strong> — requested: <em>{{ el.requested_target or 'n/a' }}</em>
+    <div class="muted">
+      resolved via {{ el.resolved_via }}
+      {% if el.matched_text %} · matched text: "{{ el.matched_text }}"{% endif %}
+      {% if el.role %} · role: {{ el.role }}{% endif %}
+      {% if el.coordinates %} · coordinates: {{ el.coordinates }}{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if process.human_in_the_loop %}
+<div class="skills">
+  <h2>Human-in-the-loop review</h2>
+  <p class="muted" style="margin-top:0;">Steps where AURA waited for a person to act, and whether that action was confirmed sufficient.</p>
+  {% for h in process.human_in_the_loop %}
+  <div class="skill" style="border-left-color: {{ 'var(--pass)' if h.adequate else 'var(--esc)' }};">
+    <strong>Step {{ h.step_id }}</strong> — {{ h.instruction or 'n/a' }}
+    <div class="{{ 'hil-adequate' if h.adequate else 'hil-inadequate' }}">
+      {{ 'Confirmed adequate' if h.adequate else 'Not confirmed adequate' }}
+    </div>
+    {% if h.evidence %}
+    <div class="muted">
+      elapsed: {{ h.evidence.elapsed_seconds }}s
+      {% if h.evidence.timeout_seconds %} / timeout: {{ h.evidence.timeout_seconds }}s{% endif %}
+      · screen changed: {{ h.evidence.screen_changed }}
+      {% if h.evidence.timed_out %} · timed out waiting for a person to act{% endif %}
+    </div>
+    <div class="muted">basis: {{ h.evidence.acceptance_basis }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if autoscan_report %}
+<div class="skills">
+  <h2>Full-page scroll scan</h2>
+  <p class="muted" style="margin-top:0;">
+    Scrolled {{ autoscan_report.steps | length }} screen(s),
+    {% if autoscan_report.reached_bottom %}reached the bottom of the page.{% else %}stopped at the scan limit (page may be longer).{% endif %}
+  </p>
+  {% if autoscan_report.all_issues %}
+  <div class="skill" style="border-left-color: var(--esc);">
+    <strong>Issues detected:</strong> {{ autoscan_report.all_issues | join(', ') }}
+  </div>
+  {% else %}
+  <div class="skill" style="border-left-color: var(--pass);">No error indicators found while scrolling.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if ui_audit_report %}
+<div class="skills">
+  <h2>Comprehensive UI audit</h2>
+  <p class="muted" style="margin-top:0;">Nav / hero / footer landmark detection, plus live test-clicks on nav and footer elements.</p>
+
+  <div class="skill" style="border-left-color: {{ 'var(--pass)' if ui_audit_report.has_nav else 'var(--heal)' }};">
+    <strong>Navigation:</strong> {{ 'detected' if ui_audit_report.has_nav else 'not detected' }}
+  </div>
+  <div class="skill" style="border-left-color: {{ 'var(--pass)' if ui_audit_report.has_hero else 'var(--heal)' }};">
+    <strong>Hero section:</strong> {{ 'detected' if ui_audit_report.has_hero else 'not detected' }}
+  </div>
+  <div class="skill" style="border-left-color: {{ 'var(--pass)' if ui_audit_report.has_footer else 'var(--heal)' }};">
+    <strong>Footer:</strong> {{ 'detected' if ui_audit_report.has_footer else 'not detected' }}
+  </div>
+
+  {% if ui_audit_report.checked %}
+  <div class="skill">
+    <strong>Elements test-clicked:</strong> {{ ui_audit_report.checked | length }}
+    {% if ui_audit_report.possibly_broken %}
+    <div style="color: var(--esc); margin-top:.35rem;">
+      Possibly non-functional (no visible change after click): {{ ui_audit_report.possibly_broken | map(attribute='label') | join(', ') }}
+    </div>
+    {% endif %}
+    {% if ui_audit_report.unreachable %}
+    <div class="muted" style="margin-top:.35rem;">Could not locate to test-click: {{ ui_audit_report.unreachable | map(attribute='label') | join(', ') }}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if ui_audit_report.page_issues %}
+  <div class="skill" style="border-left-color: var(--esc);">
+    <strong>Page issues detected:</strong> {{ ui_audit_report.page_issues | join(', ') }}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<details class="trace">
+  <summary>Full tool-call / tool-response audit trace</summary>
+  <pre>{{ trace_json }}</pre>
+</details>
+
+</body>
+</html>

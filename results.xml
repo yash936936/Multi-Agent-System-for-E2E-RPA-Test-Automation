@@ -1,2 +1,2 @@
 <?xml version='1.0' encoding='utf-8'?>
-<testsuites><testsuite name="tc-live-url-smoke-test-001" tests="2" failures="0" errors="0" skipped="0" time="13.130"><testcase name="step_1_navigate" classname="tc-live-url-smoke-test-001" time="0" /><testcase name="step_2_assert" classname="tc-live-url-smoke-test-001" time="0" /></testsuite></testsuites>
+<testsuites><testsuite name="tc-live-url-smoke-test-001" tests="2" failures="0" errors="0" skipped="0" time="28.280"><testcase name="step_1_navigate" classname="tc-live-url-smoke-test-001" time="0" /><testcase name="step_2_assert" classname="tc-live-url-smoke-test-001" time="0" /></testsuite></testsuites>
