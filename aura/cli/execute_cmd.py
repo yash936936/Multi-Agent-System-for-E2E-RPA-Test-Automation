@@ -25,6 +25,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from agents.planner.spec_generator import extract_navigate_url
 from agents.planner.tool import generate_spec as planner_generate_spec
 from aura.tui import live_view
 from config.settings import settings
@@ -299,7 +300,30 @@ def _run_requirement_text(
 ) -> RunReport:
     console = live_view.console
 
-    spec = planner_generate_spec(RequirementInput(requirement_text=requirement_text))
+    # Page-grounding fix (see agents/planner/page_grounding.py's module
+    # docstring for the full root-cause writeup): generate_spec()
+    # previously only ever saw the free-text requirement doc, never the
+    # real page, which is why target_description values could name
+    # elements that don't exist on the actual site. When the requirement
+    # text names a target URL upfront (true for --url runs and any doc
+    # with a "Given: navigate to X" precondition -- i.e. almost every
+    # real run), best-effort snapshot that page's real clickable elements
+    # first and hand them to the planner as grounding context.
+    #
+    # Deliberately best-effort and silent on failure, not a hard
+    # dependency: any problem here (no display, site unreachable, OCR
+    # unavailable) falls back to exactly the pre-existing blind-generation
+    # behavior -- this must never turn a previously-working blind run into
+    # a failing one just because grounding itself couldn't happen this
+    # time.
+    page_context = None
+    nav_url = extract_navigate_url(requirement_text)
+    if nav_url:
+        from agents.planner.page_grounding import snapshot_page_elements
+
+        page_context = snapshot_page_elements(nav_url)
+
+    spec = planner_generate_spec(RequirementInput(requirement_text=requirement_text, page_context=page_context))
 
     # --- §2.3: human approval checkpoint (skipped entirely when unattended) ---
     if not auto_approve:
@@ -395,7 +419,13 @@ def _run_requirement_text(
         from orchestrator.ui_audit_runner import run_ui_audit
 
         console.print("Running comprehensive UI audit (nav, hero, footer)...")
-        ui_audit_report = run_ui_audit(_make_screenshot_provider(live=True), run_id=result.run_id)
+        # nav_url was already extracted from the requirement text above
+        # (for page-grounding) -- reused here rather than re-parsing, so
+        # the real HTTP link check (agents/capability/link_checker.py) and
+        # the OCR click-and-diff pass both run against the same target and
+        # both land in one merged report, per the "OCR and a real HTML
+        # fetch should both run and both report" fix.
+        ui_audit_report = run_ui_audit(_make_screenshot_provider(live=True), run_id=result.run_id, page_url=nav_url)
 
         landmarks_found = []
         landmarks_missing = []
@@ -416,6 +446,21 @@ def _run_requirement_text(
             console.print(f"[yellow]Page scan flagged: {', '.join(ui_audit_report.page_issues)}[/yellow]")
         if not ui_audit_report.possibly_broken and not ui_audit_report.page_issues:
             console.print("[green]UI audit clean — no non-functional elements or error indicators found.[/green]")
+
+        # Real HTML-fetch link check (agents/capability/link_checker.py),
+        # running alongside the OCR-based audit above rather than as a
+        # separate opt-in pass -- both report what they find.
+        lc = ui_audit_report.link_check_result
+        if lc is None:
+            pass  # no page_url known, or the check itself failed -- OCR-only result already printed above
+        elif "error" in lc:
+            console.print(f"[dim]Link check: could not run ({lc['error']})[/dim]")
+        elif lc["broken_count"] > 0:
+            broken_urls = ", ".join(b["url"] for b in lc["broken_links"][:5])
+            more = f" (+{lc['broken_count'] - 5} more)" if lc["broken_count"] > 5 else ""
+            console.print(f"[red]Link check: {lc['broken_count']} of {lc['checked']} link(s) broken:[/red] {broken_urls}{more}")
+        else:
+            console.print(f"[green]Link check: all {lc['checked']} link(s) resolved successfully.[/green]")
 
     # If engine.run() was told to keep the browser open for the passes
     # above (scroll_test/ui_audit), it's now our responsibility to close

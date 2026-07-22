@@ -84,6 +84,23 @@ def infer_test_id(text: str) -> str:
     return f"TC-{slug}-001"
 
 
+def extract_navigate_url(text: str) -> str | None:
+    """
+    Finds the first "navigate to <url>"-shaped phrase in a requirement
+    doc, if any. Module-level (like infer_test_id above, and for the same
+    reason its docstring gives) so callers that need a doc's target URL
+    *without* running full spec generation -- e.g.
+    aura/cli/execute_cmd.py's grounding step (agents/planner/page_grounding.py),
+    which needs the URL before generate_spec() is even called -- can reuse
+    this exact matching logic instead of a hand-copied, driftable regex.
+    """
+    for pattern in _NAVIGATE_PATTERNS:
+        m = pattern.search(text)
+        if m:
+            return m.group(1).rstrip(').,;"\'')
+    return None
+
+
 class SpecBackend(Protocol):
     def generate(self, requirement_text: str) -> dict:
         """Return a dict shaped like TestSpec (pre-validation)."""
@@ -253,11 +270,7 @@ class LocalHeuristicBackend:
         return steps
 
     def _extract_navigate_url(self, text: str) -> str | None:
-        for pattern in _NAVIGATE_PATTERNS:
-            m = pattern.search(text)
-            if m:
-                return m.group(1).rstrip(').,;"\'')
-        return None
+        return extract_navigate_url(text)
 
     def _prepend_navigate_step(self, steps: list[TestStep], url: str) -> list[TestStep]:
         # Inserts a NAVIGATE_URL step as step 1 (closes the gap where a
@@ -602,6 +615,47 @@ def _default_backend() -> SpecBackend:
 _logger = logging.getLogger(__name__)
 
 
+def _build_grounded_text(payload: RequirementInput) -> str:
+    """
+    Returns the text actually sent to a backend's .generate() -- the raw
+    requirement_text, or (when payload.page_context was populated by
+    agents/planner/page_grounding.py) that text plus a clearly-delimited
+    block of real elements found on the target page.
+
+    Deliberately builds this here rather than mutating
+    payload.requirement_text itself: RequirementInput.requirement_text
+    stays the raw, human-authored doc everywhere else it's used (stored
+    on TestSpec.requirement_ref indirectly via the caller, shown in
+    reports, etc.) -- only the string actually handed to the backend
+    gains the grounding block.
+
+    No SpecBackend.generate() signature change needed for this -- every
+    backend already takes a single requirement_text string, so this stays
+    backward compatible with every existing caller/test that constructs
+    or mocks a backend directly. LocalHeuristicBackend's regex patterns
+    (_CLICK_PATTERNS/_TYPE_PATTERNS/_ASSERT_PATTERNS) don't match this
+    block's phrasing, so it degrades harmlessly to "extra lines the
+    heuristic backend ignores" there rather than corrupting its parse --
+    only the LLM backends, which read the whole prompt as context, benefit
+    from it today.
+    """
+    if not payload.page_context:
+        return payload.requirement_text
+    elements_block = "\n".join(f"- {name}" for name in payload.page_context)
+    return (
+        f"{payload.requirement_text}\n\n"
+        "---\n"
+        "Elements actually found on the live target page just now "
+        "(real accessible names/visible text, not a guess). When a step "
+        "below needs to click or type into something, prefer an exact or "
+        "close match from this list over inventing a plausible-sounding "
+        "label. If nothing in the requirement above corresponds to "
+        "anything in this list, say so via the step's target_description "
+        "rather than fabricating one:\n"
+        f"{elements_block}"
+    )
+
+
 def generate_spec(payload: RequirementInput, backend: SpecBackend | None = None) -> TestSpec:
     """
     Resolves a backend and produces a schema-valid TestSpec.
@@ -657,8 +711,9 @@ def generate_spec(payload: RequirementInput, backend: SpecBackend | None = None)
 
 
 def _generate_with_retry(payload: RequirementInput, backend: SpecBackend) -> TestSpec:
+    grounded_text = _build_grounded_text(payload)
     try:
-        raw = backend.generate(payload.requirement_text)
+        raw = backend.generate(grounded_text)
         return TestSpec.model_validate(raw)
     except Exception as first_exc:
         # R3 (Roadmap Phase R, decisions.md D-039): WORKFLOW.md Step 1.3's
@@ -676,5 +731,5 @@ def _generate_with_retry(payload: RequirementInput, backend: SpecBackend) -> Tes
             type(first_exc).__name__,
             first_exc,
         )
-        raw_retry = backend.generate(payload.requirement_text)
+        raw_retry = backend.generate(grounded_text)
         return TestSpec.model_validate(raw_retry)

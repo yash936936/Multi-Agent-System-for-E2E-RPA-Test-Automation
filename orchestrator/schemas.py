@@ -312,6 +312,14 @@ class RequirementInput(BaseModel):
     requirement_text: str
     source_path: Optional[str] = None
     skill_hints: list[SkillRecord] = Field(default_factory=list)
+    # Grounding fix (see agents/planner/page_grounding.py): a best-effort
+    # snapshot of real, currently-visible interactive elements on the
+    # target page, if one could be taken before generation. None (the
+    # default) means "not attempted, or attempted and failed" -- either
+    # way, generate_spec() degrades to its pre-existing blind-generation
+    # behavior identically, so every existing caller/test that constructs
+    # RequirementInput with just requirement_text is unaffected.
+    page_context: Optional[list[str]] = None
 
 
 class DiagnosisInput(BaseModel):

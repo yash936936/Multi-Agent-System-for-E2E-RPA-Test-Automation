@@ -26,12 +26,15 @@ page."
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Callable
 
 from config.settings import settings
 
 from runtime.hooks.capture import file_hash
+
+_logger = logging.getLogger(__name__)
 
 ScreenshotProvider = Callable[[str, int], str]  # (run_id, index) -> screenshot_path
 
@@ -406,14 +409,58 @@ def run_ui_audit(
     screenshot_provider: ScreenshotProvider,
     run_id: str,
     max_elements: int = 12,
+    page_url: str | None = None,
+    link_check_scope: str = "all",
 ) -> UIAuditReport:
-    """Existing `--ui-audit` behavior: nav + footer bands only."""
-    return _run_click_audit(
+    """
+    Existing `--ui-audit` behavior: nav + footer bands only, via OCR
+    click-and-diff.
+
+    page_url: when given, this now ALSO runs a real HTTP-level link check
+    (agents/capability/link_checker.py -- fetches the actual page HTML and
+    checks every in-scope <a href>'s real status code) alongside the OCR
+    pass, merging into the same UIAuditReport.link_check_result field
+    run_exploration() already populates. Previously this capability only
+    existed on run_exploration() (`aura explore --check-links`) -- this
+    function (what `aura execute --ui-audit` actually calls) had no path
+    to it at all, so a normal execute run's --ui-audit never got a real
+    link check, only the OCR click-and-diff heuristic, which can't
+    reliably tell "the link resolves" from "clicking it produced no
+    visible change" (see link_check_result's own docstring above). Reuses
+    LinkCheckAdapter directly rather than duplicating its HTTP-fetch/
+    parse logic a third time.
+
+    Best-effort: if page_url isn't known or the check itself fails for
+    any reason, this degrades to exactly the pre-existing OCR-only
+    behavior (link_check_result stays None) rather than blocking or
+    failing the whole audit over an optional supplementary check.
+    """
+    report = _run_click_audit(
         screenshot_provider,
         run_id,
         max_elements,
         band_filter=lambda e: e.band in ("nav", "footer"),
     )
+
+    if page_url:
+        try:
+            from agents.capability.link_checker import LinkCheckAdapter
+            from orchestrator.schemas import CapabilityCheckInput
+
+            adapter = LinkCheckAdapter()
+            result = adapter.run(
+                CapabilityCheckInput(
+                    capability=adapter.capability_type,
+                    target=page_url,
+                    params={"scope": link_check_scope},
+                    expected={},
+                )
+            )
+            report.link_check_result = result.evidence
+        except Exception as e:
+            _logger.info("run_ui_audit: real link check failed (%s) -- OCR-only audit result stands.", e)
+
+    return report
 
 
 def run_exploration(

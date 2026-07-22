@@ -570,3 +570,132 @@ re-checked directly and confirmed present. Everything else matched on the first 
 - Full suite re-run: **614 passed** (+1 net new real test), **27 failed, 5 errors** —
   same failure set as every prior phase's baseline, all Chromium-binary-missing, zero
   new failures anywhere in the wrap-up.
+
+---
+
+## Post-plan session — grounding fix, scroll-test DOM fix, OCR+link-check merge
+
+Prompted by a live user report: (1) invented button names that don't exist on the
+target page, (2) DOM detection "not working," (3) `--scroll-test` "not working," and
+(4) a request that OCR and a real HTML/link fetch both run and both report during
+scroll-test/ui-audit. Did a full line-by-line read of every file in `agents/planner/*`
+(the fifth, most important one, `spec_generator.py`, hadn't been read end-to-end
+before) before implementing anything.
+
+### 1. Planner grounding (root cause of invented button names)
+
+Confirmed at the line level: all four backends (`LocalHeuristicBackend`,
+`LocalLLMBackend`, `CloudLLMBackend`, `HermesAgentBackend`) take only
+`requirement_text: str` — `RequirementInput` (the actual input schema) had no field
+for page content at all. Every `target_description` was a guess based purely on the
+requirement doc's wording, with zero visibility into the real page — this is the
+direct cause of names that don't exist on the site.
+
+Fix, new module `agents/planner/page_grounding.py::snapshot_page_elements(url)`:
+best-effort opens the target page and returns real, currently-visible interactive
+element names — DOM-first (`dom_locator.snapshot_elements`, same as `executor.py`'s
+existing path), OCR fallback (`ui_audit.audit_screenshot().interactive_elements`, same
+as `ui_audit_runner.py`'s existing path) when no live DOM is available. Reuses both
+existing detection engines rather than writing a third. Fails soft to `None` always —
+confirmed directly in this no-display sandbox.
+
+Wiring: `RequirementInput` gained an additive `page_context: list[str] | None = None`
+field (fully backward compatible — every existing caller/test unaffected).
+`spec_generator.py`'s new `_build_grounded_text()` builds an augmented prompt (original
+text + a clearly-delimited "Elements actually found on the live target page" block)
+*only* for what's sent to `backend.generate()` — the stored `requirement_text` itself
+stays the raw, unmodified doc everywhere else (reports, audit). No `SpecBackend`
+protocol/signature change, so zero risk to existing backend mocks/tests.
+`execute_cmd.py::_run_requirement_text` calls `snapshot_page_elements()` right before
+`generate_spec()` whenever a navigate URL is present in the requirement text (true for
+essentially every real run — `--url`, or a "Given: navigate to X" precondition).
+
+Also promoted `LocalHeuristicBackend._extract_navigate_url`'s regex loop to a
+module-level `extract_navigate_url()` (same rationale `infer_test_id`'s own docstring
+already gives for that pattern in this file) so `execute_cmd.py` can reuse the exact
+same URL-matching logic rather than a second, driftable copy.
+
+**Secondary finding from the same line-by-line read, not yet acted on**:
+`LocalHeuristicBackend._extract_steps` only captures one action per line
+(`.search()` + `break`/`continue`) — a requirement line describing two actions in one
+sentence silently drops the second. Documented, not fixed this session (lower priority
+than the grounding gap, and changing multi-action-per-line parsing risks behavior
+drift in the heuristic backend's existing, tested output for every current spec).
+
+### 2. `--scroll-test` DOM-based bottom detection
+
+Root cause, confirmed by reading (no live display available to reproduce directly,
+so this is a strong-confidence design fix, not an empirically-observed-then-fixed bug
+like Phases 1-5): `orchestrator/autoscan.py` detected "reached the bottom" by hashing
+**full-monitor screenshots** (`runtime/hooks/capture.py`'s mss capture, confirmed
+whole-screen in Phase 2's investigation) and comparing scroll-to-scroll. Any unrelated
+on-screen change (animation, video, cursor blink, OS clock) keeps hashes different
+forever → burns the full `max_scrolls` budget every run. Conversely a repainting page
+or a large sticky header can make hashes match too early → false "reached bottom"
+after one scroll.
+
+Fix: new `runtime/hooks/browser.py::get_scroll_position()` — reads
+`window.scrollY`/`document.body.scrollHeight` directly from the live page's own DOM,
+returning `(scroll_y, remaining_pixels)`. `autoscan.py`'s loop now checks this first
+(deterministic, immune to unrelated on-screen noise) and only falls back to the old
+screenshot-hash comparison when no live DOM exists at all. Verified with three
+simulated scenarios (normal multi-scroll page, already-fits-in-viewport, genuine
+infinite-scroll hitting the cap) plus the no-DOM fallback path — all four behave
+correctly. `tests/test_autoscan.py` — 10/10 passed, no regressions.
+
+### 3. OCR + real HTML/link fetch merged report
+
+Found `UIAuditReport.link_check_result` already existed as a field, and
+`run_exploration()` (`aura explore --check-links`) already populated it via
+`agents/capability/link_checker.py::LinkCheckAdapter` — a real HTTP fetch + HTML parse
++ per-link status check, already correct and tested. But `run_ui_audit()` (what
+`aura execute --ui-audit` actually calls) had no path to it at all — only the OCR
+click-and-diff heuristic ran, which can tell "clicking produced no visible change" but
+not "this link's target actually resolves." This is exactly the disconnect the request
+described.
+
+Fix: added the same `page_url`/`link_check_scope` wiring `run_exploration()` already
+has to `run_ui_audit()` — reuses `LinkCheckAdapter` directly, no logic duplicated.
+`execute_cmd.py`'s `--ui-audit` call site now passes the already-known `nav_url`
+(same URL extracted for the grounding fix above) through, so both the OCR pass and the
+real link check run against the same target and both surface in one merged report:
+console output now prints a link-check summary (broken links, or "all N resolved")
+right alongside the existing OCR-based nav/hero/footer/possibly-broken output. Fails
+soft — no known URL, or the check itself failing, degrades cleanly to the pre-existing
+OCR-only behavior (confirmed directly: a broken stub adapter logged its failure reason
+and returned `None` rather than crashing the audit).
+
+### Verification
+
+- Direct functional tests for every new/changed function: `snapshot_page_elements`
+  (fail-soft confirmed), `_build_grounded_text` (correct augmented-prompt construction
+  and backward-compat no-grounding case), `extract_navigate_url` (reuse confirmed),
+  `get_scroll_position`/`autoscan.py`'s new bottom-detection (4 simulated scenarios),
+  `run_ui_audit`'s link-check wiring (success path + fail-soft path, both confirmed
+  with stubs after catching and fixing a bug in my own first test stub, not the code).
+- `ruff check` clean on all seven touched/new files.
+  Static AST audit: 0 errors, 30 warnings (same as before this session — the two extra
+  from the earlier wrap-up's own test, nothing new from this work).
+- `pytest tests/test_ui_audit_runner.py tests/test_ui_audit.py tests/test_autoscan.py
+  tests/test_cli.py tests/test_planner.py tests/test_schemas.py` — 97 passed, no
+  regressions.
+- Full suite re-run: **614 passed, 27 failed, 5 errors** — identical to the established
+  baseline (all 27+5 are the pre-existing Chromium-binary-missing environment gap),
+  zero new failures from this session's changes.
+
+### Honest limitations of this session's work
+
+- The scroll-test fix and the grounding fix are both design-level fixes derived from
+  reading the code and simulating the relevant logic in isolation — **neither could be
+  reproduced against a real live site in this sandbox** (no display, no Chromium
+  binary). Confidence is high (the screenshot-hash approach is fundamentally the wrong
+  instrument regardless of environment; the grounding gap was confirmed structurally at
+  the code level, not inferred), but both need a real run against a real site to
+  confirm they behave as intended end to end, the same way Phase 2's coordinate fix
+  and Phase 5's Hermes fix needed your machine to confirm.
+- Grounding currently only benefits the LLM-backed planner paths (Cloud/Local LLM/
+  Hermes) — `LocalHeuristicBackend` receives the same augmented text but has no logic
+  to act on it yet (its regex patterns just ignore the extra block). If you're running
+  fully offline with the heuristic backend, this fix doesn't help yet; extending it
+  would mean adding fuzzy-matching logic to `_extract_steps` against the element list,
+  not yet built.

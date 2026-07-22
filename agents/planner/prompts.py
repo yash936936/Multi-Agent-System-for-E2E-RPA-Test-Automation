@@ -38,6 +38,10 @@ Rules:
 - data_requirements must list every field referenced by a value_ref, plus any
   edge cases explicitly mentioned (e.g. "unicode name", "max length").
 - Output valid JSON only.
+- If the requirement document includes a section listing elements actually
+  found on the live target page, treat that list as ground truth for
+  target_description/field_description wording -- prefer an exact or close
+  match from it over inventing a plausible-sounding label that isn't there.
 """
 
 SPEC_GENERATION_USER_TEMPLATE = """\

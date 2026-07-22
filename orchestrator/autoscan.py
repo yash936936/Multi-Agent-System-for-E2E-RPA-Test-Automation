@@ -4,11 +4,27 @@ Autonomous scroll scan — orchestrator/autoscan.py
 The unattended "scroll and check the whole page for me" mode: no
 hand-written steps, no approval checkpoint. Repeatedly screenshots the
 current view, runs the generic page-health check (page_health.py), then
-scrolls down -- stopping either when a scroll produces no visual change
-(bottom of the page reached, detected by comparing screenshot hashes) or
-a safety cap is hit, whichever comes first. The cap exists for the same
-reason orchestrator/guardrails.py exists elsewhere in this codebase:
-unattended loops need a hard stop that isn't "trust the page to behave."
+scrolls down -- stopping when the page's own DOM reports there's nothing
+left to scroll, or a safety cap is hit, whichever comes first. The cap
+exists for the same reason orchestrator/guardrails.py exists elsewhere in
+this codebase: unattended loops need a hard stop that isn't "trust the
+page to behave."
+
+Bottom-detection: prefers reading the live page's actual scroll position
+(runtime/hooks/browser.py::get_scroll_position(), real
+window.scrollY/scrollHeight) over the previous approach of hashing
+full-monitor screenshots and comparing them scroll-to-scroll. The
+screenshot-hash approach was unreliable in both directions: it compared
+mss captures of the *entire physical screen*, so any unrelated on-screen
+change (autoplaying video, animation, blinking cursor, even the OS clock)
+could make consecutive hashes differ forever and burn the whole
+max_scrolls budget every run; conversely a still-repainting page, or a
+large fixed/sticky header covering most of the viewport, could make two
+hashes match too early and falsely report "reached bottom" after a single
+scroll. Reading the DOM's own scroll state directly isn't subject to
+either failure mode. The hash comparison is kept as a fallback only for
+when no live DOM is available at all (headless/non-Playwright capture
+paths), matching every other DOM-then-fallback pattern in this codebase.
 """
 from __future__ import annotations
 
@@ -60,6 +76,7 @@ def run_autoscan(
     scroll_amount: int = -600,
 ) -> AutoScanReport:
     from runtime.hooks import interact
+    from runtime.hooks import browser as browser_hook
     from runtime.errors import NoDisplayError, display_guard
 
     from agents.vision.page_health import detect_page_issues
@@ -91,11 +108,27 @@ def run_autoscan(
         issues = detect_page_issues(path)
         steps.append(AutoScanStepResult(index=i, screenshot_ref=path, issues=issues))
 
-        current_hash = _hash_file(path)
-        if prev_hash is not None and current_hash == prev_hash:
-            reached_bottom = True
-            break
-        prev_hash = current_hash
+        # Real DOM scroll-position check, before deciding whether/how to
+        # scroll further -- catches "already at the bottom" (e.g. a short
+        # page, or the previous iteration's scroll already exhausted it)
+        # without needing a second screenshot round-trip to notice via a
+        # hash match.
+        scroll_pos = browser_hook.get_scroll_position()
+        if scroll_pos is not None:
+            _, remaining = scroll_pos
+            if remaining <= 0:
+                reached_bottom = True
+                break
+        else:
+            # No live DOM available -- fall back to the previous
+            # screenshot-hash comparison, same caveats as before this fix
+            # (see module docstring), but still better than nothing when
+            # there's genuinely no Playwright session to query.
+            current_hash = _hash_file(path)
+            if prev_hash is not None and current_hash == prev_hash:
+                reached_bottom = True
+                break
+            prev_hash = current_hash
 
         # Prefer a DOM-scoped scroll (window.scrollBy on the live Playwright
         # page) over the OS-level interact.scroll() fallback: the OS scroll
@@ -106,8 +139,6 @@ def run_autoscan(
         # reached_bottom=True on the very first iteration despite never
         # having scrolled anything. dom_scroll() has no such dependency: it
         # runs inside the page's own JS context regardless of OS focus.
-        from runtime.hooks import browser as browser_hook
-
         if not browser_hook.dom_scroll(scroll_amount):
             try:
                 interact.scroll(scroll_amount)

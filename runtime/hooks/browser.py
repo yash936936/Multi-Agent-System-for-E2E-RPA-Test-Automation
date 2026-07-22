@@ -170,6 +170,36 @@ class _BrowserSession:
         except Exception:
             return False
 
+    def get_scroll_position(self):
+        """
+        Real DOM scroll-position reader (scrollY, remaining-scrollable-
+        distance), replacing orchestrator/autoscan.py's previous
+        full-monitor screenshot-hash comparison for "has the page reached
+        its bottom" -- that approach compared mss captures of the *entire
+        physical screen*, which any unrelated on-screen change (a video,
+        an animation, a blinking cursor, even the OS clock) could keep
+        differing forever, or which a still-repainting page could make
+        match too early. Reading the page's own scroll state directly is
+        immune to both failure modes -- it asks the actual document, not a
+        screenshot of it.
+
+        Returns (scroll_y, remaining) where remaining is how many more
+        pixels there are to scroll (document.body.scrollHeight -
+        window.innerHeight - scrollY, floored at 0 for pages shorter than
+        the viewport) -- or None if there's no live page or the read
+        failed for any reason. Never raises.
+        """
+        if self._page is None:
+            return None
+        try:
+            result = self._page.evaluate(
+                "() => ({ y: window.scrollY, remaining: Math.max(0, "
+                "document.body.scrollHeight - window.innerHeight - window.scrollY) })"
+            )
+            return (result["y"], result["remaining"])
+        except Exception:
+            return None
+
     def get_click_point_in_page(self, screen_x: int, screen_y: int):
         """
         Phase 2 (cursor-coordinate fix, next-phase plan). Best-effort
@@ -336,6 +366,11 @@ def has_active_page() -> bool:
 def dom_scroll(delta_y: int) -> bool:
     """Scrolls the live page's own document via JS, scoped to this page (not OS focus). See _BrowserSession.dom_scroll."""
     return _session.dom_scroll(delta_y)
+
+
+def get_scroll_position():
+    """Returns (scroll_y, remaining_pixels) read directly from the live page's DOM, or None. See _BrowserSession.get_scroll_position."""
+    return _session.get_scroll_position()
 
 
 def get_click_point_in_page(screen_x: int, screen_y: int):
