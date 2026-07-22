@@ -447,12 +447,36 @@ def run_ui_audit(
             from agents.capability.link_checker import LinkCheckAdapter
             from orchestrator.schemas import CapabilityCheckInput
 
+            # Same fix as run_exploration() below: if this run already has
+            # a live, hydrated browser page open (the same session driving
+            # the OCR screenshots above), hand its HTML straight to the
+            # link checker instead of letting it fall back to launching
+            # its own sync_playwright() -- a second sync Playwright
+            # instance in the same thread is not supported and silently
+            # fails (bare except -> None) every time a run's own browser
+            # is already active, which for `aura execute --ui-audit` is
+            # always. Without this, a client-rendered page (React/Next.js/
+            # etc.) reports "0 links found" -- looking like a clean pass
+            # when really no links were ever checked at all.
+            live_page_html = None
+            try:
+                from runtime.hooks import browser as _browser_hook
+
+                if _browser_hook.has_active_page():
+                    live_page_html = _browser_hook.get_page().content()
+            except Exception:
+                live_page_html = None  # best-effort only; adapter falls back to its own standalone render
+
+            params = {"scope": link_check_scope}
+            if live_page_html:
+                params["live_page_html"] = live_page_html
+
             adapter = LinkCheckAdapter()
             result = adapter.run(
                 CapabilityCheckInput(
                     capability=adapter.capability_type,
                     target=page_url,
-                    params={"scope": link_check_scope},
+                    params=params,
                     expected={},
                 )
             )

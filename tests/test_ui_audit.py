@@ -45,6 +45,15 @@ def test_classify_landmarks_flags_short_titlecase_text_as_interactive():
     assert audit.hero_elements[0].looks_interactive is True
 
 
+def test_classify_landmarks_does_not_flag_single_stray_letter_as_interactive():
+    # Real false positive from a live run: OCR misread a footer icon/logo
+    # fragment as a bare "Q" glyph next to "Search", producing "Q Search"
+    # -- a single stray letter should never pass as a real label word.
+    elements = [{"text": "Q Search", "cx": 400, "cy": 1900}]
+    audit = classify_landmarks(elements, 2000)
+    assert audit.footer_elements[0].looks_interactive is False
+
+
 def test_classify_landmarks_does_not_flag_long_body_paragraph_as_interactive():
     elements = [{
         "text": "this is a long paragraph of body copy that should not be mistaken for a button or link",

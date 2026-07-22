@@ -92,6 +92,33 @@ class LandmarkAudit:
         return [e for e in self.nav_elements + self.hero_elements + self.footer_elements + self.body_elements if e.looks_interactive]
 
 
+_CONNECTOR_WORDS = {"a", "i", "an", "of", "to", "in", "on", "&"}
+_VOWELS = set("aeiouy")
+
+
+def _plausible_word(word: str) -> bool:
+    """
+    Rejects tokens that are almost certainly OCR noise rather than a real
+    word: bare punctuation, single stray letters ("Q" from a clipped
+    icon/logo), and consonant clusters with no vowel at all (e.g. "Prtly").
+    This is intentionally cheap (no dictionary lookup) -- it only screens
+    out shapes of string that a real English word/label essentially
+    never takes, so it won't flag genuine short words like "Get" or "Buy".
+    """
+    stripped = word.strip("'\"-.,!?")
+    if not stripped:
+        return False
+    if stripped in _CONNECTOR_WORDS:
+        return True
+    if not stripped.isalpha():
+        return any(ch.isalpha() for ch in stripped)
+    if len(stripped) == 1:
+        return False  # single stray letters ("Q", "X") are near-always OCR noise
+    if not any(ch in _VOWELS for ch in stripped):
+        return False  # no vowel at all -- not a plausible English word/label
+    return True
+
+
 def _looks_interactive(text: str) -> bool:
     normalized = text.strip().lower()
     if not normalized:
@@ -103,9 +130,12 @@ def _looks_interactive(text: str) -> bool:
     # isn't in the fixed vocabulary above -- catches product-specific CTAs
     # without needing to enumerate every possible label.
     words = normalized.split()
-    if 1 <= len(words) <= 4 and text.strip()[:1].isupper():
-        return True
-    return False
+    if not (1 <= len(words) <= 4 and text.strip()[:1].isupper()):
+        return False
+    # Every word must look like a plausible word, or the whole candidate
+    # is almost certainly a merged/garbled OCR fragment (e.g. "Partly
+    # clot", "Q Search") rather than a real nav item/button label.
+    return all(_plausible_word(w) for w in words)
 
 
 def classify_landmarks(elements: list[dict], page_height: int) -> LandmarkAudit:
