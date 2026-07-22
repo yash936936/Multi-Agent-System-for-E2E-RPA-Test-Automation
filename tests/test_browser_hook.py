@@ -79,3 +79,97 @@ def test_open_url_no_display_raises_no_display_error(monkeypatch, server):
 
     with pytest.raises(browser.NoDisplayError):
         browser.open_url(server_url(server))
+
+
+TALL_PAGE = b"""
+<html><body style="height:5000px; margin:0;"><h1>Top of a tall page</h1></body></html>
+"""
+
+LENIS_PAGE = b"""
+<html class="lenis"><body style="height:5000px; margin:0;">
+<h1>Top of a Lenis-driven tall page</h1>
+<script>
+window.lenis = {
+  scroll: 0, limit: 4400, animatedScroll: 0,
+  scrollTo: function(y, opts) { this.scroll = y; this.animatedScroll = y; }
+};
+</script>
+</body></html>
+"""
+
+
+@pytest.fixture(autouse=True)
+def _force_headless(monkeypatch):
+    # Regression tests below need a browser that actually launches in this
+    # (headless, no-display) CI environment -- every pre-existing test in
+    # this file uses the project's default headed launch, which requires
+    # a real display and can't run here at all (see the Xvfb error on the
+    # two pre-existing tests above). Forcing headless=True only for these
+    # new tests lets them exercise a *real* Chromium + real scrollBy/Lenis
+    # behavior in CI, rather than mocking page.evaluate and only testing
+    # that the right string was passed.
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "playwright_headless", True)
+
+
+def test_dom_scroll_moves_page_downward_on_a_plain_tall_page(server=None):
+    """
+    Regression test for the actual reported bug: --scroll-test ran its
+    full iteration budget but the page never visibly moved off the hero
+    section. Root cause: dom_scroll's delta_y follows this codebase's
+    pyautogui-based convention (negative = scroll down, matching
+    interact.scroll()), but was passed straight through to
+    window.scrollBy(), which uses the OPPOSITE native sign (positive Y =
+    down). Starting at scrollY=0, a "scroll down" call became
+    scrollBy(0, negative), which clamps to 0 and never moves at all --
+    confirmed directly against a real headless page before this fix.
+    """
+    from runtime.hooks import browser
+
+    srv = make_server(TALL_PAGE)
+    try:
+        browser.open_url(server_url(srv), wait_seconds=0.1)
+        before = browser.get_scroll_position()
+        assert before is not None
+        y0, remaining0 = before
+        assert y0 == 0
+
+        ok = browser.dom_scroll(-600)  # "scroll down" in this codebase's convention
+        assert ok is True
+
+        y1, remaining1 = browser.get_scroll_position()
+        assert y1 > y0, "page should have moved DOWN (scrollY increased), not stayed at the top"
+        assert remaining1 < remaining0
+    finally:
+        browser.close()
+        srv.shutdown()
+
+
+def test_dom_scroll_moves_page_downward_on_a_lenis_driven_page():
+    """
+    Regression test for the Lenis-specific half of the same bug: a
+    Lenis-powered page (`<html class="lenis">`, as on the real portfolio
+    site this was found on) intercepts native scrolling entirely, so even
+    a correctly-signed window.scrollBy() is a silent no-op. dom_scroll()
+    must detect window.lenis and drive it directly via lenis.scrollTo().
+    """
+    from runtime.hooks import browser
+
+    srv = make_server(LENIS_PAGE)
+    try:
+        browser.open_url(server_url(srv), wait_seconds=0.1)
+        before = browser.get_scroll_position()
+        assert before is not None
+        y0, remaining0 = before
+        assert y0 == 0
+
+        ok = browser.dom_scroll(-600)
+        assert ok is True
+
+        y1, remaining1 = browser.get_scroll_position()
+        assert y1 > y0, "Lenis scroll position should have advanced, not stayed at 0"
+        assert remaining1 < remaining0
+    finally:
+        browser.close()
+        srv.shutdown()

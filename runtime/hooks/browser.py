@@ -156,16 +156,55 @@ class _BrowserSession:
 
     def dom_scroll(self, delta_y: int) -> bool:
         """
-        Scrolls the live page's own document via JS (window.scrollBy), i.e.
-        scoped to this exact page regardless of OS window focus/z-order.
-        Returns True if it was actually able to scroll (a page exists and
-        the call didn't raise), False otherwise -- callers fall back to the
-        OS-level interact.scroll() when this returns False.
+        Scrolls the live page's own document via JS, scoped to this exact
+        page regardless of OS window focus/z-order. Returns True if it was
+        actually able to scroll (a page exists and the call didn't raise),
+        False otherwise -- callers fall back to the OS-level
+        interact.scroll() when this returns False.
+
+        `delta_y` follows this codebase's existing convention (matching
+        interact.scroll()'s direct pass-through to pyautogui.scroll()):
+        NEGATIVE means "scroll down", positive means "scroll up" -- e.g.
+        orchestrator/autoscan.py's default scroll_amount=-600, and
+        agents/vision/executor.py's SCROLL handler passing -300, both mean
+        "scroll down". Native DOM scrolling uses the opposite sign
+        (window.scrollBy(0, +N) scrolls down), so this was previously
+        passed straight through unconverted -- meaning every "scroll down"
+        call actually asked the page to scroll *up*. Starting at the top
+        of the page (scrollY=0), scrolling up further is a no-op (clamped
+        at 0), so the page never moved AT ALL on any site, Lenis or not --
+        confirmed directly: `window.scrollBy(0, -600)` at scrollY=0 on a
+        real 5000px-tall headless page leaves scrollY at 0. This is
+        converted to the native sign here so both the plain window.scrollBy
+        path and the Lenis path below move in the actually-requested
+        direction.
+
+        Also prefers the page's own Lenis instance (window.lenis) when
+        present over plain window.scrollBy(). Lenis (and similar
+        JS-driven virtual scroll libraries) intercepts/owns scrolling and
+        moves an internal wrapper via CSS transforms rather than the
+        native scroll offset -- on such a page, window.scrollBy() is a
+        silent no-op regardless of sign: the call succeeds, raises
+        nothing, and dom_scroll() happily reports True/"scrolled", but
+        nothing on screen actually moves. That's exactly the failure seen
+        on a real Lenis-powered site (`<html class="lenis">`):
+        --scroll-test ran its full max_scrolls budget and reported a
+        clean scan, while the page visibly never left the hero section.
         """
         if self._page is None:
             return False
+        native_dy = -delta_y  # convert this codebase's pyautogui-style convention to native DOM sign
         try:
-            self._page.evaluate("(dy) => window.scrollBy(0, dy)", delta_y)
+            self._page.evaluate(
+                "(dy) => { "
+                "if (window.lenis && typeof window.lenis.scrollTo === 'function') { "
+                "  const current = window.lenis.animatedScroll ?? window.lenis.scroll ?? 0; "
+                "  window.lenis.scrollTo(current + dy, { immediate: true }); "
+                "} else { "
+                "  window.scrollBy(0, dy); "
+                "} }",
+                native_dy,
+            )
             return True
         except Exception:
             return False
@@ -183,18 +222,36 @@ class _BrowserSession:
         immune to both failure modes -- it asks the actual document, not a
         screenshot of it.
 
+        Prefers window.lenis's own scroll/limit values when a Lenis
+        instance is present, for the same reason dom_scroll() above
+        prefers lenis.scrollTo(): on a Lenis-driven page, native
+        window.scrollY stays at (or near) 0 and document.body.scrollHeight
+        often equals window.innerHeight (the real long content lives in a
+        transformed wrapper, not stretching <body>), so the native-only
+        read here previously computed remaining=0 (or some other
+        meaningless value) immediately -- either falsely reporting
+        "reached bottom" on the very first check, or reporting a
+        remaining distance that has no relationship to what's actually
+        left to scroll, on every real Lenis site.
+
         Returns (scroll_y, remaining) where remaining is how many more
-        pixels there are to scroll (document.body.scrollHeight -
-        window.innerHeight - scrollY, floored at 0 for pages shorter than
-        the viewport) -- or None if there's no live page or the read
-        failed for any reason. Never raises.
+        pixels there are to scroll -- or None if there's no live page or
+        the read failed for any reason. Never raises.
         """
         if self._page is None:
             return None
         try:
             result = self._page.evaluate(
-                "() => ({ y: window.scrollY, remaining: Math.max(0, "
-                "document.body.scrollHeight - window.innerHeight - window.scrollY) })"
+                "() => { "
+                "if (window.lenis && typeof window.lenis.scroll === 'number') { "
+                "  const y = window.lenis.animatedScroll ?? window.lenis.scroll; "
+                "  const limit = window.lenis.limit ?? Math.max(0, "
+                "    document.body.scrollHeight - window.innerHeight); "
+                "  return { y, remaining: Math.max(0, limit - y) }; "
+                "} "
+                "return { y: window.scrollY, remaining: Math.max(0, "
+                "  document.body.scrollHeight - window.innerHeight - window.scrollY) }; "
+                "}"
             )
             return (result["y"], result["remaining"])
         except Exception:
