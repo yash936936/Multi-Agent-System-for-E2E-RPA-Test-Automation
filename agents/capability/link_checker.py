@@ -183,6 +183,19 @@ class LinkCheckAdapter:
         url: page to scan (falls back to `target` if omitted)
         scope: "footer" | "nav" | "all" (default "all")
         max_links: safety cap on how many links get live-checked (default 40)
+        live_page_html: optional -- already-hydrated HTML from a live
+            browser session (e.g. runtime.hooks.browser.get_page().content())
+            that the caller already has open. When given, this is used
+            directly to find JS-injected links on client-rendered pages
+            instead of trying to launch a second Playwright instance.
+            Callers such as `aura execute --ui-audit` and `aura explore`
+            keep their own Playwright session alive for the whole run
+            (to drive OCR screenshots), and Playwright's sync API forbids
+            starting a second sync_playwright() instance in the same
+            thread -- _render_with_playwright() below fails silently in
+            that situation every time. Passing the live page's HTML
+            avoids that conflict entirely, and is strictly better anyway
+            since it costs zero extra page loads.
     expected: unused -- pass/fail is purely "did every in-scope link resolve"
     """
 
@@ -192,6 +205,7 @@ class LinkCheckAdapter:
         url = (payload.params.get("url") or payload.target or "").strip()
         scope = (payload.params.get("scope") or "all").lower()
         max_links = int(payload.params.get("max_links", 40))
+        live_page_html = payload.params.get("live_page_html")
 
         if not url:
             return self._fail("Missing 'url' (or 'target') to scan for links")
@@ -209,17 +223,24 @@ class LinkCheckAdapter:
                     # silent pass.
                     client_rendered = _looks_client_rendered(page_resp.text)
                     rendered_html = None
+                    used_live_page = False
                     if client_rendered:
-                        # TRD §10 point 4: this is exactly the gap a
-                        # headless Playwright render closes -- try it
-                        # before concluding there's really nothing here.
-                        rendered_html = _render_with_playwright(str(page_resp.url))
+                        if live_page_html:
+                            # Reuse the caller's already-hydrated page --
+                            # no second Playwright instance, no conflict.
+                            rendered_html = live_page_html
+                            used_live_page = True
+                        else:
+                            # TRD §10 point 4: this is exactly the gap a
+                            # headless Playwright render closes -- try it
+                            # before concluding there's really nothing here.
+                            rendered_html = _render_with_playwright(str(page_resp.url))
                         if rendered_html:
                             links = _extract_links(rendered_html, str(page_resp.url), scope)
 
                     if links:
                         results = [_check_one(client, link["resolved_url"]) for link in links[:max_links]]
-                        return self._build_result(url, scope, results, rendered_via_playwright=True)
+                        return self._build_result(url, scope, results, rendered_via_playwright=(not used_live_page), used_live_page=used_live_page)
 
                     message = f"No navigable <a href> links found in scope='{scope}' on this page."
                     if client_rendered:
@@ -230,6 +251,12 @@ class LinkCheckAdapter:
                                 "genuinely can't see them. AURA attempted a headless Playwright render to check for "
                                 "JS-injected links, but Playwright/its browser binaries weren't available or the "
                                 "render failed, so this is a real coverage limit for this run, not a false pass."
+                            )
+                        elif used_live_page:
+                            message += (
+                                " This page looks client-rendered, and AURA used the already-open live browser "
+                                "page's rendered HTML to check for JS-injected links, but it still had no "
+                                f"navigable links in scope='{scope}'."
                             )
                         else:
                             message += (
@@ -245,8 +272,10 @@ class LinkCheckAdapter:
                             "url": url,
                             "scope": scope,
                             "checked": 0,
+                            "broken_count": 0,
                             "client_rendered_suspected": client_rendered,
-                            "rendered_via_playwright": rendered_html is not None,
+                            "rendered_via_playwright": rendered_html is not None and not used_live_page,
+                            "used_live_page": used_live_page,
                             "message": message,
                         },
                         escalate=False,
@@ -261,7 +290,7 @@ class LinkCheckAdapter:
 
         return self._build_result(url, scope, results)
 
-    def _build_result(self, url: str, scope: str, results: list[dict], rendered_via_playwright: bool = False) -> CapabilityCheckResult:
+    def _build_result(self, url: str, scope: str, results: list[dict], rendered_via_playwright: bool = False, used_live_page: bool = False) -> CapabilityCheckResult:
         broken = [r for r in results if not r["ok"]]
         redirected = [r for r in results if r["redirected"]]
         passed = len(broken) == 0
@@ -276,6 +305,7 @@ class LinkCheckAdapter:
             "redirected_links": redirected,
             "all_results": results,
             "rendered_via_playwright": rendered_via_playwright,
+            "used_live_page": used_live_page,
             "message": (
                 f"All {len(results)} link(s) in scope='{scope}' resolved successfully."
                 if passed

@@ -244,3 +244,87 @@ def test_playwright_render_fallback_finds_js_injected_links_on_a_real_client_ren
         assert result.passed is True
     finally:
         srv.shutdown()
+
+
+def test_live_page_html_is_used_instead_of_launching_a_second_playwright(monkeypatch):
+    """
+    Real fix for the actual bug: `aura execute --ui-audit` keeps its own
+    sync_playwright() session alive for the whole run to drive OCR
+    screenshots. If LinkCheckAdapter's fallback tried to launch a SECOND
+    sync_playwright() instance in the same thread to render a
+    client-rendered page, Playwright's sync API forbids it and the
+    fallback silently failed every time (bare except swallowed it).
+    When live_page_html is supplied, the adapter must use it directly and
+    must never even attempt _render_with_playwright.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.rstrip("/") == "https://spa.example.com":
+            # Raw HTML has no <a href> at all -- only the post-hydration
+            # DOM (passed in via live_page_html) has the real link.
+            return httpx.Response(200, text='<html><body><div id="root"></div></body></html>')
+        if url == "https://spa.example.com/dashboard":
+            return httpx.Response(200, text="ok")
+        return httpx.Response(404)
+
+    _patch_client(monkeypatch, handler)
+
+    def _should_not_be_called(*a, **k):
+        raise AssertionError("_render_with_playwright must not be called when live_page_html is supplied")
+
+    monkeypatch.setattr("agents.capability.link_checker._render_with_playwright", _should_not_be_called)
+
+    live_html = '<html><body><div id="root"><a href="/dashboard">Dashboard</a></div></body></html>'
+
+    adapter = LinkCheckAdapter()
+    result = adapter.run(
+        CapabilityCheckInput(
+            capability=CapabilityType.LINK_CHECK,
+            target="",
+            params={"url": "https://spa.example.com/", "scope": "all", "live_page_html": live_html},
+        )
+    )
+
+    assert result.passed is True
+    assert result.evidence["checked"] == 1
+    assert result.evidence["broken_count"] == 0
+    assert result.evidence["used_live_page"] is True
+    assert result.evidence["rendered_via_playwright"] is False
+
+
+def test_live_page_html_with_no_links_reports_used_live_page_not_playwright(monkeypatch):
+    """
+    When live_page_html is supplied but even the rendered page has no
+    in-scope links, the evidence dict must (a) still include
+    broken_count=0 -- the earlier real bug was that this key was
+    entirely missing from the "no links found" branch, which crashed
+    callers doing evidence["broken_count"] with a KeyError -- and (b)
+    correctly attribute the render to the live page, not Playwright.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text='<html><body><div id="root"></div></body></html>')
+
+    _patch_client(monkeypatch, handler)
+    monkeypatch.setattr(
+        "agents.capability.link_checker._render_with_playwright",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not be called")),
+    )
+
+    live_html = '<html><body><div id="root"></div></body></html>'  # still no links even post-hydration
+
+    adapter = LinkCheckAdapter()
+    result = adapter.run(
+        CapabilityCheckInput(
+            capability=CapabilityType.LINK_CHECK,
+            target="",
+            params={"url": "https://spa.example.com/", "scope": "all", "live_page_html": live_html},
+        )
+    )
+
+    assert result.passed is False
+    assert result.evidence["checked"] == 0
+    assert result.evidence["broken_count"] == 0  # must exist -- this key missing was the KeyError crash
+    assert result.evidence["used_live_page"] is True
+    assert result.evidence["rendered_via_playwright"] is False
