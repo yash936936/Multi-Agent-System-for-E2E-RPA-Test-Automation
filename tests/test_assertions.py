@@ -145,6 +145,48 @@ def test_llm_generated_sentence_expected_state_is_treated_as_structural(monkeypa
     ) is True
 
 
+def test_homepage_and_similar_compound_phrasing_is_also_treated_as_structural(monkeypatch):
+    """
+    Regression test: the generic-sentence regex originally required a
+    standalone word "page" (\\bpage\\b), which does NOT match "page"
+    embedded inside "homepage" (word-boundary rules require a transition
+    between word/non-word characters, and "home"+"page" has none). A real
+    CloudLLMBackend-generated spec assertion -- "The portfolio homepage is
+    successfully rendered with all initial sections loaded." -- was
+    therefore treated as literal OCR text to search for and failed on
+    every real run, exactly like the original page_loaded bug, just with
+    a compound-word phrasing the original fix didn't anticipate.
+    """
+
+    class FakeImageHandle:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def load(self):
+            pass
+
+    class FakeImage:
+        @staticmethod
+        def open(path):
+            return FakeImageHandle()
+
+    class FakePytesseract:
+        @staticmethod
+        def image_to_string(img):
+            return "Home Work About Contact\nAwaken your thinking partner"
+
+    monkeypatch.setitem(__import__("sys").modules, "pytesseract", FakePytesseract)
+    monkeypatch.setitem(__import__("sys").modules, "PIL", type("m", (), {"Image": FakeImage}))
+
+    assert check_assertion(
+        "fake.png",
+        "The portfolio homepage is successfully rendered with all initial sections loaded.",
+    ) is True
+
+
 def test_short_literal_expected_state_with_loaded_word_is_not_falsely_structural(monkeypatch):
     """The generic-sentence heuristic requires several words, so a short,
     specific literal target that happens to contain 'loaded' (e.g. a

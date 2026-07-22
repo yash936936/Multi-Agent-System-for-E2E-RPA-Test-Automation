@@ -169,7 +169,24 @@ def _decision_basis(r: dict, step_def: dict | None) -> dict[str, Any]:
                       f"(URL: {(step_def or {}).get('url', 'n/a')}).",
         }
     else:
-        basis = {"decided": "fulfilled" if not escalate else "not_fulfilled", "reason": "No action required."}
+        if assertion_passed is not None:
+            # A real assertion check ran and produced a verdict for this
+            # step (this is exactly what happens for the ASSERT action:
+            # execute_step itself takes no action -- action_taken stays
+            # "none" -- and the actual pass/fail check runs afterward in
+            # run_engine, attaching assertion_passed to this same result).
+            # Ignoring that value here (falling back to escalate-only,
+            # below) would show "fulfilled" for a step whose real
+            # assertion genuinely failed, directly contradicting the run's
+            # overall status (which report_aggregator._determine_status()
+            # correctly derives from assertion_passed, not action_taken).
+            basis = {
+                "decided": "fulfilled" if assertion_passed else "not_fulfilled",
+                "reason": "Post-action screenshot checked via OCR against the step's/spec's "
+                          "expected_state text.",
+            }
+        else:
+            basis = {"decided": "fulfilled" if not escalate else "not_fulfilled", "reason": "No action required."}
 
     basis["confidence"] = confidence
     return basis

@@ -51,7 +51,8 @@ _STRUCTURAL_SENTINELS = {"page_loaded", "page loaded"}
 # This regex catches the general shape ("page is/looks loaded/visible/
 # rendered") without trying to enumerate every possible LLM phrasing.
 _GENERIC_LOADED_PATTERN = re.compile(
-    r"\bpage\b.{0,40}\b(loaded|visible|rendered|displayed)\b", re.IGNORECASE
+    r"\b(page|homepage|site|website|app|screen)\b.{0,50}\b(loaded|visible|rendered|displayed)\b",
+    re.IGNORECASE,
 )
 
 
