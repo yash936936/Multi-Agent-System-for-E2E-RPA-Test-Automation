@@ -9,6 +9,22 @@ project: AURA
 
 ---
 
+## 2026-07-23 — Phase AC: `CONVENTIONS.md` + `aura doctor` (D-059)
+
+AC1: new `CONVENTIONS.md` documenting scroll-sign, coordinate-space, and
+confidence-threshold conventions that previously only existed scattered
+across docstrings. AC2: `aura/cli/preflight.py::run_doctor()` + new
+`aura doctor` CLI command — a standalone, non-blocking environment
+report (Tesseract, planner backend/Hermes reachability, display,
+Playwright, optional adapter SDKs) reusing every existing check function,
+so an operator can check environment health before attempting a real run
+instead of discovering a gap mid-execution. 10 new tests
+(`test_preflight.py`), full suite 652 passed / 31 failed / 1 xfailed / 5
+errors — unchanged failure count from D-058's baseline (pre-existing
+Chromium-binary/no-display sandbox gaps), zero regressions. See D-059.
+
+---
+
 ## 2026-07-17 — Verification pass: real pytest run confirms Phase V, one stale test fixed (D-045)
 
 **What happened:**

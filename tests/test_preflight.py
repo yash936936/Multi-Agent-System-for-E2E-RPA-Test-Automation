@@ -327,3 +327,91 @@ def test_run_preflight_or_exit_does_not_block_on_advisory_failures(monkeypatch):
     monkeypatch.setattr(preflight, "check_capability_adapter_dependencies", lambda: ["'boto3' isn't installed"])
 
     preflight.run_preflight_or_exit()  # should not raise
+
+
+def test_run_doctor_returns_true_when_all_hard_checks_pass(monkeypatch):
+    """
+    AC2: `aura doctor` is a standalone report a user runs proactively, not
+    tied to run_preflight_or_exit()'s raise-and-exit behavior. It must
+    never raise, and should return True purely based on the two hard
+    checks (Tesseract, planner backend) -- advisory failures (no display,
+    no Playwright browser -- both true in this sandbox) must not flip it.
+    """
+    from aura.cli import preflight
+
+    monkeypatch.setattr(preflight, "check_tesseract_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_planner_backend_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_display_available", lambda: (False, "no display"))
+    monkeypatch.setattr(preflight, "check_playwright_browser_available", lambda: (False, "no browser"))
+    monkeypatch.setattr(preflight, "check_capability_adapter_dependencies", lambda: [])
+
+    assert preflight.run_doctor() is True  # advisory failures don't affect the verdict
+
+
+def test_run_doctor_returns_false_when_a_hard_check_fails(monkeypatch):
+    from aura.cli import preflight
+
+    monkeypatch.setattr(preflight, "check_tesseract_available", lambda: (False, "tesseract missing"))
+    monkeypatch.setattr(preflight, "check_planner_backend_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_display_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_playwright_browser_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_capability_adapter_dependencies", lambda: [])
+
+    assert preflight.run_doctor() is False
+
+
+def test_run_doctor_never_raises_even_with_every_check_failing(monkeypatch):
+    """
+    Unlike run_preflight_or_exit(), `aura doctor` must never raise
+    typer.Exit itself -- it's a report, not a gate. The CLI command
+    (aura/main.py's `doctor()`) is what turns a False return into an exit
+    code, not run_doctor() itself.
+    """
+    from aura.cli import preflight
+
+    monkeypatch.setattr(preflight, "check_tesseract_available", lambda: (False, "tesseract missing"))
+    monkeypatch.setattr(preflight, "check_planner_backend_available", lambda: (False, "planner misconfigured"))
+    monkeypatch.setattr(preflight, "check_display_available", lambda: (False, "no display"))
+    monkeypatch.setattr(preflight, "check_playwright_browser_available", lambda: (False, "no browser"))
+    monkeypatch.setattr(preflight, "check_capability_adapter_dependencies", lambda: ["'boto3' isn't installed"])
+
+    assert preflight.run_doctor() is False  # must not raise
+
+
+def test_aura_doctor_cli_command_exits_nonzero_on_hard_failure(monkeypatch):
+    """
+    Integration test for the actual `aura doctor` CLI wiring in
+    aura/main.py -- confirms run_doctor()'s bool return is correctly
+    turned into a process exit code via typer's CliRunner, the same
+    mechanism a user's shell script would check.
+    """
+    from typer.testing import CliRunner
+
+    from aura import main as aura_main
+    from aura.cli import preflight
+
+    monkeypatch.setattr(preflight, "check_tesseract_available", lambda: (False, "tesseract missing"))
+    monkeypatch.setattr(preflight, "check_planner_backend_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_display_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_playwright_browser_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_capability_adapter_dependencies", lambda: [])
+
+    result = CliRunner().invoke(aura_main.app, ["doctor"])
+    assert result.exit_code == 1
+    assert "tesseract missing" in result.stdout.lower() or "tesseract" in result.stdout.lower()
+
+
+def test_aura_doctor_cli_command_exits_zero_when_healthy(monkeypatch):
+    from typer.testing import CliRunner
+
+    from aura import main as aura_main
+    from aura.cli import preflight
+
+    monkeypatch.setattr(preflight, "check_tesseract_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_planner_backend_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_display_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_playwright_browser_available", lambda: (True, None))
+    monkeypatch.setattr(preflight, "check_capability_adapter_dependencies", lambda: [])
+
+    result = CliRunner().invoke(aura_main.app, ["doctor"])
+    assert result.exit_code == 0

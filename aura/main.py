@@ -78,6 +78,21 @@ def _main(
 
 
 @app.command()
+def doctor() -> None:
+    """
+    AC2: check AURA's environment (Tesseract OCR, planner backend config
+    incl. Hermes Agent reachability, display/screenshot backend, Playwright
+    browser binary, optional capability-adapter SDKs) and print a full
+    report -- run this proactively before `aura execute`, instead of
+    discovering a missing dependency mid-run. Never blocks anything by
+    itself; exit code reflects whether the hard-blocking checks passed.
+    """
+    ok = preflight.run_doctor()
+    if not ok:
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def init(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip interactive prompts, write defaults."),
     env: str = typer.Option(None, "--env", help="Scaffold a .env.<name> profile file alongside the base .env (Phase G1)."),

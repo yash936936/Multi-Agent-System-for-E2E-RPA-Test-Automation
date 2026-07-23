@@ -3070,4 +3070,67 @@ needed to detect the fake-500-error case — guardrail short-circuit on
 identical retries (AD2), the doc-drift CI check (AE1), and finishing the
 `aura audit-report` CLI on top of AB2's `find_anomalies()` (AE2).
 
+## D-059 — AC1/AC2: CONVENTIONS.md and a standalone `aura doctor` command (2026-07-23)
+
+**Context:** continuing the hardening plan from D-057/D-058 into Phase AC.
+
+**AC1 — `CONVENTIONS.md`.** New top-level file collecting three
+easy-to-get-backwards conventions that previously only existed as
+scattered docstrings, requiring a bug to be traced back to source before
+they were discoverable:
+1. **Scroll sign** — this codebase's pyautogui-style convention (negative
+   = down) vs. native DOM's opposite sign, and `dom_scroll()`'s
+   conversion between them (the root cause of the Lenis/plain-tall-page
+   scroll bug fixed in D-039/D-041).
+2. **Coordinate spaces** — OS/physical screen pixels (mss/OCR/pyautogui)
+   vs. browser CSS pixels (Playwright's `page.mouse`) vs. DOM/accessibility-
+   tree targets (no pixel coordinate at all), and `get_click_point_in_page()`'s
+   conversion between the first two (the root cause of the OCR-click-lands-
+   on-the-taskbar bug that function's docstring documents).
+3. **Confidence/similarity thresholds** — `vision_confidence_threshold`
+   (0.75, the main gate), `RELOCATE_MIN_RATIO` (0.40, DOM self-heal only),
+   capability-adapter confidence conventions (1.0/0.5/0.0, not a single
+   tunable), and diagnoser heuristic confidence (0.3–0.7, fixed per-branch).
+Also documents the AA1 `verification_source`/`raw_evidence` trace
+convention inline, pointing at `tests/test_trace_exhaustiveness.py` (AA2)
+as the enforcement mechanism for any new action type.
+
+**AC2 — standalone `aura doctor` command.** `aura/cli/preflight.py`
+already had every individual check function (`check_tesseract_available`,
+`check_planner_backend_available` — which already covers Hermes Agent
+reachability via the `hermes_agent` backend branch, `check_display_available`,
+`check_playwright_browser_available`, `check_capability_adapter_dependencies`)
+wired into `run_preflight_or_exit()`, but that function only runs
+implicitly at the top of `execute`/`explore` and raises+exits on the
+first hard failure — there was no way for an operator to proactively
+check environment health without attempting a real run. New `run_doctor()`
+in the same module: a thin wrapper reusing every existing check_*
+function (no new detection logic), printing a full report grouped into
+hard requirements / advisory / optional-adapter-dependencies, and
+returning a bool (never raising) so it can be invoked standalone. New
+`aura doctor` CLI command in `aura/main.py` turns that bool into an exit
+code (0 = healthy, 1 = a hard check failed) via `typer.Exit`.
+
+Verified: `aura doctor` run for real against this sandbox — correctly
+reports Tesseract OK, planner backend OK, and (accurately) flags both
+"no display" and "no Playwright browser binary" as advisory warnings
+without blocking, matching this environment's known, pre-existing gaps
+(same ones every browser-dependent test in this suite hits). 10 new
+tests in `test_preflight.py` (6 for `run_doctor()`'s pass/fail/never-raises
+behavior, 2 CLI-integration tests via `typer.testing.CliRunner` confirming
+the actual exit-code wiring, plus restoring one pre-existing test that
+was nearly dropped during a sloppy `str_replace` mid-edit — caught before
+commit, not after). Full suite: 652 passed / 31 failed / 1 xfailed / 5
+errors — the 31+5 unchanged from D-058's baseline (same pre-existing
+Chromium-binary/no-display environment gaps this sandbox has throughout),
+zero new failures.
+
+**Still open from the broader hardening plan:** explicit `assertion_kind`
+on the planner spec (AD1) — this is what would finally let the AB1
+fake-500-error `xfail` test close, since a `negative`/error-check
+assertion kind is exactly what's needed to detect that case — guardrail
+short-circuit on identical retries (AD2), the doc-drift CI check (AE1),
+and the `aura audit-report` CLI on top of AB2's `find_anomalies()` (AE2).
+
+
 

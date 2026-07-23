@@ -255,3 +255,73 @@ def run_preflight_or_exit() -> None:
 
     for adapter_warning in check_capability_adapter_dependencies():
         console.print(f"[dim]Note: {adapter_warning}[/dim]")
+
+
+def run_doctor() -> bool:
+    """
+    AC2: `aura doctor` -- a standalone, proactive preflight the operator
+    can run *before* attempting a real execution, rather than only
+    discovering environment problems (Tesseract missing, Hermes Agent
+    unreachable, no Playwright browser, etc.) as a mid-run crash or a
+    silently-degraded capability. This is deliberately a thin wrapper
+    around the same check_* functions run_preflight_or_exit() already
+    calls -- no new detection logic, just a full, always-non-blocking
+    report of every one of them in one place, plus a summary verdict.
+
+    Unlike run_preflight_or_exit(), this never raises/exits: it's meant to
+    be run standalone (`aura doctor`), read by a human, and left at that --
+    exit code communicates overall health (0 = all hard checks pass, 1 =
+    at least one hard-blocker check failed) without ever halting execute()
+    itself. Returns True if every hard-blocking check passed (advisory
+    warnings don't affect this).
+
+    Checks run in the same grouping run_preflight_or_exit() uses --
+    hard blockers first (every vision step needs both), then advisory
+    checks (display, Playwright, Hermes/planner-backend reachability via
+    check_planner_backend_available which already covers the
+    'hermes_agent' backend's base-url-configured check), then optional
+    capability-adapter dependency notes.
+    """
+    console.print("[bold]AURA environment check[/bold]\n")
+
+    all_hard_ok = True
+    console.print("[bold]Hard requirements[/bold] (block every `aura execute` run)")
+    for label, check in (
+        ("Tesseract OCR", check_tesseract_available),
+        ("Planner backend config", check_planner_backend_available),
+    ):
+        ok, message = check()
+        all_hard_ok = all_hard_ok and ok
+        if ok:
+            console.print(f"  [green]✓[/green] {label}")
+        else:
+            console.print(f"  [red]✗ {label}[/red]\n    {message}")
+
+    console.print("\n[bold]Advisory[/bold] (only needed for some capabilities/steps)")
+    for label, advisory_check in (
+        ("Display / screenshot backend", check_display_available),
+        ("Playwright browser binary", check_playwright_browser_available),
+    ):
+        ok, message = advisory_check()
+        if ok:
+            console.print(f"  [green]✓[/green] {label}")
+        else:
+            console.print(f"  [yellow]⚠ {label}[/yellow]\n    {message}")
+
+    adapter_warnings = check_capability_adapter_dependencies()
+    if adapter_warnings:
+        console.print("\n[bold]Optional capability-adapter dependencies[/bold]")
+        for w in adapter_warnings:
+            console.print(f"  [dim]· {w}[/dim]")
+    else:
+        console.print("\n[bold]Optional capability-adapter dependencies[/bold]\n  [green]✓[/green] all present")
+
+    console.print()
+    if all_hard_ok:
+        console.print("[green bold]AURA is ready to run `aura execute`.[/green bold]")
+    else:
+        console.print(
+            "[red bold]AURA cannot run `aura execute` yet[/red bold] -- fix the [red]✗[/red] items above first. "
+            "Warnings ([yellow]⚠[/yellow]) don't block execution but mean some capabilities/steps will be unavailable."
+        )
+    return all_hard_ok

@@ -1,12 +1,18 @@
 ---
 type: status
 project: AURA
-last_updated: 2026-07-19
+last_updated: 2026-07-23
 ---
 
 # STATUS
 
 > This file should always reflect the *current* state — overwrite freely, don't accumulate history here (that belongs in `progress.md`).
+
+## Where things stand (2026-07-23 update, Phase AC — done)
+- **AC1:** new top-level `CONVENTIONS.md` — scroll-direction sign (this codebase's pyautogui-style negative-means-down vs. native DOM's opposite sign, and where the conversion happens), the three coordinate spaces in play (OS screen pixels / browser CSS pixels / DOM accessibility-tree targets, root cause of a real OCR-click-hits-the-taskbar bug), and every confidence/similarity threshold in the codebase (`vision_confidence_threshold`=0.75 main gate, `RELOCATE_MIN_RATIO`=0.40 DOM self-heal only, capability-adapter 1.0/0.5/0.0 convention, diagnoser's fixed 0.3–0.7 per-branch values) — collected once instead of only existing as scattered docstrings a bug had to be traced back to source to find.
+- **AC2:** standalone `aura doctor` command. `aura/cli/preflight.py` already had every individual environment check (Tesseract, planner backend incl. Hermes Agent reachability, display, Playwright browser, optional adapter SDKs) but only ever ran implicitly at the top of `execute`/`explore`, raising+exiting on first failure — no way to check environment health proactively. New `run_doctor()` reuses every existing check function (zero new detection logic), prints a grouped report, returns a bool; new `aura doctor` CLI command turns that into an exit code.
+- **652/688 tests passing** (10 new in `test_preflight.py`, zero regressions; same 31 failed/5 errors/1 xfailed as D-058's baseline — all pre-existing Chromium-binary/no-display sandbox gaps).
+- **Remaining hardening-plan backlog, in order:** AD1 (explicit `assertion_kind` on the planner spec — also closes AB1's fake-500-error `xfail`), AD2 (guardrail short-circuit on identical retries), AE1 (doc-drift CI check), AE2 (`aura audit-report` CLI on top of AB2's `find_anomalies()`).
 
 ## Where things stand (2026-07-19 update, Phase Z started)
 - **D-051:** fixed stale "proposed" cross-references in `docs/TRD.md` (§10/§11 headers already said "delivered"; two summary blurbs elsewhere in the same file hadn't caught up).
