@@ -11,6 +11,8 @@ written assertion for something specific.
 """
 from __future__ import annotations
 
+import logging
+
 _ISSUE_MARKERS = [
     "404",
     "403 forbidden",
@@ -45,7 +47,12 @@ def detect_page_issues(screenshot_path: str) -> list[str]:
         with Image.open(screenshot_path) as img:
             img.load()
             text = pytesseract.image_to_string(img).lower()
-    except Exception:
+    except Exception as e:
+        logging.getLogger(__name__).warning(
+            "page_health: OCR failed reading %s (%s) -- reporting no issue markers found, "
+            "but this is 'couldn't check', not 'checked and found none clean'.",
+            screenshot_path, e,
+        )
         return []
 
     return [marker for marker in _ISSUE_MARKERS if marker in text]

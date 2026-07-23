@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from agents.auditor import run_monitor
-from agents.vision.assertions import check_assertion
+from agents.vision.assertions import check_assertion_detailed
 from agents.vision.visual_regression import compare_to_baseline
 from config.settings import settings
 
@@ -477,8 +477,10 @@ class RunEngine:
                     if timeout and elapsed >= timeout:
                         break
 
+                assertion_detail = None
                 if changed and step.expected_state:
-                    passed = check_assertion(latest_path, step.expected_state)
+                    assertion_detail = check_assertion_detailed(latest_path, step.expected_state)
+                    passed = assertion_detail["passed"]
                 elif changed:
                     # No specific expected_state given -- the instruction
                     # was just "do the thing," and something visibly did
@@ -495,6 +497,8 @@ class RunEngine:
                     escalate=not passed,
                     screenshot_ref=latest_path,
                     assertion_passed=passed if changed else None,
+                    verification_source="ocr" if assertion_detail is not None else "none_required",
+                    raw_evidence=assertion_detail,
                     human_action_evidence={
                         "elapsed_seconds": round(elapsed, 2),
                         "timeout_seconds": timeout,
@@ -576,10 +580,19 @@ class RunEngine:
             if step.expected_state and not result.escalate:
                 assertion_screenshot = self._safe_screenshot(run_id, step.step_id)
                 if assertion_screenshot is None:
-                    result = result.model_copy(update={"assertion_passed": False, "escalate": True})
+                    result = result.model_copy(update={
+                        "assertion_passed": False,
+                        "escalate": True,
+                        "verification_source": "ocr",
+                        "raw_evidence": {"error": "screenshot capture failed"},
+                    })
                 else:
-                    passed = check_assertion(assertion_screenshot, step.expected_state)
-                    result = result.model_copy(update={"assertion_passed": passed})
+                    detail = check_assertion_detailed(assertion_screenshot, step.expected_state)
+                    result = result.model_copy(update={
+                        "assertion_passed": detail["passed"],
+                        "verification_source": "ocr",
+                        "raw_evidence": detail,
+                    })
 
             # Phase G3 (decisions.md D-027): opt-in real pixel-diff visual
             # regression, independent of and additive to the OCR
@@ -662,10 +675,15 @@ class RunEngine:
         if spec.assertions:
             final_step_id = len(spec.steps) + 1
             final_screenshot = self._safe_screenshot(run_id, final_step_id)
-            all_passed = (
-                final_screenshot is not None
-                and all(check_assertion(final_screenshot, a.expected) for a in spec.assertions)
-            )
+            if final_screenshot is None:
+                all_passed = False
+                per_assertion_detail = [{"expected": a.expected, "passed": False, "method": "no_screenshot"} for a in spec.assertions]
+            else:
+                per_assertion_detail = []
+                for a in spec.assertions:
+                    detail = check_assertion_detailed(final_screenshot, a.expected)
+                    per_assertion_detail.append({"expected": a.expected, **detail})
+                all_passed = all(d["passed"] for d in per_assertion_detail)
             aggregator.record_step_result(
                 VisionActionResult(
                     step_id=final_step_id,
@@ -674,6 +692,8 @@ class RunEngine:
                     escalate=False,
                     screenshot_ref=final_screenshot,
                     assertion_passed=all_passed,
+                    verification_source="ocr",
+                    raw_evidence={"assertions": per_assertion_detail},
                 )
             )
 

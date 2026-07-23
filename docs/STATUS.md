@@ -308,8 +308,8 @@ on all Phase S-touched files.
 >   session's page, so it silently found 0 links on any client-rendered
 >   page during `aura execute --ui-audit`/`explore`. Both fixed and
 >   merged — see D-055 for full detail.
-> - **D-056 (patches prepared, not yet applied to `main`):** four more
->   real bugs found in the same debugging pass — an OCR-noise false
+> - **D-056 (merged into `main` as part of this pass):** four bugs found
+>   in the debugging session before this one — an OCR-noise false
 >   positive in the UI audit's interactive-element detection, a
 >   scroll-direction sign inversion (compounded by a Lenis-based site's
 >   custom scroll engine) that made `--scroll-test` never actually move
@@ -318,9 +318,17 @@ on all Phase S-touched files.
 >   structural-vs-literal assertion dispatch from a keyword regex to a
 >   shape-based heuristic. See D-056 for the known limitation left open
 >   by the last of these (can't yet distinguish "wrong content rendered"
->   from "no content rendered").
-> - **Next real action:** apply the D-056 patches to `main`, then convert
->   D-056 from its "prepared but pending" form into a normal merged
->   decision (or split per-fix into D-057+), and re-run the full suite to
->   confirm the 596/49/5 pass/fail/error split noted in D-056 still holds
->   once the actual source, not just patches, is what's running.
+>   from "no content rendered") — not yet closed by D-057.
+> - **D-057 (merged into `main`):** AA1/AA2/AA3 of the broader workflow-
+>   hardening plan (see D-057 for full detail) — audit-trail hardening
+>   (`verification_source`/`raw_evidence` on every step result),
+>   `ActionType` exhaustiveness coverage (`test_action_type_coverage.py`),
+>   and a mechanical silent-exception scanner
+>   (`scripts/check_silent_excepts.py` + `test_no_silent_excepts.py`),
+>   with 7 of 11 real silent-except sites fixed and the remaining 4
+>   allowlisted with documented reasons.
+> - **Next real action:** AB1 (real-browser fixture tier: plain-tall,
+>   Lenis, SPA-client-routing, fake-500-error pages wired into CI) and
+>   AB2 (structured per-assertion JSONL audit log, building on D-057's
+>   `raw_evidence` field), then AC1/AC2 (`CONVENTIONS.md`, `aura doctor`
+>   preflight). See D-057's closing note for the full remaining backlog.

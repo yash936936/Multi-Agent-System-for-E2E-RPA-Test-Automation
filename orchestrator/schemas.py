@@ -248,6 +248,19 @@ class VisionActionResult(BaseModel):
     # combination. None for every other action type, exactly like
     # capability_result/verification_evidence's existing convention above.
     human_action_evidence: Optional[Dict[str, Any]] = None
+    # AA1 (docs/decisions.md D-057) -- audit-trail hardening. Every prior
+    # field above answers "what was the verdict" (assertion_passed,
+    # verification_method, ...) but not "what kind of check produced that
+    # verdict, and what raw evidence backed it" -- which is exactly the
+    # gap that let D-056's bug (a step whose real assertion failed still
+    # displaying as "fulfilled") go undetected by anyone reading the
+    # trace, not just by users reading the report. These two fields are
+    # required to be populated (not left None) whenever any verification
+    # actually ran for this step -- None is only valid for steps where no
+    # verification was applicable at all (e.g. a bare SCROLL/NAVIGATE_URL
+    # with no expected_state attached).
+    verification_source: Optional[Literal["ocr", "dom", "capability_adapter", "none_required"]] = None
+    raw_evidence: Optional[Dict[str, Any]] = None
 
 
 # --------------------------------------------------------------------------

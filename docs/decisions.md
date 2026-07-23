@@ -2933,4 +2933,80 @@ failed / 5 errors — the 49+5 confirmed identical on unmodified `main` via
 `git stash` (missing Chromium display / `boto3`/`azure` SDKs in the
 sandbox this was verified in, not caused by any of these changes).
 
+## D-057 — AA1/AA2/AA3: audit-trail hardening, ActionType exhaustiveness
+## coverage, and a mechanical silent-exception guard (2026-07-23)
+
+**Context:** following D-055/D-056, a workflow-hardening pass (not a bug
+report this time) implementing the first three items of a broader
+hardening plan: monitoring/audit depth, mechanical enum-coverage
+checking, and closing off the "swallowed exception" pattern that caused
+most of D-055/D-056's bugs in the first place.
+
+**AA1 — audit trail hardening.** `VisionActionResult` gained two new
+fields: `verification_source` (`ocr | dom | capability_adapter |
+none_required`) and `raw_evidence` (a dict — matched text, OCR excerpt,
+which method decided the verdict). Added `check_assertion_detailed()` in
+`agents/vision/assertions.py`, returning `{passed, method, matched_text,
+ocr_excerpt}` instead of a bare bool; `check_assertion()` is now a thin
+wrapper over it for backward compatibility. Wired into all three
+`run_engine.py` call sites that produce an assertion verdict (per-step
+assert, final spec-level assertions, wait-for-human). The final-assertion
+site also stopped collapsing multiple `spec.assertions` into one opaque
+bool — each assertion's own detail (expected text, method, pass/fail) is
+now kept in `raw_evidence["assertions"]`. This is precisely the
+information that was missing when D-056's bug let a step display
+"fulfilled" in the process report while its real assertion had failed —
+the trace itself now shows `method` and evidence, not just a derived
+boolean that can silently disagree with the true outcome.
+
+**AA2 — `ActionType` exhaustiveness coverage.** New
+`tests/test_action_type_coverage.py`. `test_every_action_type_is_
+accounted_for_somewhere()` asserts every `ActionType` member is
+explicitly covered by either a behavioral test against `execute_step`
+(`NAVIGATE_URL`, `VISUAL_CLICK`, `TYPE_TEXT`, `SCROLL`, `ASSERT`) or a
+source-inspection check confirming `orchestrator/run_engine.py`
+dispatches it explicitly before `execute_step` is ever reached
+(`CAPABILITY_CHECK`, `WAIT_FOR_HUMAN_ACTION`) — no third option. This is
+exactly the test that would have caught D-055's original bug (`ASSERT`
+had zero branches in `execute_step`) the moment it was introduced,
+instead of via a live run months later.
+
+**AA3 — mechanical silent-exception guard.** New
+`scripts/check_silent_excepts.py`: an AST-based scanner flagging
+`except Exception: return <default>` blocks (returning `None`/`True`/
+`False`/`[]`/`{}`/an empty string) with no logging call anywhere in the
+handler. Doesn't ban broad exception catches outright — only the
+specific "success-shaped default + zero visibility" combination that
+caused D-055's original bug (`_render_with_playwright`'s silent
+`except Exception: return None` hid the nested-sync-Playwright conflict
+completely). First run found 11 real hits across the codebase. Fixed 7
+with a proper `logging.warning`/`.debug`/`.error` call, including the
+exact `_render_with_playwright` function responsible for D-055, plus
+`composio_adapter.py`, `page_health.py`, `webhook_listener.py`, and
+three of this session's own `runtime/hooks/browser.py` additions
+(`dom_scroll`, `get_scroll_position`). The remaining 4 were confirmed
+genuinely intentional against their own existing docstrings (stale DOM
+references, "couldn't measure" geometry checks, best-effort partial
+reads) and added to the script's `ALLOWLIST` with a documented reason
+each, rather than forcing noisy logging onto expected/frequent
+conditions. Wired into `tests/test_no_silent_excepts.py` so a newly
+introduced silent-except block fails the normal test run immediately,
+not just a standalone script invocation.
+
+Verified: 10 new tests across `test_run_engine.py` (1),
+`test_action_type_coverage.py` (7), and `test_no_silent_excepts.py` (1),
+plus the `scripts/check_silent_excepts.py` scanner reporting clean.
+Full suite: 605 passed / 49 failed / 5 errors, vs. 594 passed / 53
+failed / 5 errors on unmodified `main` (confirmed via `git stash`) — an
+improvement, not just no-regression: this pass's logging additions and
+minor fixes incidentally corrected 4 pre-existing failures too. Zero new
+failures introduced.
+
+**Still open from the broader hardening plan (not part of this pass):**
+the real-browser fixture tier (AB1/AB2), `CONVENTIONS.md` (AC1),
+`aura doctor` preflight (AC2), explicit `assertion_kind` on the planner
+spec (AD1), guardrail short-circuit on identical retries (AD2), the
+doc-drift CI check (AE1), and the `aura audit-report` anomaly-detection
+CLI (AE2).
+
 

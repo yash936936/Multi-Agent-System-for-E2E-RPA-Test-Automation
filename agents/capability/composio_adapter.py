@@ -58,6 +58,7 @@ capability, gated more tightly than the router's general kill switch):
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict
 
 from config.settings import settings
@@ -181,7 +182,8 @@ class ComposioAdapter:
             if isinstance(result, dict):
                 return result
             return {"repr": str(result)[:2000]}
-        except Exception:
+        except Exception as e:
+            logging.getLogger(__name__).warning("ComposioAdapter: failed to serialize tool result (%s)", e)
             return {}
 
     def _fail(self, msg: str) -> CapabilityCheckResult:

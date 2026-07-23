@@ -23,6 +23,7 @@ every other capability (api/db/email/etc.) via a CAPABILITY_CHECK TestStep
 """
 from __future__ import annotations
 
+import logging
 from html.parser import HTMLParser
 from typing import Optional
 from urllib.parse import urljoin
@@ -156,7 +157,8 @@ def _render_with_playwright(url: str, timeout_ms: int = 15_000) -> Optional[str]
     """
     try:
         from playwright.sync_api import sync_playwright
-    except Exception:
+    except Exception as e:
+        logging.getLogger(__name__).debug("_render_with_playwright: Playwright not importable (%s)", e)
         return None
 
     try:
@@ -173,7 +175,16 @@ def _render_with_playwright(url: str, timeout_ms: int = 15_000) -> Optional[str]
                 return html
             finally:
                 browser.close()
-    except Exception:
+    except Exception as e:
+        # AA3 (docs/decisions.md D-057): this exact silent swallow (no
+        # logging at all) is what let D-055's nested-sync-Playwright bug
+        # go undetected for so long -- when a run's own browser session
+        # was already active, this always failed with "It looks like you
+        # are using Playwright Sync API inside the asyncio loop", and
+        # nothing surfaced that anywhere. Now logged so a repeated
+        # failure here is visible instead of just quietly degrading to
+        # "0 links found."
+        logging.getLogger(__name__).warning("_render_with_playwright: render failed (%s)", e)
         return None
 
 

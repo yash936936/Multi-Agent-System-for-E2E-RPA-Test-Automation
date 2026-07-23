@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -68,6 +69,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             try:
                 trigger_id = queue_trigger(payload)
             except Exception as e:
+                logging.getLogger(__name__).error("webhook_listener: failed to queue trigger (%s)", e)
                 self._send_response(500, {"error": f"Failed to queue trigger: {str(e)}"})
                 return
 

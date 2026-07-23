@@ -77,6 +77,37 @@ def test_run_engine_completes_full_login_flow(tmp_dir: Path):
     assert report.self_healed_steps == 0
 
 
+def test_run_engine_final_assertion_records_audit_evidence(tmp_dir: Path):
+    """
+    AA1 (docs/decisions.md D-057) regression test: the final spec-level
+    assertion result must carry verification_source + raw_evidence (which
+    method decided the verdict, and the per-assertion detail behind it) --
+    not just the collapsed assertion_passed bool. This is exactly the
+    audit-trail gap that let D-056's bug go undetected: a step could say
+    "fulfilled" while its real check had failed, with nothing in the trace
+    itself to show what was actually checked.
+    """
+    requirement_text = REQUIREMENT_PATH.read_text()
+    skill_store = SkillStore(db_path=tmp_dir / "skills.db")
+    memory = RunMemoryStore(db_path=tmp_dir / "memory.db")
+
+    engine = RunEngine(screenshot_provider=make_provider(tmp_dir), skill_store=skill_store, memory=memory)
+    result = engine.run(requirement_text, run_id="aa1_audit_test_run")
+
+    raw = json.loads(Path(result.report.report_paths["raw_json"]).read_text())
+    step_results = raw["step_results"]
+
+    final_step = step_results[-1]  # the spec-level assertion step, appended after all spec.steps
+    assert final_step["verification_source"] == "ocr"
+    assert final_step["raw_evidence"] is not None
+    assert "assertions" in final_step["raw_evidence"]
+    assert len(final_step["raw_evidence"]["assertions"]) >= 1
+    for detail in final_step["raw_evidence"]["assertions"]:
+        assert "expected" in detail
+        assert "passed" in detail
+        assert "method" in detail  # e.g. "literal_ocr" / "structural_fallback" / "structural_sentinel"
+
+
 def test_run_engine_persists_resumable_run_state(tmp_dir: Path):
     requirement_text = REQUIREMENT_PATH.read_text()
     skill_store = SkillStore(db_path=tmp_dir / "skills.db")

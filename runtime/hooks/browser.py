@@ -206,7 +206,8 @@ class _BrowserSession:
                 native_dy,
             )
             return True
-        except Exception:
+        except Exception as e:
+            logging.getLogger(__name__).debug("dom_scroll: page.evaluate failed (%s) -- falling back to OS-level scroll", e)
             return False
 
     def get_scroll_position(self):
@@ -254,7 +255,8 @@ class _BrowserSession:
                 "}"
             )
             return (result["y"], result["remaining"])
-        except Exception:
+        except Exception as e:
+            logging.getLogger(__name__).debug("get_scroll_position: page.evaluate failed (%s)", e)
             return None
 
     def get_click_point_in_page(self, screen_x: int, screen_y: int):
