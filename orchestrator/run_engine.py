@@ -480,7 +480,7 @@ class RunEngine:
 
                 assertion_detail = None
                 if changed and step.expected_state:
-                    assertion_detail = check_assertion_detailed(latest_path, step.expected_state)
+                    assertion_detail = check_assertion_detailed(latest_path, step.expected_state, assertion_kind=step.assertion_kind)
                     passed = assertion_detail["passed"]
                     assertion_audit_log.log(
                         run_id=run_id, step_id=step.step_id, expected_state=step.expected_state,
@@ -592,7 +592,7 @@ class RunEngine:
                         "raw_evidence": {"error": "screenshot capture failed"},
                     })
                 else:
-                    detail = check_assertion_detailed(assertion_screenshot, step.expected_state)
+                    detail = check_assertion_detailed(assertion_screenshot, step.expected_state, assertion_kind=step.assertion_kind)
                     result = result.model_copy(update={
                         "assertion_passed": detail["passed"],
                         "verification_source": "ocr",
@@ -690,7 +690,7 @@ class RunEngine:
             else:
                 per_assertion_detail = []
                 for a in spec.assertions:
-                    detail = check_assertion_detailed(final_screenshot, a.expected)
+                    detail = check_assertion_detailed(final_screenshot, a.expected, assertion_kind=a.assertion_kind)
                     per_assertion_detail.append({"expected": a.expected, **detail})
                     assertion_audit_log.log(
                         run_id=run_id, step_id=final_step_id, expected_state=a.expected,

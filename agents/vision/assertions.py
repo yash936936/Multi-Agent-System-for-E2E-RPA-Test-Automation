@@ -132,7 +132,12 @@ def _check_page_rendered(screenshot_path: str | Path) -> tuple[bool, str | None]
         return True, None
 
 
-def check_assertion_detailed(screenshot_path: str | Path, expected_state: str, min_ratio: float = 0.55) -> dict:
+def check_assertion_detailed(
+    screenshot_path: str | Path,
+    expected_state: str,
+    min_ratio: float = 0.55,
+    assertion_kind: str | None = None,
+) -> dict:
     """
     AA1 (docs/decisions.md D-057) -- audit-trail hardening. Same verdict
     logic as check_assertion() below, but surfaces which method actually
@@ -144,13 +149,70 @@ def check_assertion_detailed(screenshot_path: str | Path, expected_state: str, m
     had failed: with this, the trace itself would have shown
     `method="literal_ocr", matched=False` instead of nothing at all.
 
+    AD1 (docs/decisions.md D-060) -- assertion_kind, when given by the
+    planner (TestStep.assertion_kind / Assertion.assertion_kind), is used
+    directly instead of falling back to shape-based inference
+    (_looks_structural / _looks_like_descriptive_sentence). This is
+    strictly more reliable: those two heuristics only ever guessed at
+    intent from what expected_state's string *looked like*, which could
+    misclassify a short-but-literal phrase or a long-but-literal on-screen
+    heading, and had no way at all to express "this must NOT appear" --
+    every prior expected_state was implicitly a positive check. Passing
+    assertion_kind=None (the default) preserves the exact previous
+    inference behavior, so specs generated before this field existed are
+    completely unaffected.
+
     Returns a dict with:
     - passed: bool
-    - method: "structural_sentinel" | "literal_ocr" | "structural_fallback" | "literal_ocr_failed_no_fallback"
-    - matched_text: str | None -- the literal text that was searched for (literal_ocr methods only)
+    - method: "structural_sentinel" | "literal_ocr" | "structural_fallback" |
+      "literal_ocr_failed_no_fallback" | "negative_ocr"
+    - matched_text: str | None -- the literal text that was searched for
     - ocr_excerpt: str | None -- raw OCR text read from the screenshot, truncated to 500 chars
+    - kind_source: "explicit" | "inferred" -- whether assertion_kind came
+      from the planner or was guessed from expected_state's shape. Kept
+      in the returned evidence (not just used internally) so the audit
+      trail itself shows whether a given verdict rested on the planner's
+      stated intent or on a heuristic guess -- exactly the kind of
+      "derived boolean vs. real evidence" gap AA1 was hardening against.
     """
     readable = expected_state.replace("_", " ").strip()
+
+    if assertion_kind is not None:
+        if assertion_kind == "page_rendered":
+            passed, ocr_text = _check_page_rendered(screenshot_path)
+            return {
+                "passed": passed,
+                "method": "structural_sentinel",
+                "matched_text": None,
+                "ocr_excerpt": (ocr_text or "")[:500] or None,
+                "kind_source": "explicit",
+            }
+
+        if assertion_kind == "literal_text":
+            result = locate_text(screenshot_path, readable, min_ratio=min_ratio)
+            return {
+                "passed": result.found,
+                "method": "literal_ocr" if result.found else "literal_ocr_failed_no_fallback",
+                "matched_text": result.matched_text if result.found else readable,
+                "ocr_excerpt": None,
+                "kind_source": "explicit",
+            }
+
+        if assertion_kind == "negative":
+            result = locate_text(screenshot_path, readable, min_ratio=min_ratio)
+            return {
+                "passed": not result.found,
+                "method": "negative_ocr",
+                "matched_text": result.matched_text if result.found else None,
+                "ocr_excerpt": None,
+                "kind_source": "explicit",
+            }
+
+        # assertion_kind == "custom" -- no built-in strict check exists
+        # for an author-declared custom condition; fall through to the
+        # same shape-based inference used when assertion_kind is None,
+        # but the caller can tell from kind_source below that this was a
+        # deliberate "custom" declaration, not an unclassified legacy spec.
 
     if _looks_structural(expected_state):
         passed, ocr_text = _check_page_rendered(screenshot_path)
@@ -159,6 +221,7 @@ def check_assertion_detailed(screenshot_path: str | Path, expected_state: str, m
             "method": "structural_sentinel",
             "matched_text": None,
             "ocr_excerpt": (ocr_text or "")[:500] or None,
+            "kind_source": "inferred",
         }
 
     result = locate_text(screenshot_path, readable, min_ratio=min_ratio)
@@ -168,6 +231,7 @@ def check_assertion_detailed(screenshot_path: str | Path, expected_state: str, m
             "method": "literal_ocr",
             "matched_text": result.matched_text,
             "ocr_excerpt": None,
+            "kind_source": "inferred",
         }
 
     if _looks_like_descriptive_sentence(expected_state):
@@ -177,6 +241,7 @@ def check_assertion_detailed(screenshot_path: str | Path, expected_state: str, m
             "method": "structural_fallback",
             "matched_text": None,
             "ocr_excerpt": (ocr_text or "")[:500] or None,
+            "kind_source": "inferred",
         }
 
     return {
@@ -184,9 +249,15 @@ def check_assertion_detailed(screenshot_path: str | Path, expected_state: str, m
         "method": "literal_ocr_failed_no_fallback",
         "matched_text": readable,
         "ocr_excerpt": None,
+        "kind_source": "inferred",
     }
 
 
-def check_assertion(screenshot_path: str | Path, expected_state: str, min_ratio: float = 0.55) -> bool:
-    return check_assertion_detailed(screenshot_path, expected_state, min_ratio=min_ratio)["passed"]
+def check_assertion(
+    screenshot_path: str | Path,
+    expected_state: str,
+    min_ratio: float = 0.55,
+    assertion_kind: str | None = None,
+) -> bool:
+    return check_assertion_detailed(screenshot_path, expected_state, min_ratio=min_ratio, assertion_kind=assertion_kind)["passed"]
 

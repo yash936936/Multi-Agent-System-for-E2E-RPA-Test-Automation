@@ -3132,5 +3132,88 @@ assertion kind is exactly what's needed to detect that case — guardrail
 short-circuit on identical retries (AD2), the doc-drift CI check (AE1),
 and the `aura audit-report` CLI on top of AB2's `find_anomalies()` (AE2).
 
+## D-060 — AD1: explicit `assertion_kind` on the planner spec (2026-07-24)
+
+**Context:** continuing the hardening plan from D-057/D-058/D-059 into
+Phase AD, ahead of AC's usual "let AA-AC stabilize first" ordering (an
+explicit choice made this session, since AD1 itself is self-contained
+and doesn't depend on AB/AC's outputs — only AD2 genuinely needs AA2's
+trace-comparison plumbing, so AD2 was deliberately left for later).
+
+**The gap.** `check_assertion_detailed()` (AA1, D-057) always inferred
+intent from `expected_state`'s string shape — a short slug went through
+literal OCR matching, a longer sentence-shaped string went through the
+structural "did anything render" fallback. Two real problems with that:
+(1) it could misclassify a genuinely literal but sentence-shaped on-screen
+label, or a short-but-vague phrase, purely because of word count; (2) it
+had **no way at all to express "this must NOT appear"** — every
+expected_state was implicitly a positive check, so an assertion like
+"the error banner should not be visible" had nothing better to fall back
+on than a (wrong) literal search for the on-screen phrase "error banner".
+
+**The fix.** `TestStep.assertion_kind` / `Assertion.assertion_kind`
+(`orchestrator/schemas.py`): `literal_text | page_rendered | negative |
+custom`, `None` by default (fully backward-compatible with every
+already-generated spec). `check_assertion_detailed()` uses it directly
+when given instead of guessing:
+- `literal_text` — strict OCR search, no silent fallback to "something
+  rendered" if the literal text isn't found (previously that ambiguity
+  was baked into the "not found -> maybe it's descriptive" fallback
+  path; an explicit `literal_text` kind now means the caller wants a
+  real failure if the literal text is truly absent).
+- `page_rendered` — the pure structural check, no attempt at literal
+  matching first.
+- `negative` — new logic, didn't exist before at all: passes iff the
+  target text is *not* found via `locate_text`.
+- `custom` — no built-in strict check exists for an author-declared
+  custom condition; falls through to the same shape-based inference
+  used for legacy `None` specs, but is tagged as a deliberate judgment
+  call rather than an unclassified legacy gap.
+
+Every returned evidence dict now also carries `kind_source: "explicit" |
+"inferred"` — so the audit trail (AA1's `raw_evidence`) itself shows
+whether a verdict rested on the planner's stated intent or a heuristic
+guess, not just the verdict itself.
+
+`LocalHeuristicBackend` (`agents/planner/spec_generator.py`) now emits
+`assertion_kind` explicitly: `page_rendered` for the `page_loaded`
+fallback (the exact case D-055/D-056 already hardened), `literal_text`
+for "should see X" phrasing, and a new `negative` regex branch for
+"should not/must not see/show/display X" — previously unsupported
+entirely, so a requirement author writing a negative assertion in plain
+English had it silently mis-parsed as a positive one. The LLM-backed
+planners (`CloudLLMBackend`/`HermesAgentBackend`/`LocalLLMBackend`) get
+the same explicit classification via an updated
+`SPEC_GENERATION_SYSTEM_PROMPT` (`agents/planner/prompts.py`) describing
+all four kinds and requiring one whenever `expected_state`/`expected` is
+set.
+
+**On the AB1 fake-500-error `xfail` test:** checked directly rather than
+assumed — that test calls `check_assertion()` with no `assertion_kind`
+at all, deliberately exercising the legacy default-inference path, so
+AD1 does not automatically close it. Closing it for real requires the
+planner to correctly classify that specific real-world phrasing ("The
+dashboard page has fully loaded and is displaying correctly" against a
+500-error page) as something other than a bare structural check — a
+planner-judgment problem, not a mechanical one — so it's left open and
+still `xfail`, not falsely marked resolved here.
+
+Verified: 10 new tests in `tests/test_assertions.py` (explicit
+`page_rendered` bypassing shape inference, explicit `literal_text` not
+silently falling back, both `negative` branches, `custom`'s inference
+fallback, `None`'s full backward compatibility, and three
+`LocalHeuristicBackend` emission tests for the fallback/positive/negative
+cases). Full suite compared via `git stash` against unmodified `main`:
+identical baseline both before and after (652 passed / 31 failed / 1
+xfailed / 5 errors, all pre-existing Chromium-binary/no-display
+environment gaps this sandbox has throughout) — 661 passed after adding
+this pass's 10 tests, zero new failures.
+
+**Still open from the broader hardening plan:** guardrail short-circuit
+on identical retries (AD2) — needs AA2's trace-comparison plumbing wired
+up before it has anything to compare against, not yet done — the
+doc-drift CI check (AE1), and the `aura audit-report` CLI on top of
+AB2's `find_anomalies()` (AE2).
+
 
 

@@ -121,6 +121,12 @@ _TYPE_PATTERNS = [
 _ASSERT_PATTERNS = [
     re.compile(r"\b(?:should see|sees|is shown|is redirected to|expects?|verify|verifies)\s+(?:the\s+)?(.+?)(?:\.|$)", re.IGNORECASE),
 ]
+# AD1 (docs/decisions.md D-060) -- explicit negative-assertion phrasing.
+# Checked before _ASSERT_PATTERNS since "should not see X" would otherwise
+# also match "should see"'s pattern on the wrong substring boundary.
+_NEGATIVE_ASSERT_PATTERNS = [
+    re.compile(r"\b(?:should not|shouldn't|must not|mustn't|does not|doesn't)\s+(?:see|show|display)\s+(?:the\s+)?(.+?)(?:\.|$)", re.IGNORECASE),
+]
 _NAVIGATE_PATTERNS = [
     re.compile(r"\bnavigate(?:s|d)?\s+to\s+(https?://\S+)", re.IGNORECASE),
     re.compile(r"\bgo(?:es|ing)?\s+to\s+(https?://\S+)", re.IGNORECASE),
@@ -213,9 +219,9 @@ class LocalHeuristicBackend:
         # the offline heuristic backend able to always produce a valid
         # spec.
         if not steps:
-            steps = [TestStep(step_id=1, action=ActionType.ASSERT, expected_state="page_loaded")]
+            steps = [TestStep(step_id=1, action=ActionType.ASSERT, expected_state="page_loaded", assertion_kind="page_rendered")]
         if not assertions:
-            assertions = [{"type": AssertionType.VISUAL_STATE.value, "expected": "page_loaded"}]
+            assertions = [{"type": AssertionType.VISUAL_STATE.value, "expected": "page_loaded", "assertion_kind": "page_rendered"}]
 
         return {
             "test_id": test_id,
@@ -289,10 +295,32 @@ class LocalHeuristicBackend:
     def _extract_assertions(self, lines: list[str]) -> list[dict]:
         out = []
         for line in lines:
+            negative_matched = False
+            for pattern in _NEGATIVE_ASSERT_PATTERNS:
+                m = pattern.search(line)
+                if m:
+                    out.append({
+                        "type": AssertionType.VISUAL_STATE.value,
+                        "expected": self._slug(m.group(1)),
+                        "assertion_kind": "negative",
+                    })
+                    negative_matched = True
+            if negative_matched:
+                # A line matching the negative pattern (e.g. "should not
+                # see the error banner") would also match _ASSERT_PATTERNS'
+                # broader "should see"-style regex on an overlapping
+                # substring -- skip the positive patterns for this line so
+                # one real assertion doesn't get emitted twice with
+                # contradictory kinds.
+                continue
             for pattern in _ASSERT_PATTERNS:
                 m = pattern.search(line)
                 if m:
-                    out.append({"type": AssertionType.VISUAL_STATE.value, "expected": self._slug(m.group(1))})
+                    out.append({
+                        "type": AssertionType.VISUAL_STATE.value,
+                        "expected": self._slug(m.group(1)),
+                        "assertion_kind": "literal_text",
+                    })
         return out
 
     def _extract_data_requirements(self, text: str) -> list[str]:

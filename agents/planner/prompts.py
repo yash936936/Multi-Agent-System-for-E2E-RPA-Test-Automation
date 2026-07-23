@@ -25,10 +25,11 @@ this exact schema (no prose, no markdown fences, JSON only):
       "target_description": "<what to click on screen, if action is visual_click>",
       "field_description": "<what field to type into, if action is type_text>",
       "expected_state": "<observable UI state after this step>",
+      "assertion_kind": "literal_text" | "page_rendered" | "negative" | "custom",
       "value_ref": "<reference into synthetic data, e.g. 'synthetic.username', if action is type_text>"
     }
   ],
-  "assertions": [{"type": "visual_state", "expected": "<final expected UI state>"}],
+  "assertions": [{"type": "visual_state", "expected": "<final expected UI state>", "assertion_kind": "literal_text" | "page_rendered" | "negative" | "custom"}],
   "data_requirements": ["<field name>", ...]
 }
 
@@ -42,6 +43,20 @@ Rules:
   found on the live target page, treat that list as ground truth for
   target_description/field_description wording -- prefer an exact or close
   match from it over inventing a plausible-sounding label that isn't there.
+- assertion_kind is required whenever expected_state (or an assertion's
+  "expected") is set -- omit it only when there is genuinely nothing to
+  verify for that step. Choose exactly one:
+    literal_text  -- expected_state is on-screen text/label that must
+                     literally appear (e.g. "Dashboard", "Welcome, Alex")
+    page_rendered -- there is no specific text to check, only "did some
+                     real content load" (e.g. after a bare navigation with
+                     no stated Then-clause)
+    negative      -- expected_state must NOT appear on screen (e.g. an
+                     error banner, a "field required" message, a element
+                     that should have disappeared)
+    custom        -- the check doesn't fit the three categories above and
+                     no built-in verification applies; state this
+                     explicitly rather than defaulting to literal_text
 """
 
 SPEC_GENERATION_USER_TEMPLATE = """\

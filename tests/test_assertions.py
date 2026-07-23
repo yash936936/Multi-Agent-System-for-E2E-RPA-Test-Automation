@@ -261,3 +261,221 @@ def test_short_specific_label_is_not_swallowed_by_the_sentence_heuristic(monkeyp
 
     assert check_assertion("fake.png", "Order Confirmed") is True
     assert calls["target"] == "Order Confirmed"
+
+
+# --------------------------------------------------------------------------
+# AD1 (docs/decisions.md D-060) -- explicit assertion_kind from the planner
+# --------------------------------------------------------------------------
+
+def test_explicit_page_rendered_kind_bypasses_shape_inference(monkeypatch):
+    """
+    A short literal-looking expected_state (which the old shape-based
+    inference would have sent through locate_text) must still be treated
+    as a structural "did anything render" check when the planner
+    explicitly says assertion_kind="page_rendered" -- the whole point of
+    AD1 is that the planner's stated intent wins over guessing from the
+    string's shape.
+    """
+    from agents.vision.assertions import check_assertion_detailed
+
+    class FakeImageHandle:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def load(self):
+            pass
+
+    class FakeImage:
+        @staticmethod
+        def open(path):
+            return FakeImageHandle()
+
+    class FakePytesseract:
+        @staticmethod
+        def image_to_string(img):
+            return "Home Work About Contact"
+
+    monkeypatch.setitem(__import__("sys").modules, "pytesseract", FakePytesseract)
+    monkeypatch.setitem(__import__("sys").modules, "PIL", type("m", (), {"Image": FakeImage}))
+
+    # "dashboard" alone is short/literal-shaped -- old inference would try
+    # locate_text and fail since it's not literally on screen. With
+    # assertion_kind="page_rendered" it must pass purely because *some*
+    # real content rendered.
+    detail = check_assertion_detailed("fake.png", "dashboard", assertion_kind="page_rendered")
+    assert detail["passed"] is True
+    assert detail["method"] == "structural_sentinel"
+    assert detail["kind_source"] == "explicit"
+
+
+def test_explicit_literal_text_kind_does_not_fall_back_to_structural(monkeypatch):
+    """
+    A long, sentence-shaped expected_state that the old inference would
+    have guessed was "descriptive" (and thus structural-fallback) must
+    stay a strict literal-text search when assertion_kind="literal_text"
+    is explicit -- no silent fallback to "well, something rendered."
+    """
+    from agents.vision.assertions import check_assertion_detailed
+
+    class FakeImageHandle:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def load(self):
+            pass
+
+    class FakeImage:
+        @staticmethod
+        def open(path):
+            return FakeImageHandle()
+
+    class FakePytesseract:
+        @staticmethod
+        def image_to_string(img):
+            return "Some completely unrelated text"
+
+    monkeypatch.setitem(__import__("sys").modules, "pytesseract", FakePytesseract)
+    monkeypatch.setitem(__import__("sys").modules, "PIL", type("m", (), {"Image": FakeImage}))
+
+    detail = check_assertion_detailed(
+        "fake.png",
+        "The order confirmation banner is now visible on screen",
+        assertion_kind="literal_text",
+    )
+    assert detail["passed"] is False
+    assert detail["method"] == "literal_ocr_failed_no_fallback"
+    assert detail["kind_source"] == "explicit"
+
+
+def test_negative_assertion_kind_passes_when_text_absent(monkeypatch):
+    """
+    The real gap AD1 closes that shape-inference could never express:
+    "this text must NOT appear." Passes when the target text is genuinely
+    absent from the screen.
+    """
+    from agents.vision.assertions import check_assertion_detailed
+    from agents.vision import locator
+
+    monkeypatch.setattr(
+        "agents.vision.assertions.locate_text",
+        lambda *a, **k: locator.LocateResult(found=False, matched_text=None, confidence=0.0),
+    )
+
+    detail = check_assertion_detailed("fake.png", "error_banner", assertion_kind="negative")
+    assert detail["passed"] is True
+    assert detail["method"] == "negative_ocr"
+    assert detail["kind_source"] == "explicit"
+
+
+def test_negative_assertion_kind_fails_when_text_present(monkeypatch):
+    """The forbidden text actually being on screen must fail a negative
+    assertion -- this is the exact "wrong content rendered but reported
+    fulfilled" class of bug (D-056) that a positive-only assertion model
+    could never even detect."""
+    from agents.vision.assertions import check_assertion_detailed
+    from agents.vision import locator
+
+    monkeypatch.setattr(
+        "agents.vision.assertions.locate_text",
+        lambda *a, **k: locator.LocateResult(found=True, matched_text="Error: something went wrong", confidence=0.9),
+    )
+
+    detail = check_assertion_detailed("fake.png", "error_banner", assertion_kind="negative")
+    assert detail["passed"] is False
+    assert detail["method"] == "negative_ocr"
+    assert detail["matched_text"] == "Error: something went wrong"
+
+
+def test_custom_assertion_kind_falls_back_to_inference_but_marks_kind_source(monkeypatch):
+    """"custom" has no built-in strict check, so behavior matches the
+    same shape-inference used for legacy (assertion_kind=None) specs --
+    but kind_source must say "inferred" either way, since no strict
+    verification actually happened for either "custom" or None."""
+    from agents.vision.assertions import check_assertion_detailed
+    from agents.vision import locator
+
+    monkeypatch.setattr(
+        "agents.vision.assertions.locate_text",
+        lambda *a, **k: locator.LocateResult(found=True, matched_text="Dashboard", confidence=0.9),
+    )
+
+    detail = check_assertion_detailed("fake.png", "dashboard_visible", assertion_kind="custom")
+    assert detail["passed"] is True
+    assert detail["kind_source"] == "inferred"
+
+
+def test_none_assertion_kind_is_backward_compatible_with_legacy_specs(monkeypatch):
+    """A spec generated before assertion_kind existed (assertion_kind is
+    None, the default) must behave exactly as before -- shape-based
+    inference, unaffected by this change."""
+    from agents.vision.assertions import check_assertion_detailed
+
+    class FakeImageHandle:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def load(self):
+            pass
+
+    class FakeImage:
+        @staticmethod
+        def open(path):
+            return FakeImageHandle()
+
+    class FakePytesseract:
+        @staticmethod
+        def image_to_string(img):
+            return "Home Work About Contact"
+
+    monkeypatch.setitem(__import__("sys").modules, "pytesseract", FakePytesseract)
+    monkeypatch.setitem(__import__("sys").modules, "PIL", type("m", (), {"Image": FakeImage}))
+
+    detail = check_assertion_detailed("fake.png", "page_loaded")
+    assert detail["passed"] is True
+    assert detail["kind_source"] == "inferred"
+
+
+def test_heuristic_backend_emits_explicit_page_rendered_for_fallback(monkeypatch):
+    """LocalHeuristicBackend's page_loaded fallback (used by every plain
+    `aura execute --url` smoke test) must now emit assertion_kind
+    explicitly rather than relying on downstream inference."""
+    from agents.planner.spec_generator import LocalHeuristicBackend
+
+    spec_dict = LocalHeuristicBackend().generate("check homepage loads")
+    assert spec_dict["steps"][0]["expected_state"] == "page_loaded"
+    assert spec_dict["steps"][0]["assertion_kind"] == "page_rendered"
+    assert spec_dict["assertions"][0]["assertion_kind"] == "page_rendered"
+
+
+def test_heuristic_backend_emits_negative_kind_for_should_not_see(monkeypatch):
+    """Real gap this closes: 'should not see the error banner' previously
+    had no way to be expressed as anything other than a (wrong) positive
+    literal-text check for the literal phrase 'error banner'."""
+    from agents.planner.spec_generator import LocalHeuristicBackend
+
+    spec_dict = LocalHeuristicBackend().generate(
+        "Given: navigate to https://example.com\nThen: user should not see the error banner"
+    )
+    negative_assertions = [a for a in spec_dict["assertions"] if a.get("assertion_kind") == "negative"]
+    assert len(negative_assertions) == 1
+    assert negative_assertions[0]["expected"] == "error_banner"
+
+
+def test_heuristic_backend_emits_literal_text_kind_for_positive_assertions(monkeypatch):
+    from agents.planner.spec_generator import LocalHeuristicBackend
+
+    spec_dict = LocalHeuristicBackend().generate(
+        "Given: navigate to https://example.com\nThen: user should see the dashboard"
+    )
+    literal_assertions = [a for a in spec_dict["assertions"] if a.get("assertion_kind") == "literal_text"]
+    assert len(literal_assertions) == 1
+    assert literal_assertions[0]["expected"] == "dashboard"

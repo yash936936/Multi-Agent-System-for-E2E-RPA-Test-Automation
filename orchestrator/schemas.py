@@ -92,6 +92,28 @@ class TestStep(BaseModel):
     target_description: Optional[str] = None
     field_description: Optional[str] = None
     expected_state: Optional[str] = None
+    # AD1 (docs/decisions.md D-057's "still open" list, D-060 below) --
+    # explicit assertion classification from the planner, instead of
+    # agents/vision/assertions.py inferring it downstream purely from
+    # expected_state's string shape (a short slug vs. a full sentence).
+    # That inference approach worked but had two real limits: (1) it
+    # could misclassify a genuinely literal but sentence-shaped expected
+    # value (e.g. a six-word on-screen heading) as "structural", and (2)
+    # it had no way to express "this text must NOT appear" at all --
+    # every expected_state was implicitly a positive check. assertion_kind
+    # closes both gaps: the planner states its intent up front, and
+    # check_assertion_detailed() uses it directly when present rather
+    # than guessing. None (the default) preserves the exact previous
+    # shape-inference behavior for any spec that predates this field
+    # (backward compatible -- nothing already-generated breaks).
+    #   literal_text  -- search on-screen OCR text for expected_state verbatim
+    #   page_rendered -- structural-only: "did *something* real render"
+    #   negative      -- expected_state must NOT be found on screen
+    #   custom        -- no built-in strict check; falls back to the same
+    #                     shape-based inference as None, but the planner's
+    #                     explicit "custom" tag documents that this was a
+    #                     deliberate judgment call, not an oversight
+    assertion_kind: Optional[Literal["literal_text", "page_rendered", "negative", "custom"]] = None
     value_ref: Optional[str] = None
     # Populated for ActionType.NAVIGATE_URL steps -- the URL to open before
     # the rest of the spec's steps run. Kept as its own field (rather than
@@ -157,6 +179,9 @@ class TestStep(BaseModel):
 class Assertion(BaseModel):
     type: AssertionType
     expected: str
+    # AD1 -- same explicit classification as TestStep.assertion_kind
+    # above, for spec-level final assertions.
+    assertion_kind: Optional[Literal["literal_text", "page_rendered", "negative", "custom"]] = None
 
 
 class TestSpec(BaseModel):
