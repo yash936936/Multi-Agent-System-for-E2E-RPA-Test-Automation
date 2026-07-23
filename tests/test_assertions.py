@@ -204,3 +204,60 @@ def test_short_literal_expected_state_with_loaded_word_is_not_falsely_structural
 
     assert check_assertion("fake.png", "upload_loaded") is True
     assert calls["target"] == "upload loaded"
+
+
+def test_shape_based_detection_generalizes_to_unseen_phrasing_without_keyword_list(monkeypatch):
+    """
+    The point of the shape-based rewrite: it should handle descriptive
+    sentences that were never explicitly anticipated by any keyword list
+    (no "page"/"homepage"/"loaded"/"rendered" words at all here), unlike
+    the previous regex approach which only matched specific vocabulary.
+    """
+
+    class FakeImageHandle:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def load(self):
+            pass
+
+    class FakeImage:
+        @staticmethod
+        def open(path):
+            return FakeImageHandle()
+
+    class FakePytesseract:
+        @staticmethod
+        def image_to_string(img):
+            return "Dashboard Overview\nRecent Activity\nSettings"
+
+    monkeypatch.setitem(__import__("sys").modules, "pytesseract", FakePytesseract)
+    monkeypatch.setitem(__import__("sys").modules, "PIL", type("m", (), {"Image": FakeImage}))
+
+    # No "page"/"loaded"/"rendered"/"visible" anywhere -- the old regex
+    # would have treated this as literal text to search for and failed.
+    assert check_assertion(
+        "fake.png",
+        "Everything on the dashboard appears to be working correctly and as expected.",
+    ) is True
+
+
+def test_short_specific_label_is_not_swallowed_by_the_sentence_heuristic(monkeypatch):
+    """A short, specific literal target -- even one containing common
+    short words -- must still go through normal literal matching, not
+    get misclassified as a descriptive sentence."""
+    from agents.vision import locator
+
+    calls = {}
+
+    def fake_locate_text(screenshot_path, target_description, min_ratio=0.55, search_region=None):
+        calls["target"] = target_description
+        return locator.LocateResult(found=True, matched_text=target_description, confidence=0.9)
+
+    monkeypatch.setattr("agents.vision.assertions.locate_text", fake_locate_text)
+
+    assert check_assertion("fake.png", "Order Confirmed") is True
+    assert calls["target"] == "Order Confirmed"

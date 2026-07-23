@@ -2796,3 +2796,141 @@ this same test on first run and fixed by reordering the branches so
 
 Full suite: 586/586 passing (all non-Chromium-dependent tests).
 
+## D-055 — real bug: `ActionType.ASSERT` had no branch in `execute_step`,
+## unconditionally escalating every assert step; `LinkCheckAdapter` given
+## a `live_page_html` param to stop it launching a second, conflicting
+## Playwright instance (2026-07-22/23)
+
+**Context:** A live run against a real client-rendered site
+(`https://personal-portfolio-yashmalik.vercel.app`) escalated on its
+only step (a plain `assert` step asserting the page loaded) after
+self-healing retried three times with an identical result, then hit the
+guardrail hard-stop.
+
+**Root cause 1 (assert always escalates):** `agents/vision/executor.py`'s
+`execute_step()` had no `if step.action == ActionType.ASSERT` branch at
+all. Assert steps carry their check in `step.expected_state`, not
+`target_description`/`field_description` — so every assert step fell
+through to the generic click/type path, saw `target_text = None`, and
+unconditionally returned `confidence=0.0, escalate=True` before any real
+check ever ran. This meant `run_engine.py`'s own `expected_state`
+verification (gated on `not result.escalate`) could never execute
+either — an assert step could never actually pass or fail on its real
+on-screen content; it only ever escalated.
+
+**Fix:** added the missing branch. `execute_step` now returns
+`action_taken="none", confidence=1.0, escalate=False` for `ASSERT` steps
+— correct, since there's nothing to *do* for an assert; the real
+pass/fail check runs downstream in `run_engine.py` via
+`check_assertion()` against `step.expected_state`, and this branch's job
+is only to stop blocking that check from ever running.
+
+**Root cause 2 (link check silently finds 0 links on client-rendered
+sites):** `agents/capability/link_checker.py`'s `_render_with_playwright()`
+fallback tries to launch its own `sync_playwright()` instance to render
+JS-injected links when a plain HTTP fetch sees none (React/Next.js-style
+apps render their nav/footer client-side, so raw HTML is just
+`<div id="root">`). But `aura execute`/`explore` already keeps a
+`sync_playwright()` session alive the whole run (driving the OCR
+screenshots) — Playwright's sync API forbids a second sync instance in
+the same thread, so the fallback's bare `except Exception: return None`
+silently swallowed this every time, meaning the fallback could never
+work whenever a run's own browser was already active (i.e. always,
+during `aura execute --ui-audit`/`aura explore`).
+
+**Fix:** `LinkCheckAdapter.run()` now accepts an optional
+`live_page_html` param. When the caller already has a live, hydrated
+page open, its `page.content()` is passed straight through instead of
+letting the adapter launch a conflicting second Playwright instance —
+strictly better too (zero extra page load, DOM already fully settled).
+Wired into both `orchestrator/ui_audit_runner.py`'s `run_exploration()`
+and `run_ui_audit()` (the latter is what `aura execute --ui-audit`
+actually calls; it was added as a separate link-check integration after
+`run_exploration()`'s own fix and initially missed the same wiring —
+confirmed against a real run reporting `0 of N links resolved` on a page
+with 11 real links, fixed by threading `live_page_html` through here too).
+
+Verified: regression tests added in `tests/test_vision.py`
+(`test_execute_step_assert_does_not_escalate_with_no_target_description`)
+and `tests/test_link_checker.py`
+(`test_live_page_html_is_used_instead_of_launching_a_second_playwright`,
+`test_live_page_html_with_no_links_reports_used_live_page_not_playwright`),
+asserting `_render_with_playwright` is never even called when
+`live_page_html` is supplied, not just that the end result happens to be
+correct.
+
+## D-056 — debugging-session findings, patches prepared but not yet
+## applied to `main` as of this writing (2026-07-23)
+
+**Context:** Following on from D-055, further live runs against the same
+real site surfaced four more real bugs. Each was root-caused, fixed, and
+verified against this exact repo state, and delivered as a patch/zip for
+manual application — **flagged here explicitly as not-yet-merged** so
+this log doesn't claim work as done that isn't actually in `main` yet.
+Whoever applies these should convert this entry into a normal dated
+decision (or split it into D-057+) once merged, rather than leaving it
+in this "prepared but pending" form.
+
+1. **`agents/vision/ui_audit.py`'s `_looks_interactive()` OCR-noise false
+   positive** — flagged single-letter OCR fragments merged with adjacent
+   text (e.g. a misread "Q Search" from a footer icon+label) as a
+   clickable element, since the only checks were "≤4 words" and
+   "starts with a capital letter." Fixed by adding `_plausible_word()`:
+   rejects bare single-letter tokens and vowel-less strings, without a
+   dictionary lookup.
+2. **`runtime/hooks/browser.py`'s `dom_scroll()`/`get_scroll_position()`
+   — `--scroll-test` silently never moved the page.** Two compounding
+   causes: (a) `delta_y` follows this codebase's pyautogui-based sign
+   convention (negative = scroll down, matching `interact.scroll()`),
+   but was passed straight through to `window.scrollBy()`, whose native
+   sign is the opposite — starting at `scrollY=0`, "scroll down" became
+   `scrollBy(0, negative)`, which clamps at 0 and never moves, confirmed
+   directly against a real headless page; (b) the target site uses Lenis
+   (`<html class="lenis">`), which intercepts native scrolling entirely
+   via its own virtual-scroll engine, so even a correctly-signed
+   `scrollBy()` would still be a no-op there. Fixed by negating the sign
+   before the native call, and detecting `window.lenis` to drive it via
+   `lenis.scrollTo()` directly when present.
+3. **`reports/process_report.py`'s `_decision_basis()` ignored a real
+   `assertion_passed` value for `action_taken == "none"` steps** — a
+   direct consequence of D-055's assert-branch fix: since assert steps
+   now correctly report `action_taken="none"`, they fell into the
+   catch-all `else` branch, which only ever checked `escalate` and never
+   looked at the real `assertion_passed` `run_engine.py` attaches
+   afterward. Result: a step whose real assertion genuinely failed was
+   still displayed as `"fulfilled"` in the process report, directly
+   contradicting the run's actual `outcome.status` (which
+   `report_aggregator._determine_status()` correctly derives from
+   `assertion_passed`). This module had zero test coverage before this
+   fix (`tests/test_process_report.py` is new).
+4. **`agents/vision/assertions.py`'s structural/literal-text dispatch
+   rewritten from a keyword regex to a shape-based heuristic.** The
+   original approach (D-045-era) special-cased the literal string
+   `"page_loaded"`; a later patch added a regex for
+   `page|homepage|site|app|screen` + `loaded|visible|rendered|displayed`
+   to catch LLM-generated descriptive sentences — but missed `"homepage"`
+   outright (`\bpage\b` doesn't match "page" embedded inside "homepage"),
+   and would keep missing any future synonym an LLM chooses. Replaced
+   with `_looks_like_descriptive_sentence()`: tries the literal OCR match
+   first (unchanged for real short labels like `dashboard_visible`), and
+   only falls back to the generic "did real content render at all" check
+   when that literal match fails *and* the text has sentence shape (6+
+   words, 3+ common connective words) — regardless of which specific
+   words it uses. **Known limitation, not fixed by this change:** the
+   fallback only distinguishes "something rendered" from "nothing
+   rendered" — a sentence-shaped assertion describing a specific failure
+   (e.g. "the page shows a 500 error") would still pass if the error
+   page has any visible text at all, since it can't yet verify *which*
+   content rendered, only that content of some kind did.
+
+Verified: 5 new tests in `tests/test_ui_audit.py`, 2 new real-headless-
+Chromium tests in `tests/test_browser_hook.py` (forced headless via a
+monkeypatched `settings.playwright_headless`, incidentally fixing two
+previously display-dependent tests as a side effect), 4 new tests in the
+new `tests/test_process_report.py`, and 3 new tests in
+`tests/test_assertions.py`. Full suite as of this pass: 596 passed / 49
+failed / 5 errors — the 49+5 confirmed identical on unmodified `main` via
+`git stash` (missing Chromium display / `boto3`/`azure` SDKs in the
+sandbox this was verified in, not caused by any of these changes).
+
+

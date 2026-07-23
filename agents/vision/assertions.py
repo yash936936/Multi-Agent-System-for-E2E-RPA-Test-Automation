@@ -30,40 +30,57 @@ from pathlib import Path
 
 from agents.vision.locator import locate_text
 
-import re
-
 # Sentinel expected_state values meaning "some real content rendered",
 # not literal on-screen text to search for. Kept as a set (not a single
 # string) since other generic fallbacks may be added later without
 # needing to touch the check_assertion dispatch logic below.
 _STRUCTURAL_SENTINELS = {"page_loaded", "page loaded"}
 
-# Cloud/local LLM planner backends (agents/planner/spec_generator.py's
-# CloudLLMBackend/HermesAgentBackend) often synthesize a full descriptive
-# sentence for expected_state instead of a short literal-text slug --
-# e.g. "The personal portfolio page is fully loaded and visible" or "The
-# page is fully loaded and elements such as Home, Work, About are
-# visible." No real webpage displays that exact sentence, so treating it
-# as literal OCR text to search for (the locate_text() path below) fails
-# on every real run regardless of whether the page actually rendered --
-# the same class of bug _STRUCTURAL_SENTINELS was introduced for, just
-# not caught by that exact-match set since the LLM's phrasing varies.
-# This regex catches the general shape ("page is/looks loaded/visible/
-# rendered") without trying to enumerate every possible LLM phrasing.
-_GENERIC_LOADED_PATTERN = re.compile(
-    r"\b(page|homepage|site|website|app|screen)\b.{0,50}\b(loaded|visible|rendered|displayed)\b",
-    re.IGNORECASE,
-)
+# Common English function/connective words. Used only to gauge whether a
+# piece of text *reads like a sentence* -- not to detect any particular
+# meaning -- so this list never needs to grow just because an LLM used a
+# new way of saying "the page loaded".
+_STOPWORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+    "and", "or", "with", "of", "to", "for", "on", "in", "at", "as",
+    "has", "have", "had", "all", "its", "it", "which", "such", "that",
+    "this", "these", "those", "successfully", "fully",
+}
+
+
+def _looks_like_descriptive_sentence(expected_state: str) -> bool:
+    """
+    Shape-based heuristic (no keyword/vocabulary whitelist): an
+    LLM-generated expected_state description reads like an English
+    sentence -- several words, strung together with several common
+    connective words ("the", "is", "and", "with", ...) -- while a literal
+    on-screen label or slug a spec author would actually write
+    ("dashboard_visible", "Search Results", "upload_loaded") is short and
+    has few or none of those connectives.
+
+    This replaces an earlier approach that regex-matched specific
+    vocabulary (page|homepage|site|app|screen + loaded|visible|rendered|
+    displayed): that had to be manually extended every time an LLM used a
+    phrasing it didn't anticipate -- it missed "homepage" outright (word
+    boundary rules mean \\bpage\\b doesn't match "page" embedded inside
+    "homepage"), and it would keep missing any future synonym ("the
+    dashboard has finished loading", "everything looks correct", "the
+    app is up and running" -- none of these contain "page"/"loaded" as
+    the regex required). Checking the *shape* of the text instead of its
+    specific words generalizes to phrasing this hasn't seen, without
+    needing to be extended again.
+    """
+    words = [w.strip(".,!?;:") for w in expected_state.strip().lower().replace("_", " ").split()]
+    words = [w for w in words if w]
+    if len(words) < 6:
+        return False
+    stopword_hits = sum(1 for w in words if w in _STOPWORDS)
+    return stopword_hits >= 3
 
 
 def _looks_structural(expected_state: str) -> bool:
     readable = expected_state.replace("_", " ").strip().lower()
-    if readable in _STRUCTURAL_SENTINELS:
-        return True
-    # Long, sentence-like expected_state values (multiple words, ending
-    # in punctuation or clearly prose) that are just generically asserting
-    # the page rendered are structural, not a literal string to locate.
-    return bool(_GENERIC_LOADED_PATTERN.search(readable)) and len(readable.split()) >= 4
+    return readable in _STRUCTURAL_SENTINELS
 
 
 def _check_page_rendered(screenshot_path: str | Path) -> bool:
@@ -101,6 +118,19 @@ def check_assertion(screenshot_path: str | Path, expected_state: str, min_ratio:
     readable = expected_state.replace("_", " ").strip()
     if _looks_structural(expected_state):
         return _check_page_rendered(screenshot_path)
+
     result = locate_text(screenshot_path, readable, min_ratio=min_ratio)
-    return result.found
+    if result.found:
+        return True
+
+    # Literal match failed. If this reads like a full descriptive
+    # sentence rather than a short specific label, it was never
+    # realistically going to be literal on-screen text to begin with (an
+    # LLM-authored "the page is fully loaded and visible" vs. a
+    # spec-authored "dashboard_visible") -- fall back to the generic "did
+    # real content render at all" check rather than failing an assertion
+    # that was never checkable as literal text in the first place.
+    if _looks_like_descriptive_sentence(expected_state):
+        return _check_page_rendered(screenshot_path)
+    return False
 

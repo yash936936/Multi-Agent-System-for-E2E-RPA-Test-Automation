@@ -296,11 +296,31 @@ and after by temporarily reverting the R1 fix and re-running).
 on all Phase S-touched files.
 
 ## Next action
-> **Phase T — Spec-level action/target-type validation pass**: new
-> pre-execution validation step checking action/target-type compatibility
-> across the whole spec before any step runs -- e.g. a `VISUAL_CLICK` step
-> pointed at something that should have been a
-> `CapabilityType.AUTOMATION_ANYWHERE` check fails fast with a specific
-> message instead of burning through the vision pipeline first. See
-> `docs/Roadmap.md`'s fourth-roadmap section for the full R–V plan and
-> sequencing rationale.
+> **Phases T–Z and D-053/D-054 are all done** (see `docs/decisions.md`
+> D-042 through D-054) — this section previously pointed at Phase T,
+> which is stale; that work completed several passes ago. Current real
+> state, as of 2026-07-23:
+>
+> - **D-055 (merged into `main`):** the `ActionType.ASSERT` branch was
+>   missing from `execute_step()` entirely, unconditionally escalating
+>   every assert step regardless of real page content; and
+>   `LinkCheckAdapter` had no way to reuse an already-open browser
+>   session's page, so it silently found 0 links on any client-rendered
+>   page during `aura execute --ui-audit`/`explore`. Both fixed and
+>   merged — see D-055 for full detail.
+> - **D-056 (patches prepared, not yet applied to `main`):** four more
+>   real bugs found in the same debugging pass — an OCR-noise false
+>   positive in the UI audit's interactive-element detection, a
+>   scroll-direction sign inversion (compounded by a Lenis-based site's
+>   custom scroll engine) that made `--scroll-test` never actually move
+>   the page, a process-report display bug that showed "fulfilled" for
+>   steps whose real assertion had failed, and a rewrite of the
+>   structural-vs-literal assertion dispatch from a keyword regex to a
+>   shape-based heuristic. See D-056 for the known limitation left open
+>   by the last of these (can't yet distinguish "wrong content rendered"
+>   from "no content rendered").
+> - **Next real action:** apply the D-056 patches to `main`, then convert
+>   D-056 from its "prepared but pending" form into a normal merged
+>   decision (or split per-fix into D-057+), and re-run the full suite to
+>   confirm the 596/49/5 pass/fail/error split noted in D-056 still holds
+>   once the actual source, not just patches, is what's running.

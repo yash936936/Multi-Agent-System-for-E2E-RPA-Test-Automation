@@ -1,2 +1,2 @@
 <?xml version='1.0' encoding='utf-8'?>
-<testsuites><testsuite name="tc-live-url-smoke-001" tests="2" failures="1" errors="0" skipped="0" time="3.320"><testcase name="step_1_none" classname="tc-live-url-smoke-001" time="0"><failure message="escalate=False, assertion_passed=False, confidence=1.0">No further evidence recorded for this step.</failure></testcase><testcase name="step_2_assert" classname="tc-live-url-smoke-001" time="0" /></testsuite></testsuites>
+<testsuites><testsuite name="tc-portfolio-smoke-001" tests="2" failures="0" errors="0" skipped="0" time="3.450"><testcase name="step_1_none" classname="tc-portfolio-smoke-001" time="0" /><testcase name="step_2_assert" classname="tc-portfolio-smoke-001" time="0" /></testsuite></testsuites>

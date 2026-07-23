@@ -2,7 +2,7 @@
 type: master-context
 project: AURA (Multi-Agent-System-for-E2E-RPA-Test-Automation)
 root_file: true
-last_updated: 2026-07-15
+last_updated: 2026-07-23
 ---
 
 # context.md — Master Orientation File
@@ -305,3 +305,14 @@ merging it.
      deleting any file outside `/docs` or a scratch/output directory; renaming
      or removing an existing `CapabilityType`, public CLI command, or public
      API route (breaking change to something users depend on).
+9. **Rule 4, concretely (2026-07-23 precedent):** a debugging pass merged
+   real fixes into `main` (`ActionType.ASSERT` branch,
+   `LinkCheckAdapter.live_page_html`) with zero `docs/decisions.md` entry,
+   while `docs/STATUS.md`'s "Next action" kept pointing at a phase (T)
+   that had been done for 10+ phases. Neither doc was wrong about the
+   code *before* those fixes — they just weren't updated *in the same
+   pass* as the fixes, which is exactly what rule 4 exists to prevent.
+   See `docs/decisions.md` D-055/D-056 and the corrected `docs/STATUS.md`
+   "Next action" for the fix. Don't repeat this: if you merge a fix,
+   write its decision entry and correct any doc pointer it invalidates
+   before ending that pass, not "in a follow-up."
