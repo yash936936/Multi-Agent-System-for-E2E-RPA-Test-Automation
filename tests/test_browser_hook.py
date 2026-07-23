@@ -81,21 +81,11 @@ def test_open_url_no_display_raises_no_display_error(monkeypatch, server):
         browser.open_url(server_url(server))
 
 
-TALL_PAGE = b"""
-<html><body style="height:5000px; margin:0;"><h1>Top of a tall page</h1></body></html>
-"""
-
-LENIS_PAGE = b"""
-<html class="lenis"><body style="height:5000px; margin:0;">
-<h1>Top of a Lenis-driven tall page</h1>
-<script>
-window.lenis = {
-  scroll: 0, limit: 4400, animatedScroll: 0,
-  scrollTo: function(y, opts) { this.scroll = y; this.animatedScroll = y; }
-};
-</script>
-</body></html>
-"""
+# AB1 (docs/decisions.md D-057 backlog): these now live in
+# tests/fixtures/pages.py as PLAIN_TALL_PAGE/LENIS_TALL_PAGE, shared with
+# tests/test_real_browser_fixtures.py rather than duplicated here.
+from tests.fixtures.pages import PLAIN_TALL_PAGE as TALL_PAGE
+from tests.fixtures.pages import LENIS_TALL_PAGE as LENIS_PAGE
 
 
 @pytest.fixture(autouse=True)

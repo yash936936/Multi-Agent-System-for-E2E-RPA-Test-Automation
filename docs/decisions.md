@@ -3009,4 +3009,65 @@ spec (AD1), guardrail short-circuit on identical retries (AD2), the
 doc-drift CI check (AE1), and the `aura audit-report` anomaly-detection
 CLI (AE2).
 
+## D-058 — AB1/AB2: real-browser fixture tier and a structured per-
+## assertion audit log (2026-07-23)
+
+**Context:** continuing the hardening plan from D-057 into Phase AB.
+
+**AB1 — real-browser fixture tier.** New `tests/fixtures/pages.py`:
+four canned HTML pages shared across test files instead of duplicated
+inline per-file (`PLAIN_TALL_PAGE`/`LENIS_TALL_PAGE`, refactored out of
+`test_browser_hook.py`'s own inline constants; `SPA_CLIENT_ROUTING_PAGE`,
+a minimal React-Router-style hydration reproduction; `FAKE_500_ERROR_PAGE`,
+a genuine error page with real readable text). New
+`tests/test_real_browser_fixtures.py` runs against a real headless
+Chromium + a real local HTTP server (no mocks):
+- Confirms `LinkCheckAdapter` finds real, JS-injected links via
+  `live_page_html` against the SPA fixture (D-055 regression, now
+  end-to-end rather than via a live run against someone's real site).
+- Confirms the standalone Playwright fallback (no `live_page_html`,
+  no pre-existing browser session) still works correctly in isolation —
+  clarifying that D-055's bug was specifically about a *second*,
+  conflicting `sync_playwright()` instance, not the fallback being
+  broken outright.
+- Turns D-056's documented "can't detect wrong-content-rendered" gap
+  into a real, running `@pytest.mark.xfail(strict=True)` test against
+  the fake-500-error fixture, rather than only prose in `decisions.md`.
+  `strict=True` means the day this limitation is actually fixed, this
+  test starts *failing* (an unexpected pass), forcing whoever fixes it
+  to notice and remove the marker — the gap can't silently stay "fixed
+  in code, still documented as open" or vice versa.
+
+**AB2 — structured per-assertion audit log.** New
+`orchestrator/assertion_audit_log.py`: a dedicated, append-only JSONL
+log (`logs/assertion_audit.jsonl`) of every `check_assertion_detailed()`
+call — timestamp, run_id, step_id, expected_state, passed, method,
+matched_text, ocr_excerpt, and the step's own escalate flag. Distinct
+from `orchestrator/audit_logger.py`'s `AuditLogger` (Phase 19 — tenant/
+user compliance actions like "who ran what"); this one is about
+verification *evidence*. Wired into all three `run_engine.py` call sites
+that produce an assertion verdict (same three D-057 touched for
+`raw_evidence`). Includes `find_anomalies()`: scans the log for records
+matching exactly D-056's bug shape (`escalate=False` but `passed=False`)
+— the first building block toward AE2's planned `aura audit-report`
+CLI command, which isn't implemented yet, but can now be built as a thin
+CLI wrapper around `find_anomalies()`/`read_records()` rather than
+needing its own log format designed from scratch.
+
+Verified: 3 new tests in `test_real_browser_fixtures.py` (2 pass, 1
+correctly xfails) and 5 new tests in `test_assertion_audit_log.py`
+(including an end-to-end run_engine test confirming the log actually
+gets populated during a real run, not just that the plumbing exists
+unused). Full suite: 612 passed / 49 failed / 1 xfailed / 5 errors — the
+49+5 unchanged from D-057's baseline (same pre-existing environment
+gaps), zero new failures.
+
+**Still open from the broader hardening plan:** `CONVENTIONS.md` (AC1),
+`aura doctor` preflight (AC2), explicit `assertion_kind` on the planner
+spec (AD1) — note this would also let AB1's xfail test above finally be
+closed, since a `negative`/error-check assertion kind is exactly what's
+needed to detect the fake-500-error case — guardrail short-circuit on
+identical retries (AD2), the doc-drift CI check (AE1), and finishing the
+`aura audit-report` CLI on top of AB2's `find_anomalies()` (AE2).
+
 

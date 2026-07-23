@@ -26,6 +26,7 @@ from typing import Any, Callable, Optional
 
 from agents.auditor import run_monitor
 from agents.vision.assertions import check_assertion_detailed
+from orchestrator.assertion_audit_log import assertion_audit_log
 from agents.vision.visual_regression import compare_to_baseline
 from config.settings import settings
 
@@ -481,6 +482,10 @@ class RunEngine:
                 if changed and step.expected_state:
                     assertion_detail = check_assertion_detailed(latest_path, step.expected_state)
                     passed = assertion_detail["passed"]
+                    assertion_audit_log.log(
+                        run_id=run_id, step_id=step.step_id, expected_state=step.expected_state,
+                        detail=assertion_detail, escalate=not passed,
+                    )
                 elif changed:
                     # No specific expected_state given -- the instruction
                     # was just "do the thing," and something visibly did
@@ -593,6 +598,10 @@ class RunEngine:
                         "verification_source": "ocr",
                         "raw_evidence": detail,
                     })
+                    assertion_audit_log.log(
+                        run_id=run_id, step_id=step.step_id, expected_state=step.expected_state,
+                        detail=detail, escalate=result.escalate,
+                    )
 
             # Phase G3 (decisions.md D-027): opt-in real pixel-diff visual
             # regression, independent of and additive to the OCR
@@ -683,6 +692,10 @@ class RunEngine:
                 for a in spec.assertions:
                     detail = check_assertion_detailed(final_screenshot, a.expected)
                     per_assertion_detail.append({"expected": a.expected, **detail})
+                    assertion_audit_log.log(
+                        run_id=run_id, step_id=final_step_id, expected_state=a.expected,
+                        detail=detail, escalate=False,
+                    )
                 all_passed = all(d["passed"] for d in per_assertion_detail)
             aggregator.record_step_result(
                 VisionActionResult(

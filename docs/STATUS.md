@@ -327,8 +327,15 @@ on all Phase S-touched files.
 >   (`scripts/check_silent_excepts.py` + `test_no_silent_excepts.py`),
 >   with 7 of 11 real silent-except sites fixed and the remaining 4
 >   allowlisted with documented reasons.
-> - **Next real action:** AB1 (real-browser fixture tier: plain-tall,
->   Lenis, SPA-client-routing, fake-500-error pages wired into CI) and
->   AB2 (structured per-assertion JSONL audit log, building on D-057's
->   `raw_evidence` field), then AC1/AC2 (`CONVENTIONS.md`, `aura doctor`
->   preflight). See D-057's closing note for the full remaining backlog.
+> - **D-058 (merged into `main`):** AB1/AB2 — a real-(headless-)browser
+>   test tier (`tests/fixtures/pages.py` + `test_real_browser_fixtures.py`,
+>   including the fake-500-error known-limitation turned into a real
+>   `xfail(strict=True)` test rather than only a doc note) and a
+>   structured per-assertion audit log
+>   (`orchestrator/assertion_audit_log.py`) with a `find_anomalies()`
+>   check for D-056's exact bug shape.
+> - **Next real action:** AC1 (`CONVENTIONS.md` — scroll sign, coordinate
+>   spaces, confidence thresholds, documented once) and AC2
+>   (`aura doctor` preflight, closing off the repeated
+>   Hermes-unreachable `ConnectError` log spam). See D-058's closing note
+>   for the full remaining backlog.
