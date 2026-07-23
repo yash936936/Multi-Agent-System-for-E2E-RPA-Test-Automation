@@ -45,6 +45,19 @@ class GuardrailSettings(BaseSettings):
     hard_stop_after_exact_failure: int = 5
     hard_stop_after_same_tool_failure: int = 8
 
+    # AD2 (docs/decisions.md D-062) -- when True (default), a retry whose
+    # AA1 verification evidence (verification_source + raw_evidence) is
+    # byte-identical to the immediately preceding attempt's evidence for
+    # the same step short-circuits straight to HARD_STOP, bypassing the
+    # count-based thresholds above entirely. This is deliberately
+    # independent of exact_failure_count/same_tool_failure_count: a
+    # count-based threshold can still be mid-count (e.g. 2 of 5) while a
+    # retry has already produced literal zero new information, which is
+    # exactly the D-055 incident this closes (self-healing retried three
+    # times with an identical result before the count-based hard_stop
+    # finally fired). Set False to fall back to pure count-based behavior.
+    short_circuit_on_identical_evidence: bool = True
+
 
 
 # Resolve .env relative to the project root (parent of this config/ directory)

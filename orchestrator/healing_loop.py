@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from orchestrator.guardrails import GuardrailVerdict, LoopGuardrail
+from orchestrator.guardrails import GuardrailVerdict, LoopGuardrail, compute_evidence_fingerprint
 from orchestrator.memory import RunMemoryStore
 from orchestrator.schemas import (
     DiagnosisInput,
@@ -85,6 +85,26 @@ class HealingLoop:
                     run_id=self.run_id,
                     step_id=step.step_id,
                     reason="guardrail hard_stop during self-healing",
+                    guardrail_snapshot=self.guardrail.state_snapshot(step.step_id),
+                )
+                return HealResult(final_result=current_result, healed=False, skill_used_or_learned=None, escalated=True)
+
+            # AD2 (docs/decisions.md D-062): compare this attempt's AA1
+            # verification evidence against the previous attempt's. If
+            # they're byte-identical, the previous diagnosis+retry made
+            # zero measurable difference to the screen -- short-circuit
+            # straight to HARD_STOP rather than burning through the
+            # remaining count-based threshold budget on further retries
+            # that are provably as pointless as this one was.
+            evidence_fingerprint = compute_evidence_fingerprint(current_result.verification_source, current_result.raw_evidence)
+            evidence_verdict = self.guardrail.record_evidence(
+                step_id=step.step_id, tool_name="Vision.execute_step", evidence_fingerprint=evidence_fingerprint
+            )
+            if evidence_verdict is GuardrailVerdict.HARD_STOP:
+                self.memory.escalate(
+                    run_id=self.run_id,
+                    step_id=step.step_id,
+                    reason="guardrail hard_stop: retry produced evidence identical to the previous attempt (AD2 short-circuit)",
                     guardrail_snapshot=self.guardrail.state_snapshot(step.step_id),
                 )
                 return HealResult(final_result=current_result, healed=False, skill_used_or_learned=None, escalated=True)

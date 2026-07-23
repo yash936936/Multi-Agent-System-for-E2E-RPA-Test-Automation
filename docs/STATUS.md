@@ -340,8 +340,31 @@ on all Phase S-touched files.
 >   structured per-assertion audit log
 >   (`orchestrator/assertion_audit_log.py`) with a `find_anomalies()`
 >   check for D-056's exact bug shape.
-> - **Next real action:** AC1 (`CONVENTIONS.md` — scroll sign, coordinate
->   spaces, confidence thresholds, documented once) and AC2
->   (`aura doctor` preflight, closing off the repeated
->   Hermes-unreachable `ConnectError` log spam). See D-058's closing note
->   for the full remaining backlog.
+> - **D-059 (merged into `main`):** AC1/AC2 — `CONVENTIONS.md` (scroll
+>   sign, coordinate spaces, confidence thresholds) and a standalone
+>   `aura doctor` preflight command.
+> - **D-060 (merged into `main`):** AD1 — explicit `assertion_kind`
+>   (`literal_text | page_rendered | negative | custom`) on the planner
+>   spec, closing the "can't express a negative assertion at all" gap;
+>   AB1's fake-500-error `xfail` intentionally left open (planner-
+>   judgment gap, not mechanical).
+> - **D-061 (merged into `main`):** AE1/AE2 — a doc-drift guard
+>   (`scripts/check_doc_drift.py`, mirroring AA3's silent-except scanner)
+>   and `aura audit-report <run_id>`, the CLI on top of AB2's
+>   `find_anomalies()`. **This closes Phase AE and the full AA→AE
+>   hardening plan from D-057.**
+> - **D-062 (merged into `main`):** AD2 — guardrail short-circuit on
+>   identical retry evidence
+>   (`orchestrator/guardrails.py::compute_evidence_fingerprint()` +
+>   `LoopGuardrail.record_evidence()`, wired into
+>   `orchestrator/healing_loop.py::HealingLoop.heal()`). Reproduces and
+>   closes D-055's incident shape directly: a stub that always returns
+>   identical evidence now escalates after exactly 1 retry instead of
+>   burning through the full count-based threshold. **This closes AD2,
+>   the last item D-061 left explicitly open.**
+> - **Next real action:** the only item left from the original AA→AE
+>   plan is the AB1 fake-500-error `xfail` — a planner-judgment gap (it
+>   needs to classify that specific error-page phrasing as a
+>   negative/error check), not a mechanical fix, so there's no forced
+>   next phase; see D-060's note for the full reasoning on why it was
+>   left as a real `xfail(strict=True)` rather than worked around.

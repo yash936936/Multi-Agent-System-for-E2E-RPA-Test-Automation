@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from config.settings import GuardrailSettings
-from orchestrator.guardrails import GuardrailVerdict, LoopGuardrail
+from orchestrator.guardrails import GuardrailVerdict, LoopGuardrail, compute_evidence_fingerprint
 
 
 def make_guardrail() -> LoopGuardrail:
@@ -107,3 +107,89 @@ def test_hard_stop_disabled_falls_back_to_warn():
     for _ in range(10):
         verdict = g.record_failure(1, "Vision.execute_step", "sig")
     assert verdict is GuardrailVerdict.WARN
+
+
+# -- AD2 (docs/decisions.md D-062): compute_evidence_fingerprint() -----------
+
+def test_fingerprint_none_when_raw_evidence_is_none():
+    assert compute_evidence_fingerprint("ocr", None) is None
+
+
+def test_fingerprint_identical_for_identical_evidence():
+    fp1 = compute_evidence_fingerprint("ocr", {"ocr_text_found": "Submit", "confidence": 0.4})
+    fp2 = compute_evidence_fingerprint("ocr", {"ocr_text_found": "Submit", "confidence": 0.4})
+    assert fp1 == fp2
+
+
+def test_fingerprint_differs_for_different_evidence():
+    fp1 = compute_evidence_fingerprint("ocr", {"ocr_text_found": "Submit"})
+    fp2 = compute_evidence_fingerprint("ocr", {"ocr_text_found": "Cancel"})
+    assert fp1 != fp2
+
+
+def test_fingerprint_differs_for_different_source_same_evidence_shape():
+    fp1 = compute_evidence_fingerprint("ocr", {"x": 1})
+    fp2 = compute_evidence_fingerprint("dom", {"x": 1})
+    assert fp1 != fp2
+
+
+def test_fingerprint_key_order_independent():
+    fp1 = compute_evidence_fingerprint("ocr", {"a": 1, "b": 2})
+    fp2 = compute_evidence_fingerprint("ocr", {"b": 2, "a": 1})
+    assert fp1 == fp2
+
+
+# -- AD2: LoopGuardrail.record_evidence() short-circuit -----------------------
+
+def test_record_evidence_first_call_continues_and_stores_fingerprint():
+    g = make_guardrail()
+    verdict = g.record_evidence(step_id=1, tool_name="Vision.execute_step", evidence_fingerprint="fp-a")
+    assert verdict is GuardrailVerdict.CONTINUE
+
+
+def test_record_evidence_none_fingerprint_never_short_circuits():
+    g = make_guardrail()
+    v1 = g.record_evidence(1, "Vision.execute_step", None)
+    v2 = g.record_evidence(1, "Vision.execute_step", None)
+    assert v1 is GuardrailVerdict.CONTINUE
+    assert v2 is GuardrailVerdict.CONTINUE
+
+
+def test_record_evidence_identical_fingerprint_short_circuits_to_hard_stop():
+    g = make_guardrail()
+    g.record_evidence(1, "Vision.execute_step", "fp-a")
+    verdict = g.record_evidence(1, "Vision.execute_step", "fp-a")
+    assert verdict is GuardrailVerdict.HARD_STOP
+
+
+def test_record_evidence_different_fingerprint_does_not_short_circuit():
+    g = make_guardrail()
+    g.record_evidence(1, "Vision.execute_step", "fp-a")
+    verdict = g.record_evidence(1, "Vision.execute_step", "fp-b")
+    assert verdict is GuardrailVerdict.CONTINUE
+
+
+def test_record_evidence_short_circuit_disabled_via_config():
+    cfg = GuardrailSettings(short_circuit_on_identical_evidence=False)
+    g = LoopGuardrail(config=cfg)
+    g.record_evidence(1, "Vision.execute_step", "fp-a")
+    verdict = g.record_evidence(1, "Vision.execute_step", "fp-a")
+    assert verdict is GuardrailVerdict.CONTINUE
+
+
+def test_record_evidence_short_circuit_reflected_in_state_snapshot():
+    g = make_guardrail()
+    g.record_evidence(1, "Vision.execute_step", "fp-a")
+    g.record_evidence(1, "Vision.execute_step", "fp-a")
+    assert g.state_snapshot(1)["identical_evidence_short_circuited"] is True
+
+
+def test_reset_clears_evidence_fingerprint_history():
+    g = make_guardrail()
+    g.record_evidence(1, "Vision.execute_step", "fp-a")
+    g.reset(1)
+    # After reset, "fp-a" again should be treated as the *first* sighting,
+    # not a repeat -- proves reset() clears AD2's fingerprint state too,
+    # not just the count-based fields.
+    verdict = g.record_evidence(1, "Vision.execute_step", "fp-a")
+    assert verdict is GuardrailVerdict.CONTINUE

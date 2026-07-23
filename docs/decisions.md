@@ -3215,5 +3215,153 @@ up before it has anything to compare against, not yet done — the
 doc-drift CI check (AE1), and the `aura audit-report` CLI on top of
 AB2's `find_anomalies()` (AE2).
 
+## D-061 — AE1/AE2: doc-drift guard and `aura audit-report` (2026-07-23)
+
+**Context:** Phase AE, the last phase in the AA→AE hardening sequence
+D-057 laid out.
+
+**AE1 — doc-drift guard (`scripts/check_doc_drift.py` +
+`tests/test_doc_drift.py`).** Same shape as AA3's
+`check_silent_excepts.py` (D-057): a pure, unit-tested core
+(`find_drift()`) plus a thin CLI wrapper, wired into the normal pytest
+run rather than installed as an actual `.git/hooks` script (hooks
+aren't checked into the repo, so a fresh clone silently loses them —
+directly usable as a local pre-commit hook by anyone who wants one, see
+its module docstring). Rule: any diff touching `agents/`,
+`orchestrator/`, `aura/`, `api/`, `config/`, `reports/`, `runtime/`,
+`scripts/`, `ui/`, or `webui/` must also touch `docs/decisions.md`;
+generated run artifacts (`reports/run_*`, `runtime/traces/`,
+`runtime/screenshots/`, `runtime/baselines/`, `runtime/data_cache/`) and
+test-only/doc-only changes are exempt. Supports a local pre-commit mode
+(`git diff --cached`, no args) and a CI/PR mode (`--base-ref <branch>`,
+diffing against the merge-base).
+
+Dogfooded directly: running it against this very change-set (AE1+AE2's
+own files staged, before this entry existed) correctly flagged
+`aura/cli/audit_cmd.py`, `aura/main.py`, and a synthetic test edit to
+`orchestrator/kernel.py` as drift — caught its own commit missing a
+decisions.md entry, which is what this entry is closing.
+
+**AE2 — `aura audit-report` (`aura/cli/audit_cmd.py`, wired into
+`aura/main.py`).** `aura audit-report <run_id>` (or `--all` across every
+run) reads AB2's `logs/assertion_audit.jsonl` via `read_records()` and
+`find_anomalies()`, prints a verification-method breakdown table and an
+anomalies table (D-056's exact bug shape: `escalate=False` with
+`passed=False`), and exits non-zero if any anomalies are found or if no
+records exist for the given scope — usable as a CI gate on a run's own
+audit trail, not just an interactive report a human has to remember to
+read. `--full` also lists every record, not just anomalies. `--log-path`
+overrides the default log location for testing/alternate deployments.
+
+Verified: 7 new tests in `tests/test_doc_drift.py` (source-change
+detection, decisions.md-present exemption, test/doc-only exemption,
+empty-diff no-op, generated-artifact exemption, mixed change-sets, and
+one integration test that runs the real CLI against this repo's own git
+state without crashing) and 7 new tests in `tests/test_audit_cmd.py`
+(clean run, D-056 bug-shape detection, missing-run handling, `--all`
+cross-run scope, and CLI-level exit-code checks via
+`typer.testing.CliRunner` for both the pass and failure paths, plus the
+`run_id`-or-`--all`-required usage error) — 14 new tests total. Manually
+verified end-to-end against a synthetic log: `aura audit-report demo-run`
+correctly reported one anomaly and exited 1. Full suite: 689 passed / 17
+failed / 1 xfailed / 5 errors in this environment — failures/errors are
+entirely pre-existing Chromium-binary/no-display/DOM-fixture gaps
+unrelated to this change (confirmed none reference `doc_drift` or
+`audit_cmd`); the improved pass count vs. D-060's noted 661 reflects
+this session's environment having more of the project's real
+dependencies installed, not a change in this patch's own correctness.
+
+**This closes Phase AE, and with it the full AA→AE hardening plan laid
+out in D-057.** Genuinely still open, unchanged: AD2 (guardrail
+short-circuit on identical retries, needs AA2's trace-comparison
+plumbing wired up as actual comparison logic, not just the schema) and
+the AB1 fake-500-error `xfail` (needs planner-side judgment to classify
+that specific phrasing as a negative/error check — see D-060's note).
+
+## D-062 — AD2: guardrail short-circuit on identical retry evidence (2026-07-23)
+
+**Context:** the last genuinely open item from D-057's original AA→AE
+plan (D-061 closed Phase AE but explicitly left this one and the AB1
+`xfail` open). Directly motivated by D-055's incident: a live run's
+self-healing retried a failing `ASSERT` step three times with an
+identical result before the count-based guardrail hard-stop finally
+fired. The count-based thresholds (`exact_failure_count`,
+`same_tool_failure_count`) answer "how many times has this failed,"
+which can legitimately still be mid-count while the *evidence itself*
+already proves further retries are pointless — a gap the plan flagged
+as needing AA1's trace schema (`verification_source`/`raw_evidence`) to
+close, since that's the first place real per-attempt evidence became
+available to compare, rather than a coarse proxy like confidence score
+or a hand-built failure-signature string.
+
+**What was built:**
+- `orchestrator/guardrails.py::compute_evidence_fingerprint()` — a
+  stable SHA-256 fingerprint of `(verification_source, raw_evidence)`
+  (`json.dumps(..., sort_keys=True)` before hashing, so key order never
+  affects the result). Returns `None` when `raw_evidence` is `None`
+  (no verification ran for that attempt — a bare `SCROLL`/`NAVIGATE_URL`
+  with no `expected_state`), and callers must never treat two `None`s as
+  a match — there's nothing there to actually compare.
+- `LoopGuardrail.record_evidence(step_id, tool_name,
+  evidence_fingerprint)` — new method alongside the existing
+  `record_failure()`/`record_no_progress()`. If the fingerprint matches
+  the immediately preceding attempt's fingerprint for that step, returns
+  `HARD_STOP` immediately, bypassing `exact_failure_count`/
+  `same_tool_failure_count` entirely. Gated by a new
+  `GuardrailSettings.short_circuit_on_identical_evidence` flag (default
+  `True`) for anyone who wants pure count-based behavior back.
+  `StepLoopState` gained `last_evidence_fingerprint` and
+  `identical_evidence_short_circuited` (surfaced in `state_snapshot()`
+  so a `memory.escalate()` record and, downstream, `aura audit-report`
+  can both see *why* a hard-stop fired, not just that it did).
+  `reset()` (called on a successful heal) already clears the whole
+  per-step state dict, so it clears this fingerprint history too — no
+  separate handling needed.
+- `orchestrator/healing_loop.py::HealingLoop.heal()` — after the
+  existing count-based `record_failure()` check, now also fingerprints
+  `current_result` and calls `record_evidence()` before running
+  `diagnose_fn`. On the loop's first iteration this only seeds the
+  fingerprint (nothing to compare against yet); on the second and later
+  iterations it's comparing the latest retry's evidence against the one
+  immediately before it. A short-circuit escalates via the same
+  `memory.escalate()` path as the count-based hard-stop, with a distinct
+  `reason` string (`"...AD2 short-circuit"`) so it's identifiable in the
+  escalation queue and in `aura audit-report`'s output, not
+  indistinguishable from an ordinary count-based hard-stop.
+
+**Verified:** 16 new tests — 12 appended to `tests/test_guardrails.py`
+(fingerprint determinism/None-handling/source-sensitivity/key-order-
+independence, `record_evidence()`'s first-call/None/identical/
+different/config-disabled/snapshot/reset behavior) and 4 in the new
+`tests/test_healing_loop.py` — the first HealingLoop tests in this repo
+at all, run against real `RunMemoryStore`/`SkillStore` sqlite instances
+rather than mocks. The key one,
+`test_identical_evidence_retries_escalate_immediately_not_after_full_count_threshold`,
+reproduces D-055's incident shape directly: with
+`hard_stop_after_exact_failure` set to 10 (so the count-based path alone
+would need 10 loop iterations), a `execute_step_fn` stub that always
+returns byte-identical evidence escalates after exactly **1** retry
+attempt, not 10 — proving the short-circuit is what fired, not the
+count-based path getting lucky. A second test proves genuinely changing
+evidence across retries does *not* short-circuit and the loop heals
+normally; a third proves steps with no verification evidence at all
+(`raw_evidence=None` throughout) correctly fall back to pure count-based
+behavior instead of AD2 ever matching `None` against `None`.
+
+Full suite: 705 passed / 17 failed / 1 xfailed / 5 errors — 16 more
+passing than D-061's 689 (exactly the 16 new tests here), same
+pre-existing Chromium/DOM-fixture failures/errors, confirmed none
+reference `guardrails` or `healing_loop`. `scripts/check_doc_drift.py`
+(D-061) correctly flagged this change-set's three source files before
+this entry existed, same as it did for its own commit in D-061 — kept
+running clean.
+
+**This closes the AD2 item explicitly left open by D-061.** The only
+genuinely open item remaining from the original D-057 plan is the AB1
+fake-500-error `xfail`, which needs planner-level judgment (classifying
+that specific error-page phrasing as a negative/error check) rather than
+a mechanical fix — see D-060's note for why it was deliberately left as
+a real `xfail(strict=True)` instead of silently worked around.
+
 
 

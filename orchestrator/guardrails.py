@@ -15,8 +15,11 @@ can be dropped in as-is if the project ever swaps the orchestration layer
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Optional
 
 from config.settings import GuardrailSettings, settings
 
@@ -25,6 +28,31 @@ class GuardrailVerdict(str, Enum):
     CONTINUE = "continue"
     WARN = "warn"
     HARD_STOP = "hard_stop"
+
+
+def compute_evidence_fingerprint(verification_source: Optional[str], raw_evidence: Optional[dict[str, Any]]) -> Optional[str]:
+    """
+    AD2 (docs/decisions.md D-062) -- the "trace-comparison plumbing"
+    D-057/D-060 both flagged as AD2's real dependency: a stable
+    fingerprint of AA1's own audit fields (`verification_source`,
+    `raw_evidence` -- see `VisionActionResult` in orchestrator/schemas.py),
+    so two retry attempts can be compared on what was actually observed
+    (OCR text found, DOM snapshot hash, adapter response), not just on a
+    coarse proxy like confidence score or a hand-built failure-signature
+    string.
+
+    Returns None when `raw_evidence` itself is None -- i.e. no
+    verification ran for this step at all (a bare SCROLL/NAVIGATE_URL
+    with no expected_state, matching AA1's own "None is only valid when
+    no verification was applicable" convention). None deliberately means
+    "nothing to compare," not "identical to everything" -- callers must
+    never short-circuit on two None fingerprints.
+    """
+    if raw_evidence is None:
+        return None
+    payload = {"verification_source": verification_source, "raw_evidence": raw_evidence}
+    normalized = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -37,6 +65,11 @@ class StepLoopState:
     last_failure_signature: str | None = None
     last_tool_name: str | None = None
     warned: bool = False
+    # AD2 -- the previous attempt's evidence fingerprint for this step,
+    # used by record_evidence() below to detect a retry that produced
+    # literally the same raw evidence as the attempt before it.
+    last_evidence_fingerprint: str | None = None
+    identical_evidence_short_circuited: bool = False
 
 
 class LoopGuardrail:
@@ -76,6 +109,47 @@ class LoopGuardrail:
     def reset(self, step_id: int) -> None:
         """Call when a step finally succeeds — clears its retry history."""
         self._states.pop(step_id, None)
+
+    def record_evidence(self, step_id: int, tool_name: str, evidence_fingerprint: str | None) -> GuardrailVerdict:
+        """
+        AD2 (docs/decisions.md D-062). Call once per retry attempt with
+        `compute_evidence_fingerprint()`'s output for that attempt's
+        `VisionActionResult`. If this fingerprint is byte-identical to
+        the immediately preceding attempt's fingerprint for the same
+        step -- i.e. the retry observed literally the same OCR/DOM/
+        adapter evidence as before, meaning the diagnosis+retry made
+        zero measurable difference to the screen -- this short-circuits
+        straight to HARD_STOP, bypassing exact_failure_count/
+        same_tool_failure_count's thresholds entirely (per
+        `GuardrailSettings.short_circuit_on_identical_evidence`, on by
+        default). A count-based threshold answers "how many times has
+        this failed," which can still tolerate a few more attempts even
+        when the *evidence itself* already proves further retries are
+        pointless -- exactly the D-055 incident this exists to close
+        (three identical-result retries before the count-based
+        hard_stop finally fired).
+
+        `evidence_fingerprint=None` (no verification ran for this
+        attempt) always returns CONTINUE without touching stored state
+        -- there's nothing to compare, and a run of None values must
+        never be treated as "identical" to each other.
+        """
+        st = self._state_for(step_id)
+        st.last_tool_name = tool_name
+
+        if evidence_fingerprint is None:
+            return GuardrailVerdict.CONTINUE
+
+        if (
+            self.config.short_circuit_on_identical_evidence
+            and st.last_evidence_fingerprint is not None
+            and evidence_fingerprint == st.last_evidence_fingerprint
+        ):
+            st.identical_evidence_short_circuited = True
+            return GuardrailVerdict.HARD_STOP
+
+        st.last_evidence_fingerprint = evidence_fingerprint
+        return GuardrailVerdict.CONTINUE
 
     def record_failure(
         self,
@@ -134,4 +208,5 @@ class LoopGuardrail:
             "same_tool_failure_count": st.same_tool_failure_count,
             "no_progress_count": st.no_progress_count,
             "warned": st.warned,
+            "identical_evidence_short_circuited": st.identical_evidence_short_circuited,
         }
