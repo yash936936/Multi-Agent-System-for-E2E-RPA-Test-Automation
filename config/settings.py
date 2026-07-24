@@ -133,6 +133,17 @@ class Settings(BaseSettings):
     # introspectable rather than only living in a module-level variable.
     env: str | None = Field(default=None)
 
+    # --- AF2 (docs/decisions.md, Phase AF): centralized logging ---
+    # Every module already does `logging.getLogger(__name__)`, but nothing
+    # in the codebase ever called logging.basicConfig() or attached a
+    # handler -- so every one of those calls was silently going nowhere
+    # persistent (Python's unconfigured-logger default: WARNING+ only, to
+    # stderr, nothing below WARNING ever recorded, nothing ever written to
+    # a file). AURA_LOG_LEVEL controls the level actually persisted to
+    # logs/aura.log once config/logging_setup.py's configure_logging() is
+    # called (done once, at CLI startup, in aura/main.py's main()).
+    log_level: str = Field(default="INFO")
+
 
     # --- root paths ---
     project_root: Path = Field(default_factory=_default_project_root)

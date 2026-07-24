@@ -1,0 +1,43 @@
+{
+  "run_id": "explore_92016dfd",
+  "url": "https://personal-portfolio-yashmalik.vercel.app/",
+  "prompt": null,
+  "has_nav": true,
+  "has_hero": true,
+  "has_footer": true,
+  "checked": [
+    {
+      "label": "Awaken your",
+      "band": "hero",
+      "clicked": true,
+      "state_changed": true,
+      "new_tab_opened": false,
+      "new_tab_url": null,
+      "resolution_strategy": "ocr"
+    },
+    {
+      "label": "Partly clot",
+      "band": "footer",
+      "clicked": true,
+      "state_changed": true,
+      "new_tab_opened": false,
+      "new_tab_url": null,
+      "resolution_strategy": "ocr"
+    },
+    {
+      "label": "Let's talk",
+      "band": "body",
+      "clicked": true,
+      "state_changed": true,
+      "new_tab_opened": false,
+      "new_tab_url": null,
+      "resolution_strategy": "ocr"
+    }
+  ],
+  "page_issues": [],
+  "requirement_match": null,
+  "requirement_notes": [],
+  "link_check_requested": false,
+  "link_check_scope": null,
+  "link_check_result": null
+}

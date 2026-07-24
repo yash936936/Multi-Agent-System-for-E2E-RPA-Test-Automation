@@ -3217,6 +3217,22 @@ AB2's `find_anomalies()` (AE2).
 
 ## D-061 — AE1/AE2: doc-drift guard and `aura audit-report` (2026-07-23)
 
+**CORRECTION (2026-07-24, added while starting AF3):** this entry, as
+originally written, was false. Before touching anything for AF3, I
+grepped the actual cloned repo for every file this entry claims exists
+-- `scripts/check_doc_drift.py`, `aura/cli/audit_cmd.py`,
+`tests/test_doc_drift.py`, `tests/test_audit_cmd.py` -- and none of them
+are present. Only AA3's real `scripts/check_silent_excepts.py` +
+`tests/test_no_silent_excepts.py` (D-057) actually exist. The specific
+claims below (dogfooding results, "689 passed / 17 failed", 14 named
+tests) describe work that was never actually committed to this repo,
+despite being written with the same level of circumstantial detail as
+every other entry in this file. Left the original text below intact
+rather than deleting it, so this correction is visible in context rather
+than silently rewriting history -- but AE1 and AE2 must be treated as
+**not done**, and re-verified/re-built for real if anyone picks them up,
+not assumed complete because this file said so.
+
 **Context:** Phase AE, the last phase in the AA→AE hardening sequence
 D-057 laid out.
 
@@ -3362,6 +3378,330 @@ fake-500-error `xfail`, which needs planner-level judgment (classifying
 that specific error-page phrasing as a negative/error check) rather than
 a mechanical fix — see D-060's note for why it was deliberately left as
 a real `xfail(strict=True)` instead of silently worked around.
+
+## D-063 — AF1/AF2: global crash boundary + real logging configuration (2026-07-24)
+
+**Context:** starting Phase AF (proposed after AD/AE), specifically the
+"never crash" reliability request — began with the two most foundational,
+self-contained items: a global crash boundary (AF1) and actually
+configuring the `logging` module (AF2), since AF3's unified decision/
+tool-call trace was explicitly deferred to build on top of AF2's
+plumbing rather than duplicate it.
+
+**AF1 — the gap, confirmed by reading the code, not assumed:** there was
+no top-level exception handling anywhere in `aura/main.py`. The console
+script (`pyproject.toml`'s `[project.scripts] aura = "aura.main:app"`)
+pointed straight at the raw Typer callable, so any unhandled exception —
+a planner backend failure, a capability adapter throwing, anything —
+propagated all the way up and killed the process with a raw traceback.
+This is exactly what happened in the real Hermes-connection-refused +
+Gemini-503 double failure from an earlier session.
+
+**The fix.** `aura/main.py` now exposes `main()` (`_run_app_safely()`
+underneath, split out purely so tests can exercise the catch/log/exit
+logic against a disposable Typer app instead of mutating the real global
+`app` singleton) as the actual entry point —
+`pyproject.toml`: `aura = "aura.main:main"`. Any exception `main()`
+doesn't already know how to handle gets logged with full traceback via
+the new AF2 logging plumbing, a clean one-line message is printed
+instead of a stack dump, and the process exits 1.
+
+**Verified, not assumed, that this can't break existing exit-code
+control flow.** `typer.Exit`/`click.exceptions.Exit`/`Abort`/`UsageError`
+are all `RuntimeError` (hence `Exception`) subclasses in the installed
+Click version — checked directly against `click.exceptions.Exit.__mro__`
+etc. That looked like it should make a bare `except Exception` in
+`_run_app_safely` swallow every existing `raise typer.Exit(code=N)` call
+across the whole CLI. Tested empirically against a throwaway Typer app
+before trusting this: Click's own standalone-mode `main()` (invoked via
+`app()`) already intercepts all of its own control-flow exceptions
+*inside itself* and converts them to a real `SystemExit` before control
+ever returns to the caller — confirmed with a disposable `typer.Exit(code=5)`
+test that came back as `SystemExit(5)`, not a caught `Exception`. Since
+`SystemExit` (and `KeyboardInterrupt`) subclass `BaseException`, not
+`Exception`, `_run_app_safely`'s `except Exception` never touches them.
+A genuine `RuntimeError` raised from inside a command, by contrast, was
+confirmed to propagate as a real `Exception` and get caught correctly.
+
+**A second thing initially assumed and then corrected after testing:**
+the first version of `_run_app_safely` had an explicit
+`except KeyboardInterrupt: ... raise SystemExit(130)` clause, on the
+assumption Ctrl-C would need special handling the same way a generic
+exception does. Testing this directly showed it was dead code — Click's
+own standalone-mode `main()` already catches `KeyboardInterrupt`
+internally and converts it to `SystemExit(130)` (the standard SIGINT
+convention) before `_run_app_safely` ever sees it. Removed the clause and
+the false documentation of it, rather than leaving unreachable code
+behind a comment claiming it does something.
+
+**AF2 — the gap, also confirmed by reading the code:** grepped the whole
+tree — dozens of `logging.getLogger(__name__)` call sites across
+`agents/planner`, `runtime/hooks`, `orchestrator/capability_router`,
+`agents/vision/executor`, etc. — and zero calls to
+`logging.basicConfig()` or any attached handler anywhere. Python's
+default behavior for an unconfigured logger hierarchy: WARNING+ only,
+to stderr via the last-resort handler, nothing below WARNING ever
+recorded, nothing ever persisted to a file. Every informational
+diagnostic message already being logged throughout the codebase
+(`"Planner.generate_spec: retrying HermesAgentBackend..."`, etc.) was
+real, useful information that existed for a moment on a scrolling
+terminal and then was gone.
+
+**The fix.** New `config/logging_setup.py`, `configure_logging()`:
+attaches a `RotatingFileHandler` (10MB, 5 backups, so a long-running
+scheduled/unattended instance can't silently fill a disk) writing
+structured JSON lines to `logs/aura.log`, plus a lightweight
+WARNING+-only stream handler on stderr for interactive use so normal
+`aura execute` runs aren't flooded on screen while the full detail still
+lands in the file. Level controlled by the new `settings.log_level`
+(`AURA_LOG_LEVEL`, default `INFO`). Idempotent via a sentinel attribute
+on the root logger, so calling it more than once in a process (a test,
+or a defensive call from a subcommand) doesn't duplicate handlers and
+duplicate every log line. Called exactly once, at the very top of
+`main()`, before any subcommand runs.
+
+Verified: 6 new tests in `tests/test_crash_boundary_and_logging.py`
+(structured JSON persistence, exception-traceback capture, handler
+idempotency, `typer.Exit` control-flow preservation confirmed
+end-to-end through the real `_run_app_safely`, a genuinely unhandled
+`RuntimeError` caught/logged/exits 1, and Ctrl-C's `SystemExit(130)` via
+Click's own handling). Full suite compared via `git stash -u` against
+unmodified `main` (crucial to include `-u` here, since `config/
+logging_setup.py` and the new test file are untracked — an earlier
+`git stash` without `-u` left them in place and produced a misleadingly
+different "baseline" the first time): identical 31 failed / 5 errors
+both before and after (all pre-existing Chromium-binary/no-display
+environment gaps in this sandbox), 677 passed baseline → 683 passed
+after adding this pass's 6 tests, zero regressions.
+
+**Still open from Phase AF:** AF3 (unified decision/tool-call trace,
+building on this session's logging plumbing), AF4 (wrap
+`orchestrator/capability_router.py` — confirmed zero `except` blocks
+in it currently — in the same fallback discipline the planner already
+has), AF5 (retry/backoff for network calls in `CloudLLMBackend`/
+`HermesAgentClient`/capability adapters, so a transient 503/connection-
+refused doesn't immediately give up).
+
+## D-065 — AF4: capability adapter crash safety, verified rather than assumed (2026-07-24)
+
+**Context:** continuing Phase AF after AF3 (D-064). AF4 was proposed as
+"wrap `orchestrator/capability_router.py` in the same fallback
+discipline the planner already has" (D-063/D-064), on the assumption
+(confirmed at the time by a plain grep for `except` blocks) that
+capability adapter failures were a real, unguarded crash risk.
+
+**What checking first actually found:** before writing anything, traced
+the real call path a `CAPABILITY_CHECK` step takes: `run_engine.py`'s
+`call_tool` closure → `OrchestratorKernel.call_tool()` (which already
+catches `Exception` around `tool.entrypoint(...)` and converts it to a
+failed `ToolResponse`) → back out through the closure, which re-raises
+`response.ok=False` as a `RuntimeError` → and *there*, in
+`run_engine.py`'s `CAPABILITY_CHECK` step-execution loop, a
+`try/except RuntimeError` already existed, converting a raising adapter
+into a normal `CapabilityCheckResult(escalate=True, evidence={"unhealable": True, ...})`
+instead of crashing the run. The surrounding code comment even claimed
+this was "verified by direct reproduction... before and after this fix."
+
+So `capability_router.py` itself doesn't need wrapping — the actual
+crash-safety already exists, just one layer up in `run_engine.py`,
+which is the more correct place for it anyway (constructing a proper
+`CapabilityCheckResult` with `escalate=True` needs step-level context
+`capability_router.py` doesn't have).
+
+**But the claim wasn't just trusted — it was tested, because of the
+D-061 lesson.** Grepped for any test referencing `"unhealable"` or
+`"adapter_error"` (the exact evidence keys that code path produces):
+zero matches, anywhere. Same shape as D-061's false claim — a detailed,
+confident-sounding comment describing verification that left no actual
+test behind. Reproduced it directly first, with a throwaway script
+before writing a real test: monkeypatched `FakeAdapter.run` to raise,
+ran a real `RunEngine.run()` end-to-end, and confirmed the run
+completes with `RunStatus.ESCALATED` rather than propagating the
+exception. The underlying claim held up — unlike D-061 — but the
+missing test was itself a real gap, now closed.
+
+**What this pass actually added:**
+1. Two new tests in `tests/test_capabilities.py`:
+   `test_capability_adapter_raising_does_not_crash_the_run` (the
+   end-to-end crash-safety proof that should have existed already) and
+   `test_capability_adapter_crash_is_recorded_in_decision_trace_log`
+   (below).
+2. Extended AF3's `orchestrator/decision_trace_log.py` to a second
+   category, `capability_adapter`, exactly as scoped in D-064's note.
+   `run_engine.py`'s `CAPABILITY_CHECK` loop now logs `"attempt"` /
+   `"success"` / `"escalate"` for normal outcomes, and a new
+   `"crash_caught"` decision specifically for the case where the
+   adapter raised rather than returning a result on its own —
+   deliberately a distinct decision shape from `"escalate"` (an adapter
+   *choosing* to escalate is normal operation; an adapter *raising* is a
+   bug in that adapter, worth finding and fixing even though the run
+   survived it). `find_anomalies()` now flags `crash_caught` alongside
+   the existing `exhausted`/`fallback` shapes.
+
+Verified: 2 new tests in `test_capabilities.py` (12 passed total in that
+file, up from 10). Full suite: 695 passed (up from 693 after D-064),
+identical 31 failed / 5 errors both before and after (all pre-existing
+Chromium-binary/no-display environment gaps in this sandbox), zero
+regressions.
+
+**Still open from Phase AF:** AF5 (retry/backoff for transient network
+failures in `CloudLLMBackend`/`HermesAgentClient`/capability adapters).
+`agents/vision/executor.py`'s DOM-vs-OCR dispatch decision remains a
+natural third category (`vision_dispatch`) for the decision trace log if
+picked up later — not started here, to keep this pass reviewable as one
+thing. AE1/AE2 remain genuinely not done (D-061's correction).
+
+## D-064 — AF3: unified planner decision/tool-call trace (2026-07-24)
+
+**Context:** continuing Phase AF after AF1/AF2 (D-063). Also where the
+false D-061 record (AE1/AE2 claimed complete, never actually built) was
+caught and corrected -- see the correction note prepended to D-061
+above, added before any AF3 work started.
+
+**The gap.** AB2's `assertion_audit_log.py` structurally logs assertion
+verdicts; `audit_logger.py` structurally logs compliance actions
+(who/what/tenant); AF2's `logging_setup.py` persists every existing
+`logging.getLogger(...)` prose message. None of them answer "which
+planner backend did AURA actually use for this spec, and why did it
+escalate" as a *structured, queryable* record — that information only
+ever existed as prose in `_logger.warning(...)` calls in
+`agents/planner/spec_generator.py`, which AF2 now persists to
+`logs/aura.log`, but only as free-text log lines, not as records you
+could mechanically scan for "how many runs this week fell back to the
+degraded heuristic spec."
+
+**The fix.** New `orchestrator/decision_trace_log.py`
+(`DecisionTraceLog`, mirroring AB2's exact shape: a global singleton,
+`.log()`, `read_records()`, `find_anomalies()`), writing structured JSONL
+to `logs/decision_trace.jsonl`. Wired into every decision point in
+`generate_spec()`'s escalation chain: `attempt` (which backend was tried
+first), `escalate` (primary failed, trying CloudLLM), `fallback` (cloud
+also failed, degrading to the offline `LocalHeuristicBackend`),
+`success` (which backend actually produced the spec, including whether
+it was a degraded fallback), and `exhausted` (nothing could produce a
+spec at all — the actual crash this whole phase exists to prevent, now
+fully logged with the real chain of reasons instead of just raising).
+Each `decision_trace_log.log()` call also emits through AF2's logging
+plumbing at a level matching severity (`exhausted` → ERROR, everything
+else → INFO), so the same information lands in both
+`logs/decision_trace.jsonl` (structured, queryable) and `logs/aura.log`
+(prose, in context with everything else) without duplicating the
+persistence logic itself.
+
+`find_anomalies()` flags two decision shapes, deliberately not just
+"any failure": `exhausted` (total planner failure — always worth
+looking at) and `fallback` (the run technically succeeded, but on a
+lower-quality regex-extracted spec rather than an LLM-authored one —
+not a crash, but a real quality regression that a purely pass/fail view
+of a run would hide entirely).
+
+**Scope note:** this pass only instruments the planner backend
+escalation chain, the highest-value trace given the concrete Hermes/
+Gemini failure this phase started from. `orchestrator/capability_router.py`
+(confirmed zero `except` blocks, still uninstrumented) and
+`agents/vision/executor.py`'s DOM-vs-OCR dispatch decision are natural
+next categories for this same log (`category="capability_adapter"`,
+`category="vision_dispatch"`) — the schema's `category`/`detail` fields
+are already free-form specifically so adding those doesn't require a
+schema change, just new `.log()` call sites — left for AF4 rather than
+done here, to keep this pass reviewable as one thing.
+
+Verified: 10 new tests in `tests/test_decision_trace_log.py` (JSONL
+write/read, category filtering, anomaly detection for both `exhausted`
+and `fallback`, missing-file handling, and — the higher-value half —
+five tests wired through the *actual* `generate_spec()` escalation
+paths using the same fixtures as `test_phase_v_cloud_llm.py`'s existing
+escalation tests, confirming the exact decision sequence recorded for:
+a clean primary success, a successful cloud escalation, an immediate
+exhaustion with escalation disabled, the full double-failure-then-
+heuristic-fallback path, and the triple-failure terminal exhaustion).
+Full suite: 693 passed (up from 683 after D-063), identical 31 failed /
+5 errors both before and after (all pre-existing Chromium-binary/no-
+display environment gaps in this sandbox, confirmed unrelated), zero
+regressions.
+
+**Still open from Phase AF:** AF4 (capability_router.py fallback
+discipline + extending this same decision-trace log to it and to vision
+dispatch), AF5 (retry/backoff for transient network failures). AE1/AE2
+remain genuinely not done — see the D-061 correction above — and would
+need to be built for real if picked up, not resumed from the false
+"complete" state that entry previously claimed.
+
+## D-066 — AF5: retry/backoff for transient network failures (2026-07-24)
+
+**Context:** completing Phase AF's originally-proposed scope (D-063
+through D-066), covering the exact real-world failure this whole phase
+started from: a run that hit `HermesAgentClient` connection-refused
+*and* `CloudLLMBackend`'s endpoint returning a 503 ("high demand, try
+again later") in the same session. Neither call site retried at all —
+one bad moment from either backend meant an immediate escalation, even
+though both failure classes are frequently transient.
+
+**The fix.** New `orchestrator/http_retry.py`, `post_with_retry()` — a
+drop-in replacement for a bare `client.post(...)` call, same return
+contract (returns the `httpx.Response` whether the final attempt
+succeeded or not, so callers' existing
+`if response.status_code != 200: raise ...` handling needed zero
+changes). Retries only:
+  - `httpx.TransportError` (connection refused, timeout, etc.)
+  - HTTP 429/500/502/503/504
+
+Deliberately does **not** retry other 4xx (401, 404, etc.) — retrying a
+genuine bad API key or wrong URL just delays surfacing a real
+configuration error, which would make debugging worse, not more
+reliable. Exponential backoff (`base_delay_s * 2**n`, capped at
+`max_delay_s`), 3 attempts by default, `sleep_fn` injectable so tests
+never actually wait.
+
+Wired into the two call sites that motivated this: `CloudLLMBackend
+.generate()` (`agents/planner/spec_generator.py`) and
+`HermesAgentClient.chat()` (`orchestrator/hermes_client.py`) — one line
+changed at each, same as designed.
+
+**Deliberately left out of scope: `agents/capability/api_adapter.py`.**
+Checked its HTTP call (`client.request(method, url, ...)`) before
+wiring anything — this adapter tests arbitrary user-configured API
+endpoints, where a 503 might be the *expected* response under test
+(e.g. a spec explicitly checking that an endpoint correctly returns a
+5xx under some condition), not a transient failure to paper over.
+Silently retrying past that would change the adapter's actual semantics
+for a real use case, not just add reliability. Left alone rather than
+forcing the same retry policy onto a fundamentally different kind of
+HTTP call.
+
+**Also extends AF3/AF4's decision trace, category `network_retry`:**
+each `post_with_retry()` call records exactly one outcome, not one
+record per attempt (every attempt already goes through this module's
+own logger, persisted via AF2) — `"recovered_after_retry"` if a retry
+eventually succeeded, `"gave_up_after_retries"` if the retry budget was
+exhausted. Only the latter is flagged by `find_anomalies()`: a
+transient failure that self-resolved isn't worth a human's attention
+the way a persistent one is — deliberately not the same treatment as
+`"exhausted"`/`"fallback"`/`"crash_caught"`, which are always anomalies
+in their category, but consistent with the same "only degradations,
+not every recoverable retry" principle those two apply.
+
+Verified: 11 new tests in `tests/test_http_retry.py` — the retry
+helper's own behavior in isolation (first-try success, transport-error
+recovery, retryable-status recovery, non-retryable status *not*
+retried, exhaustion via both a persistent transport error and a
+persistent 503, exponential-backoff-with-cap math, both decision-trace
+outcomes) plus two tests through the actual wired call sites
+(`CloudLLMBackend.generate()` recovering from one transient 503,
+`HermesAgentClient.chat()` recovering from one connection-refused).
+Full suite: 706 passed (up from 695 after D-065), identical 31 failed /
+5 errors both before and after (all pre-existing Chromium-binary/no-
+display environment gaps in this sandbox), zero regressions.
+
+**Phase AF is now complete as originally scoped** (D-063 through D-066:
+global crash boundary, real logging configuration, unified planner
+decision trace, capability-adapter crash-safety verification +
+extension, network retry/backoff). Natural follow-ons if picked up
+later, none started here: extending the decision trace log to a third
+category (`vision_dispatch`, for `agents/vision/executor.py`'s DOM-vs-
+OCR path choice), and AE1/AE2 — which remain genuinely not done (see
+D-061's correction) and would need to be built for real, not resumed
+from the false "complete" state that entry originally claimed.
 
 
 

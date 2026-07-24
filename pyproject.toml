@@ -47,7 +47,7 @@ llm = [
 ]
 
 [project.scripts]
-aura = "aura.main:app"
+aura = "aura.main:main"
 
 [build-system]
 requires = ["setuptools>=75.6.0", "wheel"]

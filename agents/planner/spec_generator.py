@@ -55,6 +55,7 @@ from pathlib import Path
 from typing import Protocol
 
 from config.settings import settings
+from orchestrator.decision_trace_log import decision_trace_log
 from orchestrator.schemas import (
     ActionType,
     AssertionType,
@@ -537,7 +538,12 @@ class CloudLLMBackend:
         }
 
         client = self._get_client()
-        response = client.post(url, headers=headers, json=body)
+        from orchestrator.http_retry import post_with_retry
+
+        response = post_with_retry(
+            client, url, headers=headers, json=body,
+            caller_name="CloudLLMBackend", decision_trace_category="network_retry",
+        )
         if response.status_code != 200:
             raise RuntimeError(
                 f"CloudLLMBackend request to {url} failed with status {response.status_code}: "
@@ -703,8 +709,11 @@ def generate_spec(payload: RequirementInput, backend: SpecBackend | None = None)
         return _generate_with_retry(payload, backend)
 
     primary = _default_backend()
+    decision_trace_log.log("planner_backend", "attempt", type(primary).__name__)
     try:
-        return _generate_with_retry(payload, primary)
+        result = _generate_with_retry(payload, primary)
+        decision_trace_log.log("planner_backend", "success", type(primary).__name__)
+        return result
     except Exception as primary_exc:
         # Deliberately checked via settings.planner_backend rather than
         # `isinstance(primary, CloudLLMBackend)`: an isinstance check
@@ -718,6 +727,11 @@ def generate_spec(payload: RequirementInput, backend: SpecBackend | None = None)
         # configured to use."
         can_escalate = settings.enable_cloud_planner and settings.planner_backend != "cloud_llm"
         if not can_escalate:
+            decision_trace_log.log(
+                "planner_backend", "exhausted", type(primary).__name__,
+                reason=f"{type(primary_exc).__name__}: {primary_exc}",
+                detail={"can_escalate": False},
+            )
             raise
         _logger.warning(
             "Planner.generate_spec: escalating from %s to CloudLLMBackend after retry "
@@ -726,8 +740,14 @@ def generate_spec(payload: RequirementInput, backend: SpecBackend | None = None)
             type(primary_exc).__name__,
             primary_exc,
         )
+        decision_trace_log.log(
+            "planner_backend", "escalate", "CloudLLMBackend",
+            reason=f"{type(primary).__name__} failed: {type(primary_exc).__name__}: {primary_exc}",
+        )
         try:
-            return _generate_with_retry(payload, CloudLLMBackend())
+            result = _generate_with_retry(payload, CloudLLMBackend())
+            decision_trace_log.log("planner_backend", "success", "CloudLLMBackend", detail={"escalated_from": type(primary).__name__})
+            return result
         except Exception as escalation_exc:
             _logger.warning(
                 "Planner.generate_spec: escalation to CloudLLMBackend also failed "
@@ -753,14 +773,33 @@ def generate_spec(payload: RequirementInput, backend: SpecBackend | None = None)
             # identically, so there's nothing to gain by trying it a
             # second time here.
             if isinstance(primary, LocalHeuristicBackend):
+                decision_trace_log.log(
+                    "planner_backend", "exhausted", "CloudLLMBackend",
+                    reason=f"{type(escalation_exc).__name__}: {escalation_exc}",
+                    detail={"primary_was_already_heuristic": True},
+                )
                 raise escalation_exc
+            decision_trace_log.log(
+                "planner_backend", "fallback", "LocalHeuristicBackend",
+                reason=f"CloudLLMBackend failed: {type(escalation_exc).__name__}: {escalation_exc}",
+            )
             try:
-                return _generate_with_retry(payload, LocalHeuristicBackend())
+                result = _generate_with_retry(payload, LocalHeuristicBackend())
+                decision_trace_log.log(
+                    "planner_backend", "success", "LocalHeuristicBackend",
+                    detail={"degraded": True, "reason": "every network-capable backend failed"},
+                )
+                return result
             except Exception as heuristic_exc:
                 _logger.error(
                     "Planner.generate_spec: fallback to LocalHeuristicBackend also "
                     "failed (%s: %s) -- no backend could produce a spec.",
                     type(heuristic_exc).__name__, heuristic_exc,
+                )
+                decision_trace_log.log(
+                    "planner_backend", "exhausted", "LocalHeuristicBackend",
+                    reason=f"{type(heuristic_exc).__name__}: {heuristic_exc}",
+                    detail={"original_failure": f"{type(escalation_exc).__name__}: {escalation_exc}"},
                 )
                 # Re-raise the original network failure, not the heuristic
                 # parse failure -- "Hermes connection refused / Cloud 503"

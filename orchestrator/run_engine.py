@@ -27,6 +27,7 @@ from typing import Any, Callable, Optional
 from agents.auditor import run_monitor
 from agents.vision.assertions import check_assertion_detailed
 from orchestrator.assertion_audit_log import assertion_audit_log
+from orchestrator.decision_trace_log import decision_trace_log
 from agents.vision.visual_regression import compare_to_baseline
 from config.settings import settings
 
@@ -369,8 +370,32 @@ class RunEngine:
                             evidence={"unhealable": True, "adapter_error": str(e)},
                             escalate=True,
                         )
+                        # AF4 (docs/decisions.md, Phase AF) -- this is the
+                        # exact "adapter raised, run must not crash" case
+                        # the try/except RuntimeError above exists for.
+                        # Logged as "crash_caught" (a genuine anomaly worth
+                        # surfacing via find_anomalies, distinct from a
+                        # normal escalate=True result an adapter returns on
+                        # purpose) rather than reusing "exhausted"/
+                        # "fallback", which describe the planner's
+                        # different decision shapes.
+                        decision_trace_log.log(
+                            "capability_adapter", "crash_caught",
+                            current_step.capability_type.value if current_step.capability_type else "unknown",
+                            reason=str(e),
+                            detail={"target": current_step.target},
+                        )
                         break
-                    
+
+                    if heal_attempts == 0:
+                        decision_trace_log.log(
+                            "capability_adapter",
+                            "success" if (cap_result.passed and not cap_result.escalate) else "escalate",
+                            current_step.capability_type.value if current_step.capability_type else "unknown",
+                            reason=None if cap_result.passed else "capability check did not pass",
+                            detail={"target": current_step.target, "confidence": cap_result.confidence},
+                        )
+
                     # If passed and not escalated, we're done
                     if cap_result.passed and not cap_result.escalate:
                         break

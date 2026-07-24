@@ -1,0 +1,25 @@
+{
+  "run_id": "explore_70ba78d5",
+  "url": "https://personal-portfolio-yashmalik.vercel.app/",
+  "prompt": null,
+  "has_nav": true,
+  "has_hero": true,
+  "has_footer": true,
+  "checked": [
+    {
+      "label": "Creative minds",
+      "band": "hero",
+      "clicked": true,
+      "state_changed": true,
+      "new_tab_opened": false,
+      "new_tab_url": null,
+      "resolution_strategy": "dom"
+    }
+  ],
+  "page_issues": [],
+  "requirement_match": null,
+  "requirement_notes": [],
+  "link_check_requested": false,
+  "link_check_scope": null,
+  "link_check_result": null
+}

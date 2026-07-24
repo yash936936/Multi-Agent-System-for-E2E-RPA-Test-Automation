@@ -151,7 +151,12 @@ class HermesAgentClient:
         }
 
         client = self._get_client()
-        response = client.post(url, headers=headers, json=body)
+        from orchestrator.http_retry import post_with_retry
+
+        response = post_with_retry(
+            client, url, headers=headers, json=body,
+            caller_name="HermesAgentClient", decision_trace_category="network_retry",
+        )
         if response.status_code != 200:
             raise RuntimeError(
                 f"HermesAgentClient request to {url} failed with status "

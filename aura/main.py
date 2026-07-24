@@ -15,6 +15,7 @@ Phase 6: every command below now calls real logic (previously stubs):
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import typer
@@ -393,5 +394,75 @@ def baselines(
         raise typer.Exit(code=1)
 
 
+def _run_app_safely(target_app: typer.Typer) -> None:
+    """
+    Split out from main() purely so tests can exercise the actual
+    catch/log/exit logic against a disposable throwaway Typer app,
+    instead of having to register extra commands onto the real global
+    `app` singleton (which would otherwise leak into every other test
+    that imports aura.main.app and checks its command set).
+
+    Note on Ctrl-C: deliberately no `except KeyboardInterrupt` clause
+    here. Checked directly (not assumed) that Click's own standalone-mode
+    main() -- invoked via `target_app()` below -- already catches
+    KeyboardInterrupt internally and converts it to `SystemExit(130)`
+    (the standard SIGINT exit-code convention) before control ever
+    returns here; an `except KeyboardInterrupt:` clause in this function
+    would be genuinely unreachable dead code, not just redundant, so it's
+    left out rather than kept as false documentation of behavior this
+    function doesn't actually provide.
+    """
+    crash_logger = logging.getLogger("aura.crash_boundary")
+
+    try:
+        target_app()
+    except Exception as exc:  # noqa: BLE001 -- this is the intended last-resort boundary, not a swallow
+        crash_logger.error(
+            "Unhandled exception escaped the CLI -- this is exactly the class of "
+            "crash AF1 exists to catch and log instead of letting die as a raw traceback.",
+            exc_info=True,
+        )
+        console.print(f"\n[red]AURA hit an unexpected error and had to stop:[/red] {exc}")
+        console.print("[dim]Full details (including the traceback) were written to logs/aura.log.[/dim]")
+        raise SystemExit(1)
+
+
+def main() -> None:
+    """
+    AF1 (docs/decisions.md, Phase AF): the real CLI entry point (see
+    pyproject.toml's `[project.scripts] aura = "aura.main:main"` --
+    previously this pointed straight at `app`, the raw Typer callable,
+    with no boundary around it at all).
+
+    Before this existed, any unhandled exception anywhere in the call
+    graph -- a planner backend failure, a capability adapter throwing,
+    literally anything -- propagated all the way up and killed the
+    process with a raw Python traceback. That's exactly what happened in
+    the real Hermes-connection-refused + Gemini-503 failure this was
+    written in response to: both fallback backends genuinely failed, and
+    since nothing caught that, the person got a multi-hundred-line stack
+    dump instead of a clean message and a place to look for more detail.
+
+    This is deliberately a *thin* boundary, not a way to make failures
+    "disappear": every real Typer/Click control-flow exception
+    (`typer.Exit`, `click.exceptions.Exit`/`Abort`/`UsageError`) is a
+    `RuntimeError` subclass in this Click version and would technically
+    be caught by a bare `except Exception` below -- except Click's own
+    `main()` (invoked via `app()` in standalone_mode, the default) already
+    intercepts all of those *inside itself* and converts them to a real
+    `SystemExit` before control ever returns here. `SystemExit` and
+    `KeyboardInterrupt` both subclass `BaseException`, not `Exception`,
+    so `except Exception` below never touches them -- every existing
+    `raise typer.Exit(code=N)` call across the whole CLI keeps working
+    exactly as before, unchanged. Only a *genuinely unhandled* exception
+    -- one Click never had a chance to convert, because it wasn't part of
+    Click's own control flow -- gets caught here.
+    """
+    from config.logging_setup import configure_logging
+
+    configure_logging()
+    _run_app_safely(app)
+
+
 if __name__ == "__main__":
-    app()
+    main()

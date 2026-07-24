@@ -211,3 +211,123 @@ def test_run_engine_routes_capability_and_vision_steps_in_one_spec(tmp_dir, monk
     assert seen_actions[0] == "capability_check"
     assert seen_actions[1] in ("click", "none")  # Vision Core's real action label
     assert result.report.total_steps == 2
+
+
+# --------------------------------------------------------------------------
+# AF4 (docs/decisions.md, Phase AF) -- a capability adapter raising an
+# exception must not crash the whole run. This exact fix already existed
+# in orchestrator/run_engine.py's CAPABILITY_CHECK handling (a try/except
+# RuntimeError around the call_tool(...) dispatch, with a code comment
+# claiming it was "verified by direct reproduction") -- but no test
+# anywhere actually exercised it end-to-end. Checked first, empirically,
+# before writing this: confirmed the run really does complete (status
+# ESCALATED) rather than raise, when FakeAdapter.run() is made to throw.
+# This closes that real gap between what the code comment claimed and
+# what was actually guarded by a test.
+# --------------------------------------------------------------------------
+
+def test_capability_adapter_raising_does_not_crash_the_run(tmp_dir, monkeypatch):
+    from config.settings import settings
+    from orchestrator.kernel import RegisteredTool
+    from orchestrator.schemas import RequirementInput, RunStatus, TestSpec
+    from target_app.demo_login_app import render_login_screen
+
+    monkeypatch.setattr(settings, "project_root", tmp_dir)
+    monkeypatch.setattr(
+        FakeAdapter, "run",
+        lambda self, payload: (_ for _ in ()).throw(RuntimeError("simulated adapter crash")),
+    )
+
+    spec = TestSpec(
+        test_id="TC-CRASH-001",
+        requirement_ref="REQ-AF4",
+        steps=[
+            TestStep(
+                step_id=1,
+                action=ActionType.CAPABILITY_CHECK,
+                capability_type=CapabilityType.FAKE,
+                capability_params={"query": "SELECT 1"},
+            ),
+        ],
+    )
+
+    def provider(run_id: str, step_id: int) -> str:
+        path = tmp_dir / f"{run_id}_{step_id}.png"
+        if not path.exists():
+            render_login_screen("initial", path)
+        return str(path)
+
+    engine = RunEngine(screenshot_provider=provider, memory=RunMemoryStore())
+    engine.registry.register(
+        RegisteredTool(
+            name="Planner.generate_spec",
+            entrypoint=lambda payload: spec,
+            input_schema=RequirementInput,
+            output_schema=TestSpec,
+        )
+    )
+
+    # The actual behavioral contract: this must NOT raise.
+    result = engine.run(requirement_text="irrelevant -- Planner tool is overridden above")
+
+    assert result.report.status == RunStatus.ESCALATED
+    assert result.report.escalated_steps == 1
+
+
+def test_capability_adapter_crash_is_recorded_in_decision_trace_log(tmp_dir, monkeypatch):
+    """AF4's other half: the crash must be mechanically findable
+    afterward via find_anomalies(), not just survivable."""
+    import tempfile
+    from unittest.mock import patch
+
+    from config.settings import settings
+    from orchestrator.decision_trace_log import DecisionTraceLog, find_anomalies
+    from orchestrator.kernel import RegisteredTool
+    from orchestrator.schemas import RequirementInput, TestSpec
+    from target_app.demo_login_app import render_login_screen
+
+    monkeypatch.setattr(settings, "project_root", tmp_dir)
+    monkeypatch.setattr(
+        FakeAdapter, "run",
+        lambda self, payload: (_ for _ in ()).throw(RuntimeError("simulated adapter crash")),
+    )
+
+    spec = TestSpec(
+        test_id="TC-CRASH-002",
+        requirement_ref="REQ-AF4",
+        steps=[
+            TestStep(
+                step_id=1,
+                action=ActionType.CAPABILITY_CHECK,
+                capability_type=CapabilityType.FAKE,
+                capability_params={"query": "SELECT 1"},
+            ),
+        ],
+    )
+
+    def provider(run_id: str, step_id: int) -> str:
+        path = tmp_dir / f"{run_id}_{step_id}.png"
+        if not path.exists():
+            render_login_screen("initial", path)
+        return str(path)
+
+    with tempfile.TemporaryDirectory() as log_dir:
+        trace_path = str(Path(log_dir) / "decision_trace.jsonl")
+        fresh_log = DecisionTraceLog(filepath=trace_path)
+        with patch("orchestrator.run_engine.decision_trace_log", fresh_log):
+            engine = RunEngine(screenshot_provider=provider, memory=RunMemoryStore())
+            engine.registry.register(
+                RegisteredTool(
+                    name="Planner.generate_spec",
+                    entrypoint=lambda payload: spec,
+                    input_schema=RequirementInput,
+                    output_schema=TestSpec,
+                )
+            )
+            engine.run(requirement_text="irrelevant -- Planner tool is overridden above")
+
+        anomalies = find_anomalies(trace_path, category="capability_adapter")
+        assert len(anomalies) == 1
+        assert anomalies[0]["decision"] == "crash_caught"
+        assert anomalies[0]["backend"] == "fake"
+        assert "simulated adapter crash" in anomalies[0]["reason"]
