@@ -3705,3 +3705,365 @@ from the false "complete" state that entry originally claimed.
 
 
 
+
+## D-067 — Debugging pass: 4 pytest failures fixed, 3 real click-audit bugs found and fixed (2026-07-25)
+
+**Decided:** 2026-07-25
+**Context:** A pasted local pytest run (Windows/Git Bash, real Chromium)
+showed 4 real failures against 738 passing. Separately, a user report of
+live `aura explore`/`aura execute --interactive` behavior flagged five
+concrete symptoms: explore not detecting nav/hero, a footer heading
+reported as clickable, `--no-scroll-scan` still scrolling (found to be
+working as designed — see note below), a contact-button click and a
+LinkedIn-footer-link click both reporting "passed" with no visible
+effect, and `--interactive` reporting "verified" without checking the
+right element was actually clicked.
+
+**Fixed:**
+1. `agents/vision/assertions.py::_check_page_rendered` — setting
+   `pytesseract.pytesseract.tesseract_cmd` was wrapped in the same
+   try/except as the actual OCR call, so a failure there (e.g. an
+   unexpected `pytesseract` module shape) masked a real blank-screenshot
+   OCR result and fell back to "treat as rendered." Split into its own
+   try/except; the real OCR call now runs regardless.
+2. `tests/test_cross_browser.py::test_firefox_engine_selected...` — the
+   test's `assert_called_once_with(headless=...)` was missing the
+   `args=["--start-maximized"]` kwarg `runtime/hooks/browser.py`
+   legitimately passes for non-headless launches. Test updated to match
+   intended behavior, not a code bug.
+3. `tests/test_no_silent_excepts.py` — 4 flagged bare
+   `except Exception: return <default>` blocks
+   (`agents/vision/dom_extractor.py:153`, `agents/vision/dom_locator.py:156`,
+   `orchestrator/ui_audit_runner.py:117`, `runtime/hooks/browser.py:324`)
+   got `.debug()` logging added rather than allowlisted.
+4. `tests/test_run_engine.py::test_run_engine_completes_full_login_flow`
+   — passes in isolation and in the full suite here; the pasted failure
+   traced to a live Gemini network call in the reporter's own
+   environment (HermesAgentBackend connection-refused → CloudLLMBackend
+   escalation, both real network calls), not a code defect.
+
+**Real bugs found and fixed, beyond the pasted failures:**
+5. **Footer-heading false-positive** — `agents/vision/ui_audit.py`'s
+   `_looks_interactive` text-shape heuristic (short, title-case text)
+   also matches plain headings ("Get In Touch"). `has_nav`/`has_hero`/
+   `has_footer` were also computed from the OCR-only pass *before* DOM
+   elements were merged in, so a nav/hero built from icon-only DOM
+   controls with no OCR-readable text was invisible to those flags.
+   Fixed in `orchestrator/ui_audit_runner.py`: landmark presence is now
+   recomputed from the merged OCR+DOM element set, and OCR-flagged
+   "interactive" elements get cross-checked against real DOM ground
+   truth (kept only if an exact nav/CTA/footer vocab match, or a real
+   DOM control sits at the same position) whenever a live DOM scan
+   succeeded. `agents/vision/dom_extractor.py::to_ui_elements` also
+   previously only classified nav/body/footer, never hero — added.
+6. **The actual root cause of "click reported passed but nothing
+   happened"** — `runtime/hooks/interact.py::dom_smart_back()`
+   unconditionally called `page.go_back()` whenever a click didn't open
+   a new tab, *even when the click itself did nothing at all* (a
+   non-functional element, or a matched-but-wrong element). That blind
+   back-navigation itself produced a large screenshot/DOM diff, which
+   the click-audit then read as "state changed → pass." Fixed:
+   `dom_smart_back()` now takes an optional `url_before`; it only
+   navigates back if the click actually navigated the page away from
+   where it was. All three call sites
+   (`ui_audit_runner.py::_try_dom_click`, the direct-coordinate dispatch
+   path, and the `get_click_point_in_page` dispatch path) now capture
+   the URL immediately before dispatching the click and pass it through.
+7. **`--interactive` accepting any screen change as "verified"** —
+   `orchestrator/run_engine.py`'s `WAIT_FOR_HUMAN_ACTION` branch treated
+   *any* pixel-hash difference as a pass whenever no `expected_state` was
+   given (the normal case for this mode, since `aura/cli/execute_cmd.py`'s
+   `execute_interactive()` never sets one). Replaced with
+   `_check_human_action_evidence()`: a disclosed keyword-heuristic check
+   (same posture as `ui_audit_runner.py`'s existing requirement-prompt
+   matching) comparing OCR text before/after against the prompt's
+   wording. A match passes at reduced confidence (0.6, vs. 1.0 for a
+   real `expected_state` check); no match escalates for manual review
+   instead of auto-passing.
+8. **`--no-scroll-scan` investigated, found working as designed** — the
+   flag only ever controlled `orchestrator/autoscan.py`'s pre-pass
+   full-page error scan (`explore_cmd.py`'s `scroll_scan = not
+   no_scroll_scan` wiring is correct); scrolling that happens *during*
+   the click-audit to bring a below-the-fold element into view before
+   clicking it is separate, expected behavior, not a bug in this flag.
+   No code change; documented here so it isn't re-investigated as if
+   unresolved.
+
+**Also shipped:** `aura explore --debug` — prints each element's
+`resolution_strategy` (`dom`/`dom_extractor_direct`/`ocr`) and new-tab
+handling inline. This field already existed on `ClickCheckResult` but
+was previously only visible by reading the JSON report by hand.
+
+**Verified:** full suite run locally (Ubuntu sandbox, real Chromium
+absent): 707 passed, 1 xfailed, 30 failed / 5 errors — all 30+5 confirmed
+to be the pre-existing "Chromium binary not installed in this sandbox"
+class (`BrowserType.launch: Executable doesn't exist at
+/opt/pw-browsers/...`), identical failure signature before and after
+this pass, zero regressions. All 4 originally-pasted failures pass in
+isolation and in the full run. `tests/test_dom_extractor.py`'s band-
+boundary parametrize table updated to reflect the hero-band fix (one
+boundary case's expected band changed from `"body"` to `"hero"`,
+matching the newly-added band, not a behavior regression).
+
+**Revisit when:** the fixes above are heuristic-hardening, not the
+structural rewrite this bug class calls for — see D-068.
+
+---
+
+## D-068 — Re-architecture plan and unified "Brain" core design adopted (2026-07-25)
+
+**Decided:** 2026-07-25
+**Decision:** D-067's bugs (especially D-067.6, the blind `go_back()`)
+were possible because core cross-cutting decisions — DOM-vs-OCR
+discovery, change-detection method, retry/escalation policy — are each
+independently re-derived in multiple files (`ui_audit_runner.py`,
+`run_engine.py`, `spec_generator.py`, `guardrails.py`) instead of owned
+in one place. Two design documents are adopted as the forward plan,
+committed under `docs/`:
+
+- **`docs/AURA_REARCHITECTURE_PLAN.md`** — phased plan: a real static-
+  HTML fixture-tier integration test suite (built first, as the
+  acceptance gate for everything after it); a unified logging/debug
+  layer plus a new `aura explain <run_id>` command (merged timeline +
+  annotated screenshot overlay); DOM-first dispatch as the default
+  everywhere (OCR becomes fallback-only, gated on one condition); full
+  removal of the OS-level mouse/keyboard/screenshot dependency
+  (`pyautogui`/`mss`) in favor of Playwright-native dispatch everywhere
+  a live page exists; a `MutationObserver`-based change-detection gate
+  replacing pixel-hash-diff as primary (hash-diff kept only as the
+  fallback for the no-live-page case); CLI loading/status feedback.
+- **`docs/AURA_BRAIN_ARCHITECTURE.md`** — the structural fix underneath
+  that plan: a new `orchestrator/brain/` package (`Intent` /
+  `Policy` / `Router`) that every entrypoint (CLI, API, future Slack
+  Tag) routes through, so each cross-cutting decision (DOM-vs-OCR,
+  mutation-vs-hash-diff, retry thresholds, confidence thresholds) is
+  answered in exactly one place (`Policy`) instead of re-derived per
+  caller. `RunEngine`, `ui_audit_runner`, `dom_extractor`, the
+  capability adapters, `healing_loop`, and `SkillStore` keep their
+  current internal logic unchanged and become the Brain's "hands" — the
+  Brain is deliberately scoped to coordination and policy only, not a
+  second implementation of what those modules already do (see that
+  doc's §5 for the explicit anti-pattern this is guarding against). A
+  new `brain_knowledge/` folder (context, guidelines, YAML rules,
+  playbooks, extracted LLM prompts) becomes the Brain's externalized,
+  reviewable policy source, distinct from `orchestrator/memory.py`'s
+  `RunMemoryStore` (per-run history — different concern, deliberately
+  not reusing that name) and distinct from `docs/decisions.md` (history
+  of *why*, vs. `brain_knowledge/`'s current *state*).
+
+**Status:** design-only, not yet implemented. Both documents include a
+revised, dependency-ordered phase table (`B1`: Brain scaffolding as a
+zero-behavior-change pass-through layer; `B2`: rule extraction into
+`brain_knowledge/rules/*.yaml`; then the fixture tier and the rest of
+the original plan's phases, each now implemented as a `Policy` method
+rather than scattered code).
+
+**Revisit when:** B1 (Brain scaffolding) actually lands — at that point
+this entry should be marked superseded by the implementation's own
+decision entry, per this log's own "don't delete, mark superseded"
+convention.
+
+## D-069 — Phase 0 shipped: real-HTML fixture integration tier (2026-07-25)
+
+**Decided:** 2026-07-25
+**Decision:** Built `docs/AURA_REARCHITECTURE_PLAN.md`'s Phase 0 as
+designed: `tests/integration/` — a new tier that runs
+`orchestrator.ui_audit_runner.run_exploration` (the real `aura explore`
+engine, no mocks) against real static HTML served over a real local
+HTTP server (`tests/conftest_local_server.py`, reused from D-058's AB1
+tier) and rendered in a real headless Chromium, asserting the report
+against a committed, reviewable answer key.
+
+**Shipped:**
+- `tests/fixtures/pages.py` — 3 new fixtures: `MARKETING_SITE_PAGE`
+  (real nav/hero/footer, a footer heading that must NOT be clickable, a
+  real `target="_blank"` link, a genuinely dead button, a real working
+  CTA), `SPA_MUTATION_PAGE` (in-page DOM mutation with no navigation),
+  `ICON_ONLY_NAV_PAGE` (nav built entirely from `aria-label`'d icon
+  buttons with zero OCR-readable text — only reachable via the DOM
+  path).
+- `tests/fixtures/answer_keys.py` — the expected outcome for each
+  fixture, as data, separate from the test assertions themselves.
+- `tests/integration/test_explore_against_fixtures.py` — 3 tests, one
+  per fixture, each a direct regression test for one of D-067's three
+  real bugs: the footer heading must never appear as a click candidate
+  at all; the dead button must report `state_changed=False` (not a
+  false pass); the `target="_blank"` link must report
+  `new_tab_opened=True` and no false same-page navigation; the SPA
+  toggle must report `state_changed=True` with `url` unchanged (the
+  exact case pre-D-067 `dom_smart_back()` would have broken via its
+  blind `go_back()`); the icon-only nav's `has_nav` must be `True` via
+  the DOM path alone.
+- `tests/integration/conftest.py` — forces headless + enables
+  `settings.enable_dom_extractor`, and a shared `open_real_page_or_skip()`
+  helper that calls `pytest.skip()` with a clear reason when the
+  Chromium binary isn't installed, rather than erroring the whole run.
+  This is a deliberate improvement over the existing AB1 real-browser
+  tier (`tests/test_real_browser_fixtures.py`), which has no such guard
+  and currently contributes to the "30 failed / 5 errors" baseline
+  noted throughout D-067/D-068 as hard errors rather than clean skips —
+  out of scope to retrofit here, but worth doing as a follow-up so that
+  baseline becomes "N skipped" instead of "N errors."
+- `pyproject.toml` — registered the `integration` pytest marker.
+
+**Verified:** `pytest tests/integration/` — 3 skipped (Chromium binary
+not installable in this sandbox; network egress is allowlisted to a
+fixed domain set that doesn't include `cdn.playwright.dev`, confirmed
+via a direct `playwright install chromium` attempt: `403 Host not in
+allowlist`) — clean skip, not an error, confirming the skip guard
+itself works as designed. Full suite re-run: 707 passed / 30 failed / 5
+errors / 3 skipped / 1 xfailed — identical pre-existing baseline, zero
+regressions, the 3 new tests skip cleanly rather than adding to the
+error count.
+
+**Known limitation:** these tests are written and verified to collect
+and skip correctly, but have **not** been run to a real pass/fail
+verdict against actual Chromium in this environment — that requires a
+CI environment (or local machine) with the Playwright browser binaries
+actually installed. Whoever runs this next with a real browser
+available should treat the first real run as the true acceptance check
+for D-067's fixes, not this session's skip-only verification.
+
+**Revisit when:** Phase B1 (Brain scaffolding) lands — `router.py`'s
+`explore` path should eventually be exercised by this same fixture tier
+directly, not just `ui_audit_runner.run_exploration` underneath it.
+
+## D-070 — Phase B1 shipped: Brain scaffolding, `explore` intent migrated (2026-07-25)
+
+**Decided:** 2026-07-25
+**Decision:** Built `docs/AURA_BRAIN_ARCHITECTURE.md`'s Phase B1 as
+designed: `orchestrator/brain/` (`Intent`, `Policy`, `Router`,
+`AuraBrain`) plus the `brain_knowledge/` skeleton, and migrated the
+`explore` intent end-to-end as the proof-of-concept slice.
+
+**Shipped:**
+- `orchestrator/brain/intent.py` — `Intent` dataclass (`kind`, `params`,
+  `caller`), fixed `IntentKind` literal set for the 6 intents named in
+  the design doc.
+- `orchestrator/brain/context.py` — `BrainKnowledge.load()`, locates
+  `brain_knowledge/` at the repo root and exposes its structure.
+  `rules`/`prompts` are empty dicts pending B2 (real YAML parsing).
+- `orchestrator/brain/policy.py` — `Policy.discovery_source()`,
+  `.change_detection_method()`, `.retry_policy()`,
+  `.confidence_threshold()`. Each mirrors an existing hardcoded
+  condition/value from `ui_audit_runner.py`/`run_engine.py`/
+  `spec_generator.py` exactly (documented per-method which file it
+  currently lives in) — correct and unit-tested now, but **not yet
+  called by anything outside this package**. Wiring those files to call
+  `Policy` instead of their own local checks is Phase 2/4's job
+  specifically, not B1's; B1 is a zero-behavior-change scaffolding pass.
+- `orchestrator/brain/router.py` — `Router.resolve(intent)`. Only
+  `_handle_explore()` is implemented; every other intent kind raises a
+  clear `NotImplementedError` naming which CLI command should keep
+  handling it directly until migrated. `_handle_explore()` is the
+  orchestration logic moved verbatim (same call sequence, same
+  defaults) out of `aura/cli/explore_cmd.py`.
+- `orchestrator/brain/brain.py` — `AuraBrain.handle(intent)`, thin
+  wrapper over `Router.resolve()`. Unified logging (Phase 1) is
+  explicitly noted as the next thing this method grows, not added here.
+- `aura/cli/explore_cmd.py` — thinned: builds an `Intent`, calls
+  `AuraBrain().handle()`, renders the result. Console output byte-for-
+  byte equivalent to before (verified: `tests/test_explore_cmd.py`'s 3
+  existing tests pass unchanged, plus `tests/test_cli.py`).
+- `brain_knowledge/` — `context.md` (living architecture map, kept
+  under ~200 lines per its own instruction), `guidelines.md` (G-000
+  through G-006, each a plain-English rule the Brain/its callers must
+  follow, referenceable by ID the same way `decisions.md`'s `D-0xx` IDs
+  are), `rules/*.yaml` (5 files: discovery, change_detection, retry,
+  confidence, bands — each a documented placeholder for B2's extraction,
+  not yet loaded by `Policy`), `playbooks/explore.md` (human-readable
+  mirror of `router.py`'s actual explore call sequence), `prompts/`
+  (empty, pending the `execute_*` intents' migration),
+  `CHANGELOG.md`.
+- `tests/test_brain.py` — new, 7 tests: `Policy` methods return the
+  documented defaults; an unmigrated intent raises a clear error, not a
+  crash; the `explore` intent reaches `orchestrator.ui_audit_runner.run_exploration`
+  with the exact same parameters the pre-migration CLI code passed
+  (the core regression test proving this was a coordination move, not
+  a behavior change); a browser-open failure is recorded, not raised.
+
+**Explicitly deferred to B1's own follow-on work (not B2, a different
+concern):** migrating `execute_spec`/`execute_prompt`/
+`execute_interactive`/`ui_audit`/`capability_check` onto the Brain.
+`aura/cli/execute_cmd.py` is untouched in this pass — it still
+hand-assembles its own pipeline exactly as before, which is why
+`Router.resolve()` raises `NotImplementedError` for those intent kinds
+rather than silently doing nothing.
+
+**Note on process:** an earlier, incomplete attempt at this exact
+scaffolding was started in a prior turn (before Phase 0 was
+prioritized), left with a broken import chain
+(`orchestrator/brain/__init__.py` importing `brain.py`/`policy.py`
+files that didn't exist yet), and deliberately deleted rather than
+shipped half-built (see D-069's STATUS.md cross-reference). This entry
+is the complete, working version.
+
+**Verified:** full suite: 714 passed (707 + 7 new) / 30 failed / 5
+errors / 3 skipped / 1 xfailed — identical pre-existing Chromium-
+unavailable baseline, zero regressions from either the new package or
+the `explore_cmd.py` migration.
+
+**Revisit when:** the remaining intent kinds are migrated (extends
+`router.py`, no new files needed), or when Phase 1's unified logging
+wraps `AuraBrain.handle()`.
+
+## D-071 — Phase B2 shipped: rule extraction into brain_knowledge/rules/*.yaml (2026-07-25)
+
+**Decided:** 2026-07-25
+**Decision:** Populated all 5 `brain_knowledge/rules/*.yaml` files (B1
+had shipped them as documented-but-empty placeholders) with real data,
+and wired `orchestrator/brain/context.py::BrainKnowledge.load()` +
+`orchestrator/brain/policy.py::Policy` to actually read from them.
+
+**Shipped:**
+- `rules/discovery.yaml` — `ocr_vocab.{nav,cta,footer}` populated with
+  the exact contents of `agents/vision/ui_audit.py`'s `_NAV_VOCAB`
+  (25 entries) / `_CTA_VOCAB` (27) / `_FOOTER_VOCAB` (18) as of
+  D-067/D-070 — a byte-for-byte transcription, verified by a test
+  asserting the loaded set's size and spot-checking specific entries.
+- `rules/bands.yaml` — `nav_band_end`/`hero_band_end`/`footer_band_start`
+  (0.10/0.45/0.88), matching `ui_audit.py`'s constants and
+  `dom_extractor.py`'s D-067 hero-band fix.
+- `rules/retry.yaml`, `rules/confidence.yaml` — the values
+  `orchestrator/brain/policy.py` was already hardcoding in B1, now the
+  actual source instead of the fallback.
+- `rules/change_detection.yaml` — a first-draft `ignore_selectors` list
+  for Phase 4's MutationObserver noisy-node denylist — new data, not
+  extracted from anywhere existing in the codebase (nothing has a
+  denylist today), populated now so Phase 4 starts reviewed instead of
+  invented mid-implementation.
+- `orchestrator/brain/context.py::BrainKnowledge.load()` — parses every
+  `rules/*.yaml` via `yaml.safe_load()`, non-fatally: a missing folder,
+  a missing file, or one malformed file among several all degrade
+  gracefully (logged at `warning`, not raised) rather than breaking
+  every command that constructs a `Policy`.
+- `orchestrator/brain/policy.py` — every method reads
+  `self.knowledge.rules` first, with the exact B1 hardcoded value kept
+  as a fallback for a missing/broken knowledge folder. Two new methods
+  not present in B1: `ocr_vocab(band)` and `band_boundaries()` — the
+  vocab/band data didn't have anywhere to live in the Brain until this
+  pass populated the YAML files.
+- `tests/test_brain.py` — 3 new tests (10 total): real YAML data loads
+  and matches `ui_audit.py`'s current values exactly; a missing
+  knowledge folder falls back to the same B1 defaults without raising;
+  one malformed YAML file among several doesn't take down the others.
+
+**Explicitly still not done (Phase 2/4's job, not B2's):**
+`agents/vision/ui_audit.py` still has its own hardcoded
+`_NAV_VOCAB`/`_CTA_VOCAB`/`_FOOTER_VOCAB`/band constants — it does NOT
+read from `Policy.ocr_vocab()`/`Policy.band_boundaries()` yet. Editing
+`brain_knowledge/rules/discovery.yaml` today has zero effect on `aura
+explore`'s actual behavior. This file existing with real, verified-
+correct data is what makes that repoint (Phase 2) a mechanical
+"read from here instead of the module constant" change instead of a
+data-transcription exercise done for the first time mid-rewrite —
+that's the entire point of doing B2 before Phase 2, not a shortcut
+around it.
+
+**Verified:** full suite: 717 passed (714 + 3 new) / 30 failed / 5
+errors / 3 skipped / 1 xfailed — identical baseline, zero regressions.
+
+**Revisit when:** Phase 2 repoints `agents/vision/ui_audit.py` and
+`agents/vision/dom_extractor.py` to call `Policy.ocr_vocab()`/
+`Policy.band_boundaries()` instead of their own module constants — at
+that point editing the YAML becomes load-bearing for the first time.

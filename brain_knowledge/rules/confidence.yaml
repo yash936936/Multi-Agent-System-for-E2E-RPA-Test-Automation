@@ -1,0 +1,11 @@
+# brain_knowledge/rules/confidence.yaml
+#
+# Phase B2 (docs/AURA_REARCHITECTURE_PLAN.md, docs/decisions.md D-071).
+# Loaded by orchestrator/brain/policy.py::Policy.confidence_threshold().
+# Values match orchestrator/run_engine.py's D-067.7 keyword-heuristic
+# fix exactly (the WAIT_FOR_HUMAN_ACTION confidence literals).
+
+expected_state_match: 1.0
+keyword_heuristic_match: 0.6
+keyword_heuristic_weak_match: 0.3
+no_match: 0.0

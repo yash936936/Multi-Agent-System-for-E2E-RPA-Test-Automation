@@ -1,0 +1,19 @@
+# brain_knowledge/rules/change_detection.yaml
+#
+# Phase B2 (docs/AURA_REARCHITECTURE_PLAN.md, docs/decisions.md D-071).
+# Loaded by orchestrator/brain/policy.py::Policy.change_detection_method().
+# ignore_selectors is new data (not extracted from anywhere -- nothing
+# in the codebase has a noisy-node denylist yet) describing the shape
+# Phase 4's MutationObserver implementation will need; populated now so
+# Phase 4 starts from a reviewed list instead of inventing one
+# mid-implementation.
+
+default_method: mutation_observer  # used when dom_page is available
+fallback_method: hash_diff          # used when dom_page is None
+
+mutation_observer:
+  settle_wait_seconds: 0.5
+  ignore_selectors:
+    - "[data-ad]"
+    - ".analytics-beacon"
+    - "[aria-live]"   # live regions (clocks, tickers) mutate on their own timer, independent of any click

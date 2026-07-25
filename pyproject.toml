@@ -75,3 +75,6 @@ exclude = [
 python_files = ["test_*.py"]
 python_classes = ["*Tests"]
 python_functions = ["test_*"]
+markers = [
+    "integration: real-Chromium, real-DOM tests against static HTML fixtures with a known-correct answer key (docs/AURA_REARCHITECTURE_PLAN.md Phase 0). Requires the Chromium binary; skip cleanly when it's unavailable rather than erroring the whole suite.",
+]

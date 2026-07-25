@@ -100,7 +100,9 @@ def test_firefox_engine_selected_launches_firefox_not_chromium(monkeypatch):
     # headless defaults to settings.playwright_headless (False), not a
     # hardcoded True -- see config/settings.py's Phase W gap-closure note
     # on why OCR needs the page actually visible on screen.
-    fake_firefox_engine.launch.assert_called_once_with(headless=settings.playwright_headless)
+    fake_firefox_engine.launch.assert_called_once_with(
+        headless=settings.playwright_headless, args=["--start-maximized"]
+    )
     fake_chromium_engine.launch.assert_not_called()
 
 

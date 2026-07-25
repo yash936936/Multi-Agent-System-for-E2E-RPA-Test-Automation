@@ -107,7 +107,16 @@ def _check_page_rendered(screenshot_path: str | Path) -> tuple[bool, str | None]
 
     try:
         if settings.tesseract_cmd:
-            pytesseract.pytesseract.tesseract_cmd = settings.tesseract_cmd
+            try:
+                pytesseract.pytesseract.tesseract_cmd = settings.tesseract_cmd
+            except Exception as e:
+                # Setting the cmd path is best-effort configuration, not the
+                # OCR call itself -- a failure here (e.g. an unexpected
+                # pytesseract module shape) shouldn't abort the actual
+                # image_to_string attempt below.
+                logging.getLogger(__name__).debug(
+                    "_check_page_rendered: could not set tesseract_cmd (%s) -- continuing with default.", e
+                )
         with Image.open(screenshot_path) as img:
             img.load()
             text = pytesseract.image_to_string(img)

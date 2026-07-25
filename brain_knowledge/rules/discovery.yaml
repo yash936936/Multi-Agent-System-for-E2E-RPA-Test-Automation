@@ -1,0 +1,93 @@
+# brain_knowledge/rules/discovery.yaml
+#
+# Phase B2 (docs/AURA_REARCHITECTURE_PLAN.md, docs/decisions.md D-071).
+# Loaded by orchestrator/brain/policy.py::Policy at construction time
+# via orchestrator/brain/context.py::BrainKnowledge.load().
+#
+# ocr_vocab below is a byte-for-byte copy of agents/vision/ui_audit.py's
+# _NAV_VOCAB / _CTA_VOCAB / _FOOTER_VOCAB module-level sets as of
+# D-067/D-070 -- moved here as the canonical source, but
+# agents/vision/ui_audit.py has NOT been repointed to read from this
+# file yet (that repoint, with its own before/after diff review, is
+# Phase 2's job specifically). This file existing with real data is
+# what makes that repoint a mechanical "read from here instead" change
+# instead of a data-transcription exercise done under pressure
+# mid-rewrite.
+
+default_source: dom  # used when a live Playwright page (dom_page) is available
+fallback_source: ocr  # used when dom_page is None
+
+ocr_vocab:
+  nav:
+    - home
+    - about
+    - about us
+    - products
+    - services
+    - solutions
+    - pricing
+    - blog
+    - contact
+    - contact us
+    - support
+    - docs
+    - documentation
+    - resources
+    - careers
+    - company
+    - team
+    - faq
+    - login
+    - log in
+    - sign in
+    - sign up
+    - menu
+    - search
+    - cart
+  cta:
+    - get started
+    - sign up
+    - sign in
+    - log in
+    - login
+    - subscribe
+    - learn more
+    - read more
+    - book now
+    - book a demo
+    - request demo
+    - contact us
+    - contact sales
+    - download
+    - try free
+    - try it free
+    - start free trial
+    - buy now
+    - shop now
+    - submit
+    - send
+    - join now
+    - explore
+    - discover more
+    - watch video
+    - see plans
+    - view pricing
+  footer:
+    - privacy
+    - privacy policy
+    - terms
+    - terms of service
+    - terms of use
+    - cookie policy
+    - cookies
+    - copyright
+    - all rights reserved
+    - sitemap
+    - careers
+    - facebook
+    - twitter
+    - linkedin
+    - instagram
+    - youtube
+    - newsletter
+    - unsubscribe

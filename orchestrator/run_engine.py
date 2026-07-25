@@ -56,6 +56,56 @@ from orchestrator.skill_store import SkillStore
 from orchestrator.spec_validator import SpecValidationIssue, validate_spec_or_raise
 from runtime.hooks.capture import file_hash
 
+
+def _check_human_action_evidence(
+    target_description: str | None, baseline_path: str, latest_path: str
+) -> tuple[bool, str]:
+    """
+    Best-effort, disclosed-as-heuristic check for WAIT_FOR_HUMAN_ACTION
+    steps that have no explicit expected_state: does the screen after the
+    detected change actually contain text plausibly related to what the
+    person was asked to do? A raw pixel-hash difference alone (the only
+    prior check) is satisfied by a hover effect, a blinking cursor, an
+    unrelated animation, or the person clicking something other than the
+    described target -- none of which mean the described action actually
+    happened. This mirrors orchestrator/ui_audit_runner.py's
+    _check_requirement_prompt() keyword heuristic rather than inventing a
+    new verification strategy: same conservative, disclosed-as-a-heuristic
+    posture, just applied to a before/after pair instead of a click log.
+    """
+    if not target_description or not target_description.strip():
+        # Nothing to check the change against -- fall back to the old
+        # "a change happened" acceptance rather than blocking on missing
+        # input that was never provided.
+        return True, "No target description given to verify against -- accepted on screen change alone."
+
+    try:
+        from agents.vision.locator import list_text_elements
+
+        before_text = " ".join(el.get("text", "") for el in list_text_elements(baseline_path)).lower()
+        after_text = " ".join(el.get("text", "") for el in list_text_elements(latest_path)).lower()
+    except Exception:
+        return True, "OCR unavailable to verify the change against the prompt -- accepted on screen change alone."
+
+    prompt_words = {w.strip(".,!?\"'") for w in target_description.lower().split() if len(w) > 3}
+    newly_visible = sorted(w for w in prompt_words if w in after_text and w not in before_text)
+    also_present_before = sorted(w for w in prompt_words if w in after_text and w in before_text)
+
+    if newly_visible:
+        return True, f"Found new on-screen text overlapping the request after the change ({', '.join(newly_visible[:6])})."
+    if also_present_before:
+        # Weaker signal (the words were already there, e.g. a nav item's
+        # own label) -- still better than nothing, but flagged as such.
+        return True, (
+            f"On-screen text overlapping the request ({', '.join(also_present_before[:6])}) is present, "
+            "though it was already visible before the change too -- review the screenshots to confirm."
+        )
+    return False, (
+        "The screen changed, but no on-screen text overlapping the request was found afterward -- "
+        "this may mean the wrong element was clicked, or the described action uses different wording. "
+        "Escalating for manual review rather than assuming it passed."
+    )
+
 ScreenshotProvider = Callable[[str, int], str]  # (run_id, step_id) -> screenshot_path
 
 
@@ -512,23 +562,39 @@ class RunEngine:
                         detail=assertion_detail, escalate=not passed,
                     )
                 elif changed:
-                    # No specific expected_state given -- the instruction
-                    # was just "do the thing," and something visibly did
-                    # happen, so treat that as success rather than
-                    # guessing at an assertion that was never specified.
-                    passed = True
+                    # No specific expected_state was given -- this used to
+                    # mean "the instruction was just 'do the thing,' and
+                    # something visibly did happen, so treat that as
+                    # success." That's too permissive: literally any screen
+                    # change (a hover effect, a blinking cursor, an
+                    # unrelated animation, or the human clicking the WRONG
+                    # element entirely) satisfied it, so `aura execute
+                    # --interactive --prompt "check the contact button"`
+                    # reported "verified" even when the person clicked
+                    # something else, or nothing relevant happened at all.
+                    # Now this runs the same disclosed keyword heuristic
+                    # `aura explore`'s requirement-prompt matching uses:
+                    # does newly-visible on-screen text actually overlap
+                    # words from the described action? A real match is
+                    # still just a heuristic (not certainty), so it's
+                    # reported at reduced confidence rather than the full
+                    # 1.0 a real expected_state check earns; no match at
+                    # all means this escalates for human review instead of
+                    # silently passing.
+                    passed, human_check_notes = _check_human_action_evidence(step.target_description, baseline_path, latest_path)
                 else:
+                    human_check_notes = None
                     passed = False
 
                 result = VisionActionResult(
                     step_id=step.step_id,
                     action_taken="wait_for_human",
-                    confidence=1.0 if changed else 0.0,
+                    confidence=(0.6 if passed else 0.3) if changed and not step.expected_state else (1.0 if changed else 0.0),
                     escalate=not passed,
                     screenshot_ref=latest_path,
                     assertion_passed=passed if changed else None,
-                    verification_source="ocr" if assertion_detail is not None else "none_required",
-                    raw_evidence=assertion_detail,
+                    verification_source="ocr" if assertion_detail is not None else ("keyword_heuristic" if changed else "none_required"),
+                    raw_evidence=assertion_detail if assertion_detail is not None else ({"notes": human_check_notes} if changed else None),
                     human_action_evidence={
                         "elapsed_seconds": round(elapsed, 2),
                         "timeout_seconds": timeout,
@@ -543,7 +609,8 @@ class RunEngine:
                         # happened, not just "passed."
                         "acceptance_basis": (
                             "verified_against_expected_state" if changed and step.expected_state
-                            else "screen_change_accepted_no_expected_state" if changed
+                            else "verified_against_prompt_keywords" if changed and passed
+                            else "screen_changed_but_no_prompt_match" if changed
                             else "no_screen_change_detected"
                         ),
                     },

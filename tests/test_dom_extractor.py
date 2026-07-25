@@ -75,10 +75,10 @@ def test_extract_interactive_elements_tolerates_missing_optional_fields():
     "cy,page_height,expected_band",
     [
         (10, 1000, "nav"),       # 1% down -> below _NAV_BAND_END (10%)
-        (500, 1000, "body"),     # 50% down -> between nav and footer bands
+        (500, 1000, "body"),     # 50% down -> between hero and footer bands
         (950, 1000, "footer"),   # 95% down -> at/above _FOOTER_BAND_START (88%)
         (99, 1000, "nav"),       # just under the 10% nav cutoff
-        (100, 1000, "body"),     # just at/over the 10% nav cutoff
+        (100, 1000, "hero"),     # just at/over the 10% nav cutoff -> into the hero band
         (880, 1000, "footer"),   # exactly at the 88% footer cutoff
     ],
 )
@@ -88,6 +88,11 @@ def test_to_ui_elements_band_classification_matches_ui_audit_boundaries(cy, page
     exactly -- DOM-sourced and OCR-sourced elements are merged into one
     list downstream (orchestrator/ui_audit_runner.py), so a mismatch here
     would silently misclassify DOM elements relative to their OCR peers.
+
+    Includes the hero band (10%-45%) -- DOM-sourced elements previously
+    only ever landed in nav/body/footer, meaning a DOM-only hero control
+    (e.g. an icon-only carousel arrow with no OCR-readable text) never
+    counted toward has_hero even when a real one was on screen.
     """
     raw = [{"index": 0, "tag": "div", "role": "", "name": "Target", "cx": 50, "cy": cy, "width": 10, "height": 10}]
     page = _FakePage(evaluate_result=raw)

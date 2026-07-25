@@ -1,0 +1,22 @@
+# brain_knowledge/rules/retry.yaml
+#
+# Phase B2 (docs/AURA_REARCHITECTURE_PLAN.md, docs/decisions.md D-071).
+# Loaded by orchestrator/brain/policy.py::Policy.retry_policy(). Values
+# match each existing call site's current hardcoded default exactly:
+#   llm_call            -- agents/planner/spec_generator.py's Hermes/Cloud retry loop
+#   click_dispatch       -- orchestrator/ui_audit_runner.py's click attempts (no retry today)
+#   network_capability   -- orchestrator/http_retry.py's default backoff
+# Repointing those three call sites to read from Policy instead of
+# their own local constant is still open (not B2's job -- B2 is making
+# Policy itself data-driven; wiring other subsystems to call Policy at
+# all is Phase 2/4/B1-follow-on, tracked separately per intent kind).
+
+llm_call:
+  max_attempts: 3
+  backoff_seconds: 1.0
+click_dispatch:
+  max_attempts: 1
+  backoff_seconds: 0.0
+network_capability:
+  max_attempts: 3
+  backoff_seconds: 1.0

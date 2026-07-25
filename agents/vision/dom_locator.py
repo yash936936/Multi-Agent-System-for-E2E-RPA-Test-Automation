@@ -34,6 +34,7 @@ as the OCR path, so `VisionActionResult`'s schema doesn't change shape
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -153,7 +154,10 @@ def _resolve_bbox(locator) -> dict | None:
     """
     try:
         return locator.bounding_box()
-    except Exception:
+    except Exception as e:
+        logging.getLogger(__name__).debug(
+            "_resolve_bbox: bounding_box() failed (%s) -- treating as unmeasurable.", e
+        )
         return None
 
 

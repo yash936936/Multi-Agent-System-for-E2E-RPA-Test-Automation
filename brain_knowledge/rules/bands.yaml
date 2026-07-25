@@ -1,0 +1,14 @@
+# brain_knowledge/rules/bands.yaml
+#
+# Phase B2 (docs/AURA_REARCHITECTURE_PLAN.md, docs/decisions.md D-071).
+# Byte-for-byte copy of agents/vision/ui_audit.py's _NAV_BAND_END /
+# _HERO_BAND_END / _FOOTER_BAND_START module-level constants, and of
+# the equivalent literals agents/vision/dom_extractor.py::to_ui_elements()
+# was fixed (D-067) to match. Two separate Python literals, kept in
+# sync by hand, is exactly the kind of duplication this file exists to
+# remove -- not yet repointed to read from here (Phase 2's job, same
+# repoint as discovery.yaml's).
+
+nav_band_end: 0.10       # fraction of page height
+hero_band_end: 0.45
+footer_band_start: 0.88

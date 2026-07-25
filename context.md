@@ -316,3 +316,16 @@ merging it.
    "Next action" for the fix. Don't repeat this: if you merge a fix,
    write its decision entry and correct any doc pointer it invalidates
    before ending that pass, not "in a follow-up."
+
+10. **Rule 4, concretely (2026-07-25 precedent):** a debugging pass
+    (D-067) plus a re-architecture design pass (D-068) both landed in
+    the same session — decisions.md D-067/D-068 written, STATUS.md's
+    "Next action" corrected to point at Phase B1, Roadmap.md updated,
+    all in the same pass as the work itself, per this rule. Before
+    starting any implementation from `docs/AURA_BRAIN_ARCHITECTURE.md`
+    or `docs/AURA_REARCHITECTURE_PLAN.md`, read both documents in full
+    first — they supersede scattered assumptions in older
+    `docs/decisions.md` entries about where DOM-vs-OCR/retry/confidence
+    decisions live in the codebase (those decisions are being
+    consolidated into `orchestrator/brain/policy.py`, not left where
+    D-0xx entries before D-068 describe them).

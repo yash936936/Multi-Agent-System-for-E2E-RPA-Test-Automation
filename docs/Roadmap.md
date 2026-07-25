@@ -603,3 +603,30 @@ explaining why.
 **Phase Z progress (2026-07-23):** the doc/code gap this phase exists to close showed up in the exact form Phase Z anticipated -- real, merged code (D-055's `ActionType.ASSERT` branch and `LinkCheckAdapter.live_page_html` fixes) with zero corresponding decision entry, and `STATUS.md`'s "Next action" pointing at Phase T when phases through Z/D-054 were already done. Both fixed: D-055 written up in full, `STATUS.md`'s "Next action" corrected. D-056 documents four further bugs found in the same pass with patches prepared but **not yet applied to `main`** -- deliberately left in "pending" form rather than marked done, per this phase's own standard of not describing something as complete before it actually is. Genuinely still open, unchanged from the prior note: D-027's per-channel/perceptual diff threshold, Phase X1's multimodal verifier, applying/merging D-056's four patches, and D-056's own noted limitation (the shape-based assertion fallback can't yet distinguish "wrong content rendered" from "no content rendered").
 
 This section exists so the next work session (or the next `debug-qa-finalize` pass) has a concrete, prioritized backlog instead of an open-ended "make it more complete" instruction.
+
+---
+
+## Phase B1/B2 + Phase 0-6 — Brain core + re-architecture (2026-07-25, planned, not started)
+
+Full detail lives in two dedicated documents rather than inline here,
+since both are substantial enough to need their own structure:
+`docs/AURA_REARCHITECTURE_PLAN.md` (fixture tier, DOM-first dispatch,
+OS-mouse removal, MutationObserver change detection, unified logging +
+`aura explain`, CLI spinners) and `docs/AURA_BRAIN_ARCHITECTURE.md`
+(the `orchestrator/brain/` `Intent`/`Policy`/`Router` core and the
+`brain_knowledge/` externalized policy folder that everything else in
+the first document gets implemented through). See D-068 in
+`docs/decisions.md` for the decision record and `docs/STATUS.md`'s
+"Next action" for the current starting point (Phase B1).
+
+Revised phase order (both docs' tables merged): **0** fixture tier,
+**B1** Brain scaffolding (pass-through only), **B2** rule extraction
+into `brain_knowledge/rules/*.yaml`, **1** unified logging + `aura
+explain`, **2** DOM-first dispatch via `Policy.discovery_source()`,
+**3** OS-mouse dependency removal, **4** MutationObserver change
+detection via `Policy.change_detection_method()`, **5** CLI spinners,
+**6** docs. Non-negotiable gate between every phase: the fixture tier
+(0) plus the full existing unit suite green before moving on — this is
+stated explicitly in both documents to avoid repeating the historical
+pattern (visible throughout this file and `decisions.md`'s D-0xx
+history) of layering phase N+1 on top of an unverified phase N.

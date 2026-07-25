@@ -103,7 +103,7 @@ def browser_back() -> None:
     pg.hotkey("alt", "left")
 
 
-def dom_smart_back(page, pages_before: int):
+def dom_smart_back(page, pages_before: int, url_before: str | None = None):
     """
     Playwright-aware "return to where we were" primitive (decisions.md
     D-044) -- fixes a real, verified gap: browser_back()'s OS-level
@@ -130,8 +130,20 @@ def dom_smart_back(page, pages_before: int):
          AURA does not follow the new tab deeper -- the click-audit loop
          tests *this* page's elements one at a time, not every external
          site a link points to.
-      2. Otherwise, use Playwright's own page.go_back() (waits for the
-         navigation to commit) instead of a blind OS keystroke.
+      2. Otherwise, only navigate back if the click actually navigated
+         this same page away from where it was (url_before given and
+         page.url now differs from it). A click on a non-functional
+         element -- the exact case this audit exists to catch -- causes
+         no navigation and no new tab; previously this branch called
+         page.go_back() unconditionally regardless, which for a target
+         with real prior browser history (e.g. AURA's own initial
+         navigation to the page under test) silently navigated the
+         *whole page* away to whatever came before it. That off-target
+         navigation then made the before/after screenshot hash differ
+         for a reason that had nothing to do with the click, so a click
+         that did genuinely nothing got reported as a passing, visible
+         state change. When url_before isn't supplied (older call sites),
+         this preserves the previous unconditional go_back() behavior.
 
     Returns a small result object (new_tab_opened, new_tab_url, went_back)
     so callers can report "opened in a new tab" explicitly instead of
@@ -168,6 +180,14 @@ def dom_smart_back(page, pages_before: int):
         except Exception:
             pass
         return result
+
+    if url_before is not None:
+        try:
+            navigated_away = page.url != url_before
+        except Exception:
+            navigated_away = False  # can't tell -- treat as "nothing to undo" rather than risk an off-target go_back()
+        if not navigated_away:
+            return result
 
     try:
         page.go_back(wait_until="commit", timeout=5000)

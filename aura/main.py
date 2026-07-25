@@ -277,6 +277,7 @@ def explore(
     check_links: bool = typer.Option(False, "--check-links", help="Also run a real HTTP-level link check (actual status codes, not just click-and-diff). Off by default -- opt in explicitly."),
     link_scope: str = typer.Option("all", "--link-scope", help='Only used with --check-links. Which links get checked: "all" (default -- every navigable link on the page), "footer", or "nav".'),
     browser: str = typer.Option("chromium", "--browser", help=f"Phase I1: Playwright browser engine. One of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)}."),
+    debug: bool = typer.Option(False, "--debug", help="Print which resolution strategy (dom/dom_extractor_direct/ocr) actually clicked each element, plus new-tab handling detail."),
 ) -> None:
     """
     Fully autonomous exploration: give it a URL, nothing else. AURA
@@ -290,7 +291,7 @@ def explore(
     settings.playwright_browser = browser
 
     preflight.run_preflight_or_exit()
-    explore_cmd.explore(url, max_elements=max_elements, prompt=prompt, scroll_scan=not no_scroll_scan, check_links=check_links, link_scope=link_scope)
+    explore_cmd.explore(url, max_elements=max_elements, prompt=prompt, scroll_scan=not no_scroll_scan, check_links=check_links, link_scope=link_scope, debug=debug)
 
 
 @app.command()

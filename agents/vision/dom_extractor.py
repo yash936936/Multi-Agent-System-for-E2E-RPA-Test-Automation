@@ -37,6 +37,7 @@ Two entry points:
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 # Kept in one file (not a separate .js asset) so this module has no
@@ -150,7 +151,10 @@ def extract_interactive_elements(page) -> list[DomElement]:
     """
     try:
         raw = page.evaluate(_EXTRACT_JS)
-    except Exception:
+    except Exception as e:
+        logging.getLogger(__name__).debug(
+            "extract_interactive_elements: page.evaluate failed (%s) -- treating as no elements found.", e
+        )
         return []
     if not raw:
         return []
@@ -179,7 +183,7 @@ def to_ui_elements(page, page_height: int):
     local to avoid a hard import-time dependency from dom_extractor.py
     (a low-level module) back up to ui_audit.py.
     """
-    from agents.vision.ui_audit import UIElement, _NAV_BAND_END, _FOOTER_BAND_START
+    from agents.vision.ui_audit import UIElement, _NAV_BAND_END, _HERO_BAND_END, _FOOTER_BAND_START
 
     elements = extract_interactive_elements(page)
     out = []
@@ -189,6 +193,8 @@ def to_ui_elements(page, page_height: int):
             band = "nav"
         elif frac >= _FOOTER_BAND_START:
             band = "footer"
+        elif frac < _HERO_BAND_END:
+            band = "hero"
         else:
             band = "body"
         out.append(UIElement(text=el.name, cx=el.cx, cy=el.cy, band=band, looks_interactive=True))

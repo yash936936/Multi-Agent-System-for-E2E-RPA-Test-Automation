@@ -301,7 +301,33 @@ and after by temporarily reverting the R1 fix and re-running).
 **Tests: 484/484 passing throughout** (no regressions). `ruff check` clean
 on all Phase S-touched files.
 
-## Next action
+## Update — 2026-07-25 — Debugging pass (D-067) + re-architecture plan adopted (D-068)
+
+**D-067 done:** the 4 pytest failures from a pasted local run all fixed
+(OCR-check exception scope, a stale test assertion, 4 silent-except
+allowlist entries replaced with real logging, one environment-flaky
+network test confirmed passing). Three further real bugs found and
+fixed beyond the pasted failures, from a live user report: a footer
+heading was being reported as clickable (OCR text-shape heuristic false
+positive, now cross-checked against DOM ground truth); `dom_smart_back()`
+was unconditionally calling `page.go_back()` on any click that didn't
+open a new tab — including clicks on non-functional elements — which is
+the actual root cause of "click reported passed but nothing happened";
+and `aura execute --interactive` was treating any screen change at all
+as "verified" with no check that the described action's target was what
+actually changed. `aura explore --debug` shipped, surfacing each
+element's resolution strategy inline. Full detail: `docs/decisions.md`
+D-067. Verified: 707 passed / 1 xfailed / 30 failed / 5 errors, all
+30+5 the pre-existing Chromium-binary-unavailable class in this
+sandbox, zero regressions.
+
+**D-068 done (design only):** two new planning documents committed —
+`docs/AURA_REARCHITECTURE_PLAN.md` and
+`docs/AURA_BRAIN_ARCHITECTURE.md`. Full detail in `docs/decisions.md`
+D-068.
+
+## Historical "Next action" pointer (superseded 2026-07-25 by D-067/D-068 — kept per this doc's own don't-delete convention)
+
 > **Phases T–Z and D-053/D-054 are all done** (see `docs/decisions.md`
 > D-042 through D-054) — this section previously pointed at Phase T,
 > which is stale; that work completed several passes ago. Current real
@@ -362,9 +388,28 @@ on all Phase S-touched files.
 >   identical evidence now escalates after exactly 1 retry instead of
 >   burning through the full count-based threshold. **This closes AD2,
 >   the last item D-061 left explicitly open.**
-> - **Next real action:** the only item left from the original AA→AE
->   plan is the AB1 fake-500-error `xfail` — a planner-judgment gap (it
->   needs to classify that specific error-page phrasing as a
->   negative/error check), not a mechanical fix, so there's no forced
->   next phase; see D-060's note for the full reasoning on why it was
->   left as a real `xfail(strict=True)` rather than worked around.
+> - **Next real action (superseded, see below):** the only item left
+>   from the original AA→AE plan was the AB1 fake-500-error `xfail` —
+>   intentionally left open per D-060's reasoning, unrelated to the
+>   D-067/D-068 track that supersedes this pointer.
+
+## Next action
+> **Phase B2 is done (D-071); rule data is real, but not load-bearing
+> yet.** `brain_knowledge/rules/*.yaml` now has real, verified-correct
+> data (the OCR vocab lists, band boundaries, retry/confidence
+> thresholds), and `Policy` actually parses and reads it, with safe
+> fallback to B1's hardcoded defaults if a file's missing/broken. The
+> honest catch, stated plainly so it isn't mistaken for more than it
+> is: **editing those YAML files has zero effect on `aura explore`'s
+> real behavior today** — `agents/vision/ui_audit.py` still has its own
+> separate hardcoded `_NAV_VOCAB`/`_CTA_VOCAB`/`_FOOTER_VOCAB`/band
+> constants and doesn't call `Policy` at all. That repoint is Phase 2's
+> job specifically. Two real next steps, either order: (a) Phase 2 —
+> repoint `ui_audit.py`/`dom_extractor.py`/`run_engine.py` to call
+> `Policy.discovery_source()`/`Policy.ocr_vocab()`/
+> `Policy.band_boundaries()` instead of their own local constants/
+> conditions (this is also where DOM-first dispatch becomes the actual
+> enforced default, not just documented intent), or (b) migrate the
+> remaining CLI intents (`execute_spec`/`execute_prompt`/
+> `execute_interactive`/`ui_audit`/`capability_check`) onto
+> `orchestrator/brain/router.py`, same pattern as B1's `_handle_explore()`.

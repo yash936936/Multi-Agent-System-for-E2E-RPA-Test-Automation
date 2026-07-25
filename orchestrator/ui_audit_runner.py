@@ -105,6 +105,10 @@ def _try_dom_click(page, target_text: str):
 
     try:
         pages_before = len(page.context.pages)
+        try:
+            url_before = page.url
+        except Exception:
+            url_before = None
 
         located = locate_dom(page, target_text)
         if not located.found:
@@ -113,9 +117,11 @@ def _try_dom_click(page, target_text: str):
             return None
 
         dom_click(located.locator)
-        return dom_smart_back(page, pages_before)
-    except Exception:
-        return None  # any failure here (stale page, navigation mid-click, etc.) -- OCR fallback handles it, same as a plain "couldn't locate" result
+        return dom_smart_back(page, pages_before, url_before=url_before)
+    except Exception as e:
+        # any failure here (stale page, navigation mid-click, etc.) -- OCR fallback handles it, same as a plain "couldn't locate" result
+        _logger.debug("_try_dom_click: DOM-first click of %r failed (%s) -- falling back to OCR/pixel path.", target_text, e)
+        return None
 
 
 def _run_click_audit(
@@ -194,12 +200,14 @@ def _run_click_audit(
     # against the OCR list by (rounded position, text) so a control both
     # paths agree on isn't double-clicked during the audit below.
     dom_sourced_keys: set[tuple[str, int, int]] = set()
+    dom_ground_truth_available = False
     if settings.enable_dom_extractor and dom_page is not None:
         try:
             from agents.vision.dom_extractor import to_ui_elements
 
             page_height = dom_page.evaluate("document.documentElement.scrollHeight") or 8000
             dom_elements = to_ui_elements(dom_page, page_height)
+            dom_ground_truth_available = True
             existing_keys = {(e.text.strip().lower(), round(e.cx / 12), round(e.cy / 12)) for e in all_elements}
             for de in dom_elements:
                 key = (de.text.strip().lower(), round(de.cx / 12), round(de.cy / 12))
@@ -207,11 +215,52 @@ def _run_click_audit(
                     all_elements.append(de)
                     existing_keys.add(key)
                     dom_sourced_keys.add(key)
+
+            # Ground-truth cross-check: OCR's looks_interactive flag is a
+            # text-shape heuristic ("short, title-case text") which also
+            # matches plain headings/labels that aren't actually clickable
+            # (e.g. a footer's "Get In Touch" heading, a hero's title) --
+            # exactly the false-positive class reported in practice. Now
+            # that a real DOM scan succeeded, use it as ground truth: an
+            # OCR-flagged element only stays a click candidate if either
+            # (a) it's an exact match against the curated nav/CTA/footer
+            # vocabulary (very low false-positive rate on its own), or
+            # (b) a real DOM-detected interactive control sits at
+            # essentially the same on-screen position. This only ever
+            # removes candidates it can positively rule out; a
+            # DOM-extraction failure/absence (dom_ground_truth_available
+            # stays False) leaves OCR's original heuristic completely
+            # untouched, same as before this cross-check existed.
+            from agents.vision.ui_audit import _CTA_VOCAB, _FOOTER_VOCAB, _NAV_VOCAB
+
+            confident_vocab = _NAV_VOCAB | _CTA_VOCAB | _FOOTER_VOCAB
+            dom_positions = [(de.cx, de.cy) for de in dom_elements]
+            for e in all_elements:
+                key = (e.text.strip().lower(), round(e.cx / 12), round(e.cy / 12))
+                if not e.looks_interactive or key in dom_sourced_keys:
+                    continue
+                if e.text.strip().lower() in confident_vocab:
+                    continue
+                if not any(abs(e.cx - dx) <= 20 and abs(e.cy - dy) <= 20 for dx, dy in dom_positions):
+                    e.looks_interactive = False
         except Exception:
             # Best-effort supplement only -- a DOM-extraction failure (page
             # navigated away, no browser session, JS evaluate error) must
             # never break the OCR-based audit that already succeeded above.
             pass
+
+    if dom_ground_truth_available:
+        # Recompute landmark presence from the merged (OCR + DOM) element
+        # set, not just the OCR-only pass above -- a nav/hero built from
+        # icon-only controls or client-rendered custom elements with no
+        # static OCR-readable text was previously invisible to has_nav/
+        # has_hero/has_footer even when a live DOM scan found it just fine.
+        nav_elems = [e for e in all_elements if e.band == "nav"]
+        hero_elems = [e for e in all_elements if e.band == "hero"]
+        footer_elems = [e for e in all_elements if e.band == "footer"]
+        report.has_nav = report.has_nav or len(nav_elems) > 0
+        report.has_footer = report.has_footer or len(footer_elems) > 0
+        report.has_hero = report.has_hero or any(e.looks_interactive for e in hero_elems) or len(hero_elems) >= 2
 
     candidates = [e for e in all_elements if e.looks_interactive and band_filter(e)][:max_elements]
 
@@ -272,6 +321,10 @@ def _run_click_audit(
             try:
                 if dispatch_via_playwright:
                     pages_before = len(dom_page.context.pages)
+                    try:
+                        url_before = dom_page.url
+                    except Exception:
+                        url_before = None
                     dom_page.mouse.click(click_x, click_y)
                 else:
                     # Phase 2 (cursor-coordinate fix, next-phase plan):
@@ -291,6 +344,10 @@ def _run_click_audit(
                     page_point = _browser_hook.get_click_point_in_page(click_x, click_y) if dom_page is not None else None
                     if page_point is not None:
                         pages_before = len(dom_page.context.pages)
+                        try:
+                            url_before = dom_page.url
+                        except Exception:
+                            url_before = None
                         dom_page.mouse.click(*page_point)
                         # Reuses the dispatch_via_playwright-gated tab-aware
                         # return (below) and skips the OS-level browser_back
@@ -319,7 +376,7 @@ def _run_click_audit(
                 # tab-awareness has to be applied explicitly here too.
                 from runtime.hooks.interact import dom_smart_back
 
-                smart_back_result = dom_smart_back(dom_page, pages_before)
+                smart_back_result = dom_smart_back(dom_page, pages_before, url_before=url_before)
                 new_tab_opened = smart_back_result.new_tab_opened
                 new_tab_url = smart_back_result.new_tab_url
 

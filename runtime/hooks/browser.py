@@ -321,7 +321,8 @@ class _BrowserSession:
             if viewport_x < 0 or viewport_y < 0:
                 return None
             return (viewport_x, viewport_y)
-        except Exception:
+        except Exception as e:
+            _logger.debug("get_click_point_in_page: coordinate translation failed (%s) -- falling back to OS-level click.", e)
             return None
 
     def get_last_video_path(self) -> str | None:
