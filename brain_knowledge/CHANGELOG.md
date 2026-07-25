@@ -36,3 +36,10 @@ Every edit here gets a dated entry.
   value if the YAML/key is absent. Added `ocr_vocab(band)` and
   `band_boundaries()`, not present in B1 (the vocab/band data didn't
   have anywhere to live until this pass).
+
+## 2026-07-25 — Phase B3: all remaining intents migrated
+- `playbooks/` not yet extended with the 5 new intent handlers'
+  decision trees (only `explore.md` exists) -- follow-on documentation
+  work, tracked here rather than done silently as part of B3 itself.
+- No `rules/*.yaml` changes in this pass -- B3 was Router/CLI wiring,
+  not policy data; B2's files are unaffected.

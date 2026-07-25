@@ -22,7 +22,7 @@ import typer
 from rich.console import Console
 
 from agents.planner.spec_generator import infer_test_id
-from aura.cli import baselines_cmd, debug_cmd, execute_cmd, explain_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd
+from aura.cli import baselines_cmd, capability_check_cmd, debug_cmd, execute_cmd, explain_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd, ui_audit_cmd
 from config.settings import PLAYWRIGHT_BROWSER_CHOICES, settings
 from orchestrator import quarantine_store
 from orchestrator.schemas import RunReport, RunStatus
@@ -292,6 +292,37 @@ def explore(
 
     preflight.run_preflight_or_exit()
     explore_cmd.explore(url, max_elements=max_elements, prompt=prompt, scroll_scan=not no_scroll_scan, check_links=check_links, link_scope=link_scope, debug=debug)
+
+
+@app.command(name="ui-audit")
+def ui_audit_command(
+    url: str = typer.Argument(..., help="URL to run the standalone UI audit against."),
+    max_elements: int = typer.Option(12, "--max-elements", help="Cap on how many nav/footer elements to test-click."),
+    link_scope: str = typer.Option("all", "--link-scope", help='Real HTTP link check scope: "all", "footer", or "nav".'),
+) -> None:
+    """
+    Phase B3: standalone nav/hero/footer click-and-diff + real HTTP link
+    check, without a full spec/requirement run around it -- the same
+    engine `aura execute --ui-audit` uses, exposed on its own.
+    """
+    preflight.run_preflight_or_exit()
+    ui_audit_cmd.ui_audit(url, max_elements=max_elements, link_scope=link_scope)
+
+
+@app.command(name="capability-check")
+def capability_check_command(
+    capability_type: str = typer.Argument(..., help="One of orchestrator/schemas.py's CapabilityType values: api, database, email, file_system, excel, cloud, pdf_ocr, workflow, azure_blob, fake, ..."),
+    target: str = typer.Argument(..., help="Adapter-specific target (a URL for api, a table/query for database, a path for file_system, etc.)."),
+    params: str = typer.Option(None, "--params", help='JSON string, e.g. \'{"method": "GET"}\' -- same shape as a spec step\'s capability_params.'),
+    expected: str = typer.Option(None, "--expected", help='JSON string describing what a pass looks like -- same shape as a spec step\'s expected field.'),
+) -> None:
+    """
+    Phase B3: check one backend capability directly (an API endpoint, a
+    DB row, a file, ...) without writing a whole spec around it -- the
+    exact same Capability.check tool contract a spec's CAPABILITY_CHECK
+    step already dispatches through, exposed on its own.
+    """
+    capability_check_cmd.capability_check(capability_type, target, params=params, expected=expected)
 
 
 @app.command()

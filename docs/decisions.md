@@ -4308,3 +4308,95 @@ Phase 3 (OS-mouse removal, needs its own open product decision on
 `--interactive`'s scope per `AURA_REARCHITECTURE_PLAN.md`), Phase 4
 (MutationObserver), and the still-unresolved `aura audit-report`
 doc/code drift noted in `STATUS.md` since D-072.
+
+## D-075 — Phase B3 shipped: all six IntentKind values migrated onto the Brain (2026-07-25)
+
+**Decided:** 2026-07-25
+**Context:** D-074 stopped short of B3 because it found two real
+complications rather than a mechanical repeat of B1's `explore`
+migration (see `AURA_BRAIN_ARCHITECTURE.md` §5.1). Both are resolved
+here with an explicit decision, not deferred further.
+
+**Decision 1 — callback injection, not an event-stream redesign.**
+`execute_spec`/`execute_prompt`/`execute_interactive` need to render
+*during* a run (spec approval, per-step progress, the low-confidence
+inline prompt, heal accept/reject) — unlike `explore`, which only ever
+rendered from a completed report. Redesigning `RunEngine` to return a
+stream of typed events was considered and rejected: it would mean
+modifying a "hand" the Brain is explicitly scoped not to reimplement
+(§5), for a bigger change than the problem needs. Instead:
+`aura/cli/execute_cmd.py` still builds every `live_view`-calling closure
+exactly as before (`on_step_start`, `on_step_result`, `on_skill_learned`,
+`approve_spec`, `confirm_heal_accept`, `on_scan_progress`,
+`on_waiting`), passes them through `Intent.params`, and
+`orchestrator/brain/router.py` forwards them to `RunEngine`/the
+approval points unchanged. `Router` never imports or calls `live_view`
+anywhere in these five handlers — verified by grep, not just by intent.
+
+**Decision 2 — `ui_audit` and `capability_check` become real, minimal
+standalone commands.** `aura ui-audit <url>` (`aura/cli/ui_audit_cmd.py`)
+reuses `orchestrator/ui_audit_runner.run_ui_audit` exactly as the
+existing `execute --ui-audit` flag already does, just without a full
+spec run wrapped around it. `aura capability-check <type> <target>
+[--params JSON] [--expected JSON]` (`aura/cli/capability_check_cmd.py`)
+reuses the exact `ToolCall`/`ToolResponse`/`CapabilityCheckInput`
+contract a spec's `CAPABILITY_CHECK` step already dispatches through
+(`orchestrator/kernel.py`). Neither adds new capability — both expose
+an existing internal path as its own command, per the product decision
+this needed (D-074 flagged there was "nothing concrete to migrate"
+until this was decided).
+
+**Shipped:**
+- `orchestrator/brain/router.py` — 5 new handlers:
+  `_handle_execute_spec`/`_handle_execute_prompt` (both delegate to one
+  shared `_handle_execute_requirement`, since there's no real behavioral
+  difference between "a spec file's text" and "a prompt's text" once
+  both are resolved to a requirement string), `_handle_execute_interactive`,
+  `_handle_ui_audit`, `_handle_capability_check`. All 6 documented
+  `IntentKind` values now have a real handler; `Router.resolve()`'s
+  fallback error message updated accordingly (no longer references B1's
+  now-stale "only explore is migrated").
+- `aura/cli/execute_cmd.py` — `_run_requirement_text()` and
+  `execute_interactive()` both thinned to Intent-building + closures +
+  rendering, same split as B1's `explore_cmd.py`. Removed now-unused
+  imports (`planner_generate_spec`, `RequirementInput`,
+  `extract_navigate_url`, `RunEngine`, `SkillStore`, `RunMemoryStore` —
+  all now only referenced inside `router.py`).
+- `aura/cli/ui_audit_cmd.py`, `aura/cli/capability_check_cmd.py` — new,
+  thin rendering-only modules, same shape as `explore_cmd.py`.
+- `aura/main.py` — two new commands, `aura ui-audit` and
+  `aura capability-check`, registered and visible in `--help`.
+- `tests/test_brain_b3.py` — 5 new tests, one per migrated handler,
+  each asserting the Router reaches the exact same underlying call
+  (`RunEngine` construction with the caller's own closures, `run_ui_audit`,
+  `OrchestratorKernel.call_tool`) with the exact same parameters the
+  pre-migration CLI code used — the same "coordination move, not a
+  behavior change" regression-test shape B1 established.
+- `tests/test_cli.py::test_continuous_audit_flag_reaches_engine_run` —
+  updated: it monkeypatched `execute_cmd.planner_generate_spec`, a name
+  that no longer exists there post-migration (spec generation now
+  happens via a local import inside `router.py`); repatched at the real
+  source (`agents.planner.tool.generate_spec`).
+- `tests/test_brain.py::test_unmigrated_intent_kind_raises_clear_not_implemented_error`
+  — renamed and rewritten: there is no longer a real `IntentKind` this
+  error path fires for (all 6 are migrated), so it now tests a
+  genuinely-unknown kind string instead, confirming `Router.resolve()`'s
+  fallback still fails clearly rather than crashing.
+
+**Verified:** full unit suite (`pytest -q --ignore=tests/integration`):
+733 passed (728 + 5 new) / 30 failed / 1 xfailed / 5 errors — diffed
+failure-by-failure against the exact D-074 baseline set, byte-identical
+except for the one intentionally-updated test name; zero regressions.
+`tests/integration/` still collects and skips cleanly (3 skipped, same
+as D-069/D-074).
+
+**Explicitly not done in this pass:** Phase 3 (OS-mouse removal, its
+own open product decision on `--interactive`'s scope, per
+`AURA_REARCHITECTURE_PLAN.md`), Phase 4 (MutationObserver), and the
+`aura audit-report` doc/code drift noted since D-072. B3 being done
+doesn't reduce any of those — they were never blocked on B3.
+
+**Revisit when:** the `AURA_BRAIN_ARCHITECTURE.md` §4 phase table and
+§5.1 (which currently document B3 as not-started, written under D-074)
+need updating to match — done as part of this same pass, see that
+file's own changelog-equivalent (its §5.1 note now points here).

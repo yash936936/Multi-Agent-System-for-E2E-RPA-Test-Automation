@@ -468,13 +468,21 @@ baseline, zero regressions.
 drift noted in the previous update.
 
 ## Next action (current, supersedes the pointer above)
-Three real next steps, not mutually exclusive:
+**Phase B3 is done (D-075) — all 6 `IntentKind` values are migrated
+onto `orchestrator/brain/router.py`.** Two new standalone commands
+shipped as part of it: `aura ui-audit <url>` and `aura capability-check
+<type> <target>`. Full suite re-verified against the exact D-074
+baseline set (diffed failure-by-failure, not just counted): zero
+regressions, 733 passed (728 + 5 new B3 tests).
+
+Two real next steps remain, not mutually exclusive:
 1. **Re-architecture Phase 3** -- remove the OS-level mouse/keyboard/
    screen dependency (`runtime/hooks/interact.py`'s `pyautogui` path,
    `runtime/hooks/capture.py`'s `mss` path) now that DOM-first dispatch
    is the enforced default whenever a page exists. Needs the one open
    product decision from the plan first: does `--interactive` mode ever
-   need to watch a window AURA didn't launch itself?
-2. **Phase B3** -- migrate the remaining CLI intents onto
-   `orchestrator/brain/router.py`.
-3. Resolve the `aura audit-report` doc/code drift.
+   need to watch a window AURA didn't launch itself? (Note: B3's
+   `execute_interactive` migration didn't resolve this -- it kept
+   `--interactive`'s existing behavior unchanged, callback-injected
+   like everything else in B3, not redesigned.)
+2. Resolve the `aura audit-report` doc/code drift noted since D-072.

@@ -279,7 +279,7 @@ a home:
 | 0 | Fixture tier (unchanged from prior plan) | — |
 | **B1** | **Brain scaffolding**: `Intent`/`Policy`/`Router`/`brain_knowledge/` skeleton, CLI commands thinned to call `AuraBrain.handle()`, zero behavior change (pass-through only) | 0 |
 | **B2** | **Rule extraction**: move vocab lists, band boundaries, confidence thresholds, retry numbers out of Python into `brain_knowledge/rules/*.yaml`, `Policy` reads them | B1 |
-| **B3** | **Remaining-intent migration**: move `execute_spec`/`execute_prompt`/`execute_interactive`/`ui_audit`/`capability_check` onto `Router`, same pattern as B1's `_handle_explore()` — see §5.1 below for why this is a materially bigger task than B1, not a mechanical repeat of it | B1, B2 |
+| **B3** | **Remaining-intent migration**: move `execute_spec`/`execute_prompt`/`execute_interactive`/`ui_audit`/`capability_check` onto `Router` — **done, 2026-07-25 (D-075)**. See §5.1 for the two design decisions this needed beyond B1's mechanical pattern (callback injection instead of an event-stream redesign; `ui_audit`/`capability_check` became real standalone commands) | B1, B2 |
 | 1 | Unified logging + `aura explain`, now implemented as the Brain's logger | B1 |
 | 2 | DOM-first dispatch, now implemented as `Policy.discovery_source()` | B1, B2 |
 | 3 | Remove OS-mouse dependency | 2 |
@@ -308,12 +308,14 @@ explicitly in `guidelines.md` itself (`G-000`, effectively) so this
 doesn't regress the next time someone's tempted to add "just one more
 thing" to `brain.py`.
 
-### 5.1 — B3 is a materially bigger task than B1, checked directly before starting it
+### 5.1 — B3 was a materially bigger task than B1 — resolved 2026-07-25 (D-075)
 
 Confirmed by reading the actual code before writing any migration code
-(not assumed from B1's pattern generalizing cleanly): B3 is not five
+(not assumed from B1's pattern generalizing cleanly): B3 was not five
 mechanical repeats of B1's `_handle_explore()` move. Two real
-complications, found by tracing the actual call graph:
+complications were found by tracing the actual call graph, and both are
+now resolved — this section is kept as the record of *why* the
+resolution looks the way it does, not as an open question anymore.
 
 1. **`execute_spec`/`execute_prompt`/`execute_interactive` are
    rendering-entangled in a way `explore` never was.**
@@ -327,27 +329,35 @@ complications, found by tracing the actual call graph:
    live per-step callbacks to separate out. Moving
    `_run_requirement_text()` into `Router` as-is would mean the Router
    does rendering, which is exactly the boundary §5 above says not to
-   cross. The correct fix is restructuring so `Router` returns a stream
-   of typed step events (or accepts injected callback objects the CLI
-   supplies) rather than calling `live_view` itself — a real design
-   decision, not a copy-paste move, and the reason B3 isn't done in the
-   same pass this note was added in.
-2. **`ui_audit` and `capability_check` are not actually standalone CLI
-   entrypoints today**, despite being listed as their own `IntentKind`
-   values in `orchestrator/brain/intent.py`. `ui_audit` is a boolean
-   flag threaded through `_run_requirement_text()`'s shared core, not a
-   separate code path; `capability_check` has no CLI command at all —
-   it's only reachable as a `CAPABILITY_CHECK` step *inside* a spec via
-   `run_engine.py`. There's nothing at either name to "move onto the
-   Router" until a product decision is made about what a standalone
-   `aura ui-audit <url>` / `aura capability-check ...` command would
-   even take as input. Treating these as pre-existing intents needing
-   migration (as B3's original phrasing implies) overstates what
-   currently exists.
+   cross.
 
-Net effect: a real B3 pass needs (a) a Router-returns-events redesign
-for the three spec-execution intents, done once and shared across all
-three, plus (b) an explicit product decision on whether/how
-`ui_audit`/`capability_check` become real standalone commands before
-they can be migrated at all — not a straightforward continuation of
-B1's pattern.
+   **Resolved: callback injection, not an event-stream redesign.** The
+   CLI still builds every closure (now also including `approve_spec`
+   for the spec-approval checkpoint, `confirm_heal_accept` for the
+   heal accept/reject checkpoint, and `on_scan_progress`/`on_waiting`
+   for the optional-pass and interactive-wait progress messages) and
+   passes them through `Intent.params`; `Router` forwards them to
+   `RunEngine`/the approval points unchanged and never imports or
+   calls `live_view` itself. An event-stream redesign was rejected as
+   the wrong-sized fix: it would mean modifying `RunEngine` itself (a
+   "hand," not the Brain's to reimplement) for a problem callback
+   injection solves without touching it at all.
+
+2. **`ui_audit` and `capability_check` were not actually standalone CLI
+   entrypoints**, despite being listed as their own `IntentKind` values
+   in `orchestrator/brain/intent.py`. `ui_audit` was a boolean flag
+   threaded through `_run_requirement_text()`'s shared core, not a
+   separate code path; `capability_check` had no CLI command at all —
+   only reachable as a `CAPABILITY_CHECK` step *inside* a spec via
+   `run_engine.py`.
+
+   **Resolved: both became real, minimal standalone commands** —
+   `aura ui-audit <url>` and `aura capability-check <type> <target>
+   [--params JSON] [--expected JSON]`. Deliberately minimal: each
+   exposes an existing internal path (`orchestrator/ui_audit_runner.run_ui_audit`,
+   `orchestrator/kernel.py`'s `Capability.check` `ToolCall` contract)
+   directly rather than adding any new capability behind the new
+   command names.
+
+Full implementation detail, verification, and the exact files touched:
+`docs/decisions.md` D-075.

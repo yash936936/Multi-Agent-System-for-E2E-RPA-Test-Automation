@@ -103,10 +103,19 @@ def test_malformed_yaml_file_does_not_crash_knowledge_loading(tmp_path):
     assert policy.band_boundaries()["nav_band_end"] == 0.10  # bands.yaml parsed fine independently
 
 
-def test_unmigrated_intent_kind_raises_clear_not_implemented_error():
+def test_genuinely_unknown_intent_kind_raises_clear_not_implemented_error():
+    """
+    Phase B3 (docs/decisions.md D-075) migrated every documented
+    IntentKind ('explore', 'execute_spec', 'execute_prompt',
+    'execute_interactive', 'ui_audit', 'capability_check') -- there is
+    no longer a real IntentKind this error path fires for. Router.resolve()
+    still needs to fail clearly rather than crash on a kind outside that
+    set entirely (Intent.kind isn't runtime-validated against the
+    Literal), so this tests that fallback path directly instead.
+    """
     brain = AuraBrain()
-    with pytest.raises(NotImplementedError, match="not yet migrated"):
-        brain.handle(Intent(kind="execute_spec", params={}))
+    with pytest.raises(NotImplementedError, match="no handler"):
+        brain.handle(Intent(kind="totally_made_up_kind", params={}))  # type: ignore[arg-type]
 
 
 def test_explore_intent_reaches_run_exploration_with_expected_params():

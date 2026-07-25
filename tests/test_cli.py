@@ -182,10 +182,17 @@ def test_continuous_audit_flag_reaches_engine_run(monkeypatch):
     Phase 1's continuous-audit monitor (agents/auditor/run_monitor.py) is
     useless if --continuous-audit never actually reaches
     RunEngine.run_spec()'s continuous_audit param -- confirms the full
-    chain (execute_cmd.execute_prompt -> _run_requirement_text ->
-    engine.run) rather than trusting that each individual forwarding hop
-    compiles.
+    chain (execute_cmd.execute_prompt -> Intent -> AuraBrain ->
+    Router._handle_execute_requirement -> engine.run), not just that
+    each individual forwarding hop compiles.
+
+    Phase B3 (docs/decisions.md D-075): spec generation moved from
+    `execute_cmd.py`'s own `planner_generate_spec` name into
+    `orchestrator/brain/router.py`'s local import of
+    `agents.planner.tool.generate_spec` -- patched at its real source
+    module now, not at the CLI module's (former) local alias.
     """
+    import agents.planner.tool
     from aura.cli import execute_cmd
     from orchestrator.run_engine import RunEngine
 
@@ -199,9 +206,8 @@ def test_continuous_audit_flag_reaches_engine_run(monkeypatch):
         raise _StopHere  # nothing downstream of engine.run() is relevant to this test
 
     monkeypatch.setattr(RunEngine, "run", fake_run)
-    monkeypatch.setattr(execute_cmd.live_view, "render_spec_checklist", lambda spec: None)
     monkeypatch.setattr(
-        execute_cmd, "planner_generate_spec",
+        agents.planner.tool, "generate_spec",
         lambda req: type("Spec", (), {"test_id": "TC-FAKE-001", "steps": []})(),
     )
 

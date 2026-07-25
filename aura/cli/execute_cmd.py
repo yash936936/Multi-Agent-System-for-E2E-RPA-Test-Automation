@@ -20,19 +20,16 @@ Two modes:
 """
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 import typer
 from rich.console import Console
 
-from agents.planner.spec_generator import extract_navigate_url
-from agents.planner.tool import generate_spec as planner_generate_spec
 from aura.tui import live_view
 from config.settings import settings
-from orchestrator.memory import RunMemoryStore
-from orchestrator.run_engine import RunEngine
-from orchestrator.schemas import RequirementInput, RunReport, TestStep, VisionActionResult
-from orchestrator.skill_store import SkillStore
+from orchestrator.brain import AuraBrain, Intent
+from orchestrator.schemas import RunReport, TestStep, VisionActionResult
 from orchestrator.spec_validator import SpecValidationError
 from reports.junit import render_junit
 from reports.render import render_html, render_json, render_pdf
@@ -188,32 +185,14 @@ def execute_interactive(
     early just because nothing happened for a while -- `timeout=0` (the
     default) means it waits indefinitely, matching the actual feature
     request ("the execution should not stop until the human clicks").
+
+    Phase B3 (docs/decisions.md D-075): the spec-building + `RunEngine`
+    call now lives in
+    `orchestrator/brain/router.py::Router._handle_execute_interactive()`;
+    `on_waiting` stays a closure built here, forwarded through
+    `Intent.params` unchanged -- the Router never calls `live_view` itself.
     """
-    import uuid
-
-    from orchestrator.run_engine import RunEngine
-    from orchestrator.schemas import ActionType, TestSpec, TestStep
-
     console = live_view.console
-    run_id = f"interactive_{uuid.uuid4().hex[:8]}"
-
-    steps: list[TestStep] = []
-    if url:
-        from runtime.hooks.browser import normalize_url
-
-        normalized = normalize_url(url)
-        steps.append(TestStep(step_id=1, action=ActionType.NAVIGATE_URL, url=normalized))
-
-    steps.append(
-        TestStep(
-            step_id=len(steps) + 1,
-            action=ActionType.WAIT_FOR_HUMAN_ACTION,
-            target_description=prompt,
-            human_action_timeout_seconds=timeout or None,
-        )
-    )
-
-    spec = TestSpec(test_id=f"TC-INTERACTIVE-{run_id.upper()}", requirement_ref="human-in-the-loop", steps=steps)
 
     console.print(f"[bold]Waiting for you: {prompt}[/bold]")
     if url:
@@ -224,19 +203,28 @@ def execute_interactive(
     )
     console.print("[dim]Press Ctrl+C to cancel.[/dim]\n")
 
-    def on_waiting(step_id: int, step: TestStep, elapsed: float) -> None:
+    def on_waiting(step_id: int, step, elapsed: float) -> None:
         console.print(f"[dim]  still waiting... ({elapsed:.0f}s)[/dim]")
 
-    engine = RunEngine(
-        screenshot_provider=_make_screenshot_provider(live=True),
-        on_waiting_for_human=on_waiting,
+    intent = Intent(
+        kind="execute_interactive",
+        params={
+            "prompt": prompt,
+            "url": url,
+            "timeout": timeout,
+            "screenshot_provider": _make_screenshot_provider(live=True),
+            "on_waiting": on_waiting,
+        },
     )
 
     try:
-        result = engine.run_spec(spec, run_id=run_id)
+        brain_result = AuraBrain().handle(intent)
     except SpecValidationError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1)
+
+    result = brain_result.data["result"]
+    run_id = brain_result.run_id
     final = result.report
     _print_validation_warnings(result.validation_warnings)
 
@@ -298,113 +286,105 @@ def _run_requirement_text(
     junit_suite_collector: list | None = None,
     continuous_audit: bool | None = None,
 ) -> RunReport:
+    """
+    Phase B3 (docs/decisions.md D-075): the actual orchestration (page
+    grounding, spec generation, RunEngine construction/run, the healed-
+    skill loop, optional autoscan/ui-audit passes) now lives in
+    `orchestrator/brain/router.py::Router._handle_execute_requirement()`.
+    Every place this function used to call `live_view` directly during
+    the run is now a closure built here and passed through
+    `Intent.params` -- `Router` forwards them to `RunEngine` unchanged
+    and never calls `live_view` itself (see that module's docstring,
+    decision 1). This function still owns: building those closures,
+    the approval-checkpoint UI itself (`approve_spec`), report writing
+    (`render_json`/`render_html`/PDF/JUnit), and the final terminal
+    summary -- exactly the same "Brain returns data, CLI renders it"
+    split B1 established for `explore`.
+    """
     console = live_view.console
 
-    # Page-grounding fix (see agents/planner/page_grounding.py's module
-    # docstring for the full root-cause writeup): generate_spec()
-    # previously only ever saw the free-text requirement doc, never the
-    # real page, which is why target_description values could name
-    # elements that don't exist on the actual site. When the requirement
-    # text names a target URL upfront (true for --url runs and any doc
-    # with a "Given: navigate to X" precondition -- i.e. almost every
-    # real run), best-effort snapshot that page's real clickable elements
-    # first and hand them to the planner as grounding context.
-    #
-    # Deliberately best-effort and silent on failure, not a hard
-    # dependency: any problem here (no display, site unreachable, OCR
-    # unavailable) falls back to exactly the pre-existing blind-generation
-    # behavior -- this must never turn a previously-working blind run into
-    # a failing one just because grounding itself couldn't happen this
-    # time.
-    page_context = None
-    nav_url = extract_navigate_url(requirement_text)
-    if nav_url:
-        from agents.planner.page_grounding import snapshot_page_elements
-
-        page_context = snapshot_page_elements(nav_url)
-
-    spec = planner_generate_spec(RequirementInput(requirement_text=requirement_text, page_context=page_context))
-
-    # --- §2.3: human approval checkpoint (skipped entirely when unattended) ---
-    if not auto_approve:
-        live_view.render_spec_checklist(spec)
-        if not live_view.confirm_spec_approval(auto_approve=auto_approve):
-            console.print("[yellow]Run cancelled — spec not approved.[/yellow]")
-            raise typer.Exit(code=1)
-
-    if refresh_data:
-        from agents.data_synth.cache import clear_cache  # noqa: PLC0415
-
-        clear_cache(spec.test_id)
-
-    # --- §2.4: live execution ---
-    skill_store = SkillStore()
-    memory = RunMemoryStore()
-    total_steps = len(spec.steps)
+    total_steps_holder: dict[str, int] = {}
 
     def on_step_start(step_id: int, step: TestStep) -> None:
         desc = step.target_description or step.field_description or step.action.value
-        live_view.step_start(step_id, total_steps, desc)
+        live_view.step_start(step_id, total_steps_holder.get("n", 0), desc)
 
     def on_step_result(step_id: int, step: TestStep, result: VisionActionResult) -> None:
         desc = step.target_description or step.field_description or step.action.value
         if not result.escalate and result.confidence < settings.vision_confidence_threshold:
             if not live_view.low_confidence_prompt(step_id, result.confidence, auto_approve=auto_approve):
                 console.print(f"[dim]Step {step_id} skipped by reviewer.[/dim]")
-        live_view.step_result(step_id, total_steps, desc, result, settings.vision_confidence_threshold)
-
-    learned_skills: list[tuple[int, object]] = []
+        live_view.step_result(step_id, total_steps_holder.get("n", 0), desc, result, settings.vision_confidence_threshold)
 
     def on_skill_learned(step_id: int, skill) -> None:
-        learned_skills.append((step_id, skill))
-        live_view.step_healed(step_id, total_steps, skill.skill_id)
+        live_view.step_healed(step_id, total_steps_holder.get("n", 0), skill.skill_id)
 
-    engine = RunEngine(
-        screenshot_provider=_make_screenshot_provider(live=True),
-        skill_store=skill_store,
-        memory=memory,
-        on_step_start=on_step_start,
-        on_step_result=on_step_result,
-        on_skill_learned=on_skill_learned,
-    )
+    def approve_spec(spec) -> bool:
+        total_steps_holder["n"] = len(spec.steps)
+        live_view.render_spec_checklist(spec)
+        if not live_view.confirm_spec_approval(auto_approve=auto_approve):
+            console.print("[yellow]Run cancelled — spec not approved.[/yellow]")
+            raise typer.Exit(code=1)
+        return True
 
-    try:
-        # keep_browser_open=True whenever a post-run pass (--scroll-test /
-        # --ui-audit) is requested: those passes need the same live page
-        # this run just used, not a re-launched/closed one. We close it
-        # ourselves, explicitly, once both optional passes below are done.
-        result = engine.run(
-            requirement_text,
-            run_id=spec.test_id.lower().replace(" ", "-"),
-            keep_browser_open=scroll_test or ui_audit,
-            continuous_audit=continuous_audit,
-        )
-    except SpecValidationError as e:
-        console.print(f"[red]{e}[/red]")
-        raise typer.Exit(code=1)
-    _print_validation_warnings(result.validation_warnings)
-
-    # --- §2.5: healed-step accept/reject checkpoint (skipped when unattended) ---
-    for step_id, skill in learned_skills:
-        if auto_approve:
-            continue
+    def confirm_heal_accept(step_id: int, skill) -> bool:
         live_view.render_heal_diff(
             step_id=step_id,
             root_cause=skill.root_cause,
             before_screenshot="(see run screenshots dir)",
             after_screenshot="(see run screenshots dir)",
         )
-        if not live_view.confirm_heal_accept(auto_approve=auto_approve):
-            skill_store.delete(skill.skill_id)
+        accepted = live_view.confirm_heal_accept(auto_approve=auto_approve)
+        if not accepted:
             console.print(f"[dim]Rejected — skill {skill.skill_id} discarded.[/dim]")
+        return accepted
 
-    # --- optional: unattended full-page scroll scan ---
-    autoscan_report = None
-    if scroll_test:
-        from orchestrator.autoscan import run_autoscan
+    def on_scan_progress(what: str) -> None:
+        if what == "scanning_full_page":
+            console.print("Scanning full page for broken/error content...")
+        elif what == "running_ui_audit":
+            console.print("Running comprehensive UI audit (nav, hero, footer)...")
 
-        console.print("Scanning full page for broken/error content...")
-        autoscan_report = run_autoscan(_make_screenshot_provider(live=True), run_id=result.run_id)
+    intent = Intent(
+        kind="execute_spec",
+        params={
+            "requirement_text": requirement_text,
+            "auto_approve": auto_approve,
+            "refresh_data": refresh_data,
+            "scroll_test": scroll_test,
+            "ui_audit": ui_audit,
+            "continuous_audit": continuous_audit,
+            "screenshot_provider": _make_screenshot_provider(live=True),
+            "on_step_start": on_step_start,
+            "on_step_result": on_step_result,
+            "on_skill_learned": on_skill_learned,
+            "approve_spec": approve_spec,
+            "confirm_heal_accept": confirm_heal_accept,
+            "on_scan_progress": on_scan_progress,
+        },
+    )
+
+    try:
+        brain_result = AuraBrain().handle(intent)
+    except SpecValidationError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1)
+
+    if brain_result.data.get("cancelled"):
+        # approve_spec() above already raises typer.Exit before this can
+        # be reached in the interactive-rejection case; this branch only
+        # covers a future non-raising approve_spec implementation.
+        raise typer.Exit(code=1)
+
+    spec = brain_result.data["spec"]
+    result = brain_result.data["result"]
+    autoscan_report = brain_result.data["autoscan_report"]
+    ui_audit_report = brain_result.data["ui_audit_report"]
+    memory = brain_result.data["memory"]
+
+    _print_validation_warnings(result.validation_warnings)
+
+    if autoscan_report is not None:
         if autoscan_report.display_unavailable:
             console.print("[yellow]No display available -- page scan skipped (headless/no-display environment).[/yellow]")
         elif autoscan_report.all_issues:
@@ -413,20 +393,7 @@ def _run_requirement_text(
             coverage = "reached the bottom" if autoscan_report.reached_bottom else "hit the scan limit"
             console.print(f"Page scan clean — no error indicators found ({coverage}).")
 
-    # --- optional: comprehensive UI audit (nav/hero/footer + live-click check) ---
-    ui_audit_report = None
-    if ui_audit:
-        from orchestrator.ui_audit_runner import run_ui_audit
-
-        console.print("Running comprehensive UI audit (nav, hero, footer)...")
-        # nav_url was already extracted from the requirement text above
-        # (for page-grounding) -- reused here rather than re-parsing, so
-        # the real HTTP link check (agents/capability/link_checker.py) and
-        # the OCR click-and-diff pass both run against the same target and
-        # both land in one merged report, per the "OCR and a real HTML
-        # fetch should both run and both report" fix.
-        ui_audit_report = run_ui_audit(_make_screenshot_provider(live=True), run_id=result.run_id, page_url=nav_url)
-
+    if ui_audit_report is not None:
         landmarks_found = []
         landmarks_missing = []
         for label, present in (("nav", ui_audit_report.has_nav), ("hero section", ui_audit_report.has_hero), ("footer", ui_audit_report.has_footer)):
@@ -447,26 +414,12 @@ def _run_requirement_text(
         if not ui_audit_report.possibly_broken and not ui_audit_report.page_issues:
             console.print("[green]UI audit clean — no non-functional elements or error indicators found.[/green]")
 
-        # Real HTML-fetch link check (agents/capability/link_checker.py),
-        # running alongside the OCR-based audit above rather than as a
-        # separate opt-in pass -- both report what they find.
         lc = ui_audit_report.link_check_result
         if lc is None:
-            pass  # no page_url known, or the check itself failed -- OCR-only result already printed above
+            pass
         elif "error" in lc:
             console.print(f"[dim]Link check: could not run ({lc['error']})[/dim]")
         elif "broken_count" not in lc:
-            # Bug fix: link_checker.py has a third evidence shape besides
-            # "error" and a normal _build_result() -- "no navigable <a
-            # href> links found at all" (common on client-rendered SPAs
-            # where the real nav is injected by JS), which never included
-            # broken_count/broken_links/checked in the same shape
-            # _build_result() produces. Assuming broken_count always
-            # existed here caused a real KeyError crash right after
-            # everything else in the run had already succeeded. Print the
-            # adapter's own message, which already explains this case
-            # clearly (including whether a Playwright re-render was
-            # attempted), instead of guessing at fields that aren't there.
             console.print(f"[dim]Link check: {lc.get('message', 'no navigable links found')}[/dim]")
         elif lc["broken_count"] > 0:
             broken_urls = ", ".join(b["url"] for b in lc["broken_links"][:5])
@@ -475,22 +428,7 @@ def _run_requirement_text(
         else:
             console.print(f"[green]Link check: all {lc['checked']} link(s) resolved successfully.[/green]")
 
-    # If engine.run() was told to keep the browser open for the passes
-    # above (scroll_test/ui_audit), it's now our responsibility to close
-    # it -- both passes are finished, so there's nothing left that needs
-    # the live page.
-    if scroll_test or ui_audit:
-        try:
-            from runtime.hooks import browser as browser_hook
-
-            browser_hook.close()
-        except Exception:
-            pass
-
     # --- §2.6: report + terminal summary ---
-    # render_json first: it writes report_detailed.json AND updates
-    # report.json's report_paths with that path, so render_html (which
-    # re-reads report.json) can link to it in the HTML header.
     json_path = render_json(result.run_id, spec=spec.model_dump())
     html_path = render_html(result.run_id, spec=spec.model_dump(), autoscan_report=autoscan_report, ui_audit_report=ui_audit_report)
     console.print(f"\nReport: {html_path}")
@@ -502,15 +440,6 @@ def _run_requirement_text(
         except RuntimeError as e:
             console.print(f"[yellow]{e}[/yellow]")
 
-    # Phase G2 (decisions.md D-026): JUnit XML output for CI consumption.
-    # result.report.report_paths["raw_json"] is already populated by
-    # ReportAggregator.finalize() (called inside engine.run() above, before
-    # this point) -- render_junit doesn't need to wait for render_html.
-    # `junit_suite_collector` (set only by `aura execute --all`) takes
-    # priority over `junit_out`: in batch mode each spec contributes one
-    # <testsuite> element to a single combined file written once after the
-    # whole loop, rather than each spec silently overwriting the same
-    # `--junit-out` path in turn.
     if junit_suite_collector is not None:
         from reports.junit import build_testsuite_element
 
