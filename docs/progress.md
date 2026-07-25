@@ -9,6 +9,39 @@ project: AURA
 
 ---
 
+## 2026-07-25 — Re-architecture Phase 2: DOM-first dispatch rewrite (D-073)
+
+`orchestrator/ui_audit_runner.py::_run_click_audit` discovery rewritten:
+one path per run (DOM via `dom_extractor.to_ui_elements` when a live page
+exists and the extractor is enabled, OCR via `ui_audit.audit_screenshot`
+otherwise), replacing the old merge+cross-check+recompute logic from
+D-044/D-067. `has_nav`/`has_hero`/`has_footer` now computed once from
+whichever element list resulted. 2 new tests including the plan's own
+requested acceptance test (asserts OCR is structurally unreachable, via
+a raising spy, when a DOM page is available); 1 existing test updated to
+match the new single-source-of-truth landmark computation. Full suite
+re-verified: 735 passed, same pre-existing Chromium/no-display baseline,
+zero regressions. `runtime/hooks/interact.py`'s OS-level path and
+`state_changed`'s hash-diff computation are untouched -- Phase 3/4's
+job. Full detail: `docs/decisions.md` D-073.
+
+---
+
+## 2026-07-25 — Re-architecture Phase 1: unified click-resolution logging + `aura explain` (D-072)
+
+New `orchestrator/click_resolution_log.py` (structured JSONL, wired into
+every `ClickCheckResult` decision point in `_run_click_audit`) and
+`orchestrator/run_timeline.py` (merges it with `decision_trace_log`/
+`assertion_audit_log` by timestamp). New `aura explain <run_id>` CLI
+command (`--json` flag) renders the merged timeline. 8 new tests, full
+suite re-verified: 733 passed, only pre-existing Chromium/no-display
+sandbox failures. `--screenshot` overlay flag deliberately deferred, not
+built. Surfaced (not yet fixed): `docs/STATUS.md`'s D-061 entry claims
+`aura audit-report` shipped as a CLI command; it doesn't exist in
+`aura/main.py`. Full detail: `docs/decisions.md` D-072.
+
+---
+
 ## 2026-07-23 — Phase AC: `CONVENTIONS.md` + `aura doctor` (D-059)
 
 AC1: new `CONVENTIONS.md` documenting scroll-sign, coordinate-space, and

@@ -22,7 +22,7 @@ import typer
 from rich.console import Console
 
 from agents.planner.spec_generator import infer_test_id
-from aura.cli import baselines_cmd, debug_cmd, execute_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd
+from aura.cli import baselines_cmd, debug_cmd, execute_cmd, explain_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd
 from config.settings import PLAYWRIGHT_BROWSER_CHOICES, settings
 from orchestrator import quarantine_store
 from orchestrator.schemas import RunReport, RunStatus
@@ -302,6 +302,15 @@ def debug(
 ) -> None:
     """Scan Python file(s) for common bug patterns and report them — detection only, never modifies code."""
     debug_cmd.run_debug(path, out=out, no_ruff=no_ruff)
+
+
+@app.command()
+def explain(
+    run_id: str = typer.Argument(..., help="Run ID to show the merged decision timeline for."),
+    as_json: bool = typer.Option(False, "--json", help="Print the raw merged timeline as JSON instead of a human-readable listing."),
+) -> None:
+    """Re-architecture Phase 1: prints the merged, chronological timeline of every logged decision (planner backend attempts, click-audit decisions, assertion checks) for one run_id."""
+    explain_cmd.explain(run_id, as_json=as_json)
 
 
 @app.command()

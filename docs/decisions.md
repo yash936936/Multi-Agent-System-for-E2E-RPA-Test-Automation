@@ -4067,3 +4067,150 @@ errors / 3 skipped / 1 xfailed — identical baseline, zero regressions.
 `agents/vision/dom_extractor.py` to call `Policy.ocr_vocab()`/
 `Policy.band_boundaries()` instead of their own module constants — at
 that point editing the YAML becomes load-bearing for the first time.
+
+## D-072 — Re-architecture Phase 1 shipped: unified click-resolution logging + `aura explain` (2026-07-25)
+
+**Decided:** 2026-07-25
+**Decision:** Implemented Phase 1 of `docs/AURA_REARCHITECTURE_PLAN.md` --
+the unified logging layer the DOM-first dispatch rewrite (Phase 2) needs
+to be observable from day one, per that plan's own "why before the
+dispatch rewrite" reasoning.
+
+**Shipped:**
+- `orchestrator/click_resolution_log.py` -- new JSONL log, same
+  shape/pattern as `decision_trace_log.py`/`assertion_audit_log.py`. One
+  record per click-audit element decision: `run_id`, `step_id`, `label`,
+  `band`, `source`, `looks_interactive`, `rejected_reason`,
+  `resolution_strategy`, `clicked`, `change_detection_method` (hardcoded
+  `"hash_diff"` until Phase 4 lands `MutationObserver`-based detection),
+  `state_changed`, `new_tab_opened`. Wired into every
+  `ClickCheckResult`-append site in
+  `orchestrator/ui_audit_runner.py::_run_click_audit` (rejected/
+  unreachable candidates, no-display and dispatch-error failures,
+  clicked-but-unverifiable, and the main clicked+verified path). This is
+  the exact gap the plan called out: `resolution_strategy` already
+  existed on `ClickCheckResult` (D-044), but nothing logged *why* an
+  element was or wasn't a candidate in the first place.
+- `orchestrator/run_timeline.py` -- a merge layer, not a new log. Reads
+  `decision_trace_log`, `assertion_audit_log`, and the new
+  `click_resolution_log`, filters by `run_id`, interleaves by timestamp
+  into one ordered `TimelineEvent` list. `decision_trace_log` records are
+  cross-run today (no `run_id` field), so they're only included when a
+  matching `run_id` happens to be present in that record's free-form
+  `detail` dict -- documented as a real limitation, not silently
+  papered over.
+- `aura/cli/explain_cmd.py` + `aura explain <run_id>` (`--json` flag for
+  machine-readable output) registered in `aura/main.py`. Prints the
+  merged timeline human-readably by default.
+- **Explicitly deferred, not silently dropped:** the plan's `--screenshot`
+  annotated-overlay flag (green/yellow/red/blue bounding boxes on a saved
+  baseline screenshot) is real, scoped follow-on work -- not implemented
+  in this pass. `audit-report`'s existing `find_anomalies()` reuse (the
+  plan's other Phase 1 item) is also deferred: `aura audit-report` itself
+  doesn't exist as a CLI command despite `docs/STATUS.md`'s D-061 entry
+  claiming it shipped -- a pre-existing doc/code drift found during this
+  pass, flagged here rather than fixed silently as part of an unrelated
+  phase.
+- `tests/test_click_resolution_log.py` (4 tests: log/read round-trip,
+  run_id filtering, `find_anomalies()` flags the clicked-but-no-change
+  shape and nothing else, missing-file returns empty) and
+  `tests/test_run_timeline.py` (4 tests: merge + timestamp ordering
+  across sources, empty timeline for an unknown run_id, `aura explain
+  --json` output shape, no-events case doesn't raise).
+
+**Verified:** full suite (deselecting the three capability-adapter test
+files that fail to collect in this sandbox for missing optional
+cloud-SDK dependencies -- `boto3`/`paramiko`/`azure`, unrelated to this
+change): 733 passed / 18 failed / 5 errors / 1 xfailed -- every failure
+and error is the pre-existing Chromium-binary/no-display sandbox
+baseline (`test_cross_browser.py`, `test_dom_locator.py`,
+`test_run_engine_trace.py`, `test_run_engine_video.py`,
+`test_executor_dom_path.py`, the two `tests/integration/` fixture tests),
+zero regressions from this pass's changes.
+
+**Revisit when:** Phase 2's DOM-first dispatch rewrite lands --
+`change_detection_method` becomes real (`"mutation_observer"` vs
+`"hash_diff"`) once Phase 4 exists, and `decision_trace_log` should grow
+a real `run_id` field rather than relying on the `detail` dict
+convention `run_timeline.py` currently works around.
+
+## D-073 — Re-architecture Phase 2 shipped: DOM-first dispatch (2026-07-25)
+
+**Decided:** 2026-07-25
+**Decision:** Implemented Phase 2 of `docs/AURA_REARCHITECTURE_PLAN.md` --
+DOM is now the sole discovery path in `orchestrator/ui_audit_runner.py::_run_click_audit`
+whenever a live page exists (and `settings.enable_dom_extractor` is on),
+replacing the previous "OCR discovers, DOM supplements, then cross-check
+downgrades OCR's false positives" dance from D-044/D-067.
+
+**Shipped:**
+- `orchestrator/ui_audit_runner.py::_run_click_audit` -- replaced the
+  merge+cross-check+recompute block (OCR `audit_screenshot()` always ran
+  first; DOM elements were appended and deduped into the same list;
+  DOM-detected positions were then used to downgrade OCR's
+  `looks_interactive` flags after the fact; `has_nav`/`has_hero`/
+  `has_footer` were OR'd from both passes) with a single branch:
+  `if settings.enable_dom_extractor and dom_page is not None: all_elements = to_ui_elements(...); else: all_elements = audit_screenshot(...)`.
+  Exactly one path executes per run now, matching the plan's explicit
+  instruction. `agents/vision/dom_extractor.py::to_ui_elements` already
+  set `looks_interactive=True` unconditionally for everything it finds
+  (a real DOM control *is* interactive, full stop -- no vocab list
+  needed), so there's no false-positive class left to cross-check
+  against once OCR is out of the loop entirely on the DOM branch.
+  `agents/vision/ui_audit.py`'s `_NAV_VOCAB`/`_CTA_VOCAB`/`_FOOTER_VOCAB`
+  heuristic is untouched but now only ever reached via the `else`
+  branch -- the single condition (`dom_page is None` or the extractor
+  disabled) the plan wanted to govern the fallback.
+- `has_nav`/`has_hero`/`has_footer` computed once, directly from
+  whichever `all_elements` list resulted (banded by `e.band`), instead of
+  reading `LandmarkAudit`'s own properties on the OCR-only pass and then
+  separately recomputing/OR-ing after a DOM merge.
+- `dom_sourced_keys` (used later in the click-resolution loop's
+  `dom_extractor_direct` fallback) is now simply "every element, when
+  `discovery_source == 'dom'`" rather than a dedup-tracked subset of a
+  merged list -- there's nothing left to dedup against since OCR isn't
+  in the same list anymore.
+- A DOM-walk exception (detached page, navigation mid-scan,
+  `page.evaluate()` failure) is treated the same as "no DOM page
+  available" -- falls back to the OCR branch rather than returning an
+  empty audit. This is slightly more forgiving than the plan's literal
+  "one path executes, full stop" wording, logged here as a deliberate
+  choice: a transient DOM-walk failure shouldn't turn a real page into
+  a false "nothing found" report when OCR could still see something.
+- `settings.enable_dom_extractor`'s existing off-by-default gate
+  (`config/settings.py`, predates this phase) is preserved unchanged --
+  it's an orthogonal, already-documented safety decision (the
+  `cursor: pointer` heuristic can flag decorative elements, not a
+  discovery-source-merge concern), not something Phase 2 was asked to
+  revisit.
+- `tests/test_ui_audit_runner.py` -- 2 new tests, including the plan's
+  own explicitly-requested acceptance test: `to_ui_elements` mocked to
+  return one element, `agents.vision.ui_audit.audit_screenshot` replaced
+  with a spy that raises if called at all -- asserts the OCR branch is
+  structurally unreachable when a DOM page is available, not just
+  behaviorally unused. A second test confirms the other half of the same
+  branch condition (no DOM page -> OCR path runs, unchanged from before
+  this phase). One pre-existing test
+  (`test_run_ui_audit_reports_landmark_presence`) updated -- it had been
+  asserting `has_nav`/`has_hero`/`has_footer` as separately-mockable
+  properties on a fake `LandmarkAudit`, which was actually exercising the
+  *old* merge-era code path (reading `.has_nav` directly); now asserts
+  the same landmark-presence behavior against real element lists, since
+  that's the single source of truth going forward.
+
+**Verified:** full suite (same 3 capability-adapter files deselected for
+missing optional cloud-SDK deps, unrelated): 735 passed (733 + 2 new) /
+18 failed / 5 errors / 1 xfailed -- identical pre-existing Chromium-
+binary/no-display sandbox baseline, zero regressions.
+
+**Not done in this pass (explicitly Phase 3/4's job, not Phase 2's):**
+`runtime/hooks/interact.py`'s OS-level `click()`/`type_text()`/`scroll()`/
+`capture_screenshot()` (`pyautogui`/`mss`) are untouched -- Phase 3 removes
+those. `state_changed` is still computed via pixel-hash-diff
+(`file_hash` comparison), not `MutationObserver` -- Phase 4's job. The
+`click_resolution_log.py` `change_detection_method` field (D-072) stays
+hardcoded `"hash_diff"` until then.
+
+**Revisit when:** Phase 3 (remove OS-mouse dependency) or Phase 4
+(MutationObserver change detection) starts -- both build directly on
+this phase's DOM-first-when-available branch.

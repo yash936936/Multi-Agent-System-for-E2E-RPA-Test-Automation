@@ -32,6 +32,7 @@ from typing import Callable
 
 from config.settings import settings
 
+from orchestrator.click_resolution_log import click_resolution_log
 from runtime.hooks.capture import file_hash
 
 _logger = logging.getLogger(__name__)
@@ -178,89 +179,63 @@ def _run_click_audit(
         )
     baseline_path = guard.value
 
-    landmarks = audit_screenshot(baseline_path)
-    baseline_hash = file_hash(baseline_path)
-
-    report = UIAuditReport(
-        has_nav=landmarks.has_nav,
-        has_hero=landmarks.has_hero,
-        has_footer=landmarks.has_footer,
-        page_issues=detect_page_issues(baseline_path),
-        requirement_prompt=requirement_prompt,
-    )
-
-    all_elements = landmarks.nav_elements + landmarks.hero_elements + landmarks.footer_elements + landmarks.body_elements
-
-    # DOM-sourced supplement (agents/vision/dom_extractor.py): OCR-band
-    # detection above only sees elements with visible, readable static
-    # text at screenshot time -- it structurally misses icon-only
-    # controls and custom div/span controls with no rendered label text
-    # AURA's OCR pass would recognize. When a live Playwright session is
-    # already open (browser.has_active_page()), pull those in too, deduped
-    # against the OCR list by (rounded position, text) so a control both
-    # paths agree on isn't double-clicked during the audit below.
-    dom_sourced_keys: set[tuple[str, int, int]] = set()
-    dom_ground_truth_available = False
+    # Re-architecture Phase 2 (docs/AURA_REARCHITECTURE_PLAN.md,
+    # docs/decisions.md D-073): DOM is now the primary discovery path
+    # whenever a live page exists, full stop -- not a supplement merged
+    # into OCR's list and cross-checked after the fact. A real
+    # <a>/<button>/role="button"/onclick element (or cursor:pointer +
+    # focusable) *is* interactive by construction (agents/vision/
+    # dom_extractor.py::to_ui_elements already sets looks_interactive=True
+    # unconditionally for everything it finds), so there's no false-
+    # positive class to cross-check against DOM ground truth anymore --
+    # DOM elements simply don't go through OCR's `_looks_interactive`
+    # text-shape/vocab heuristic at all. `agents/vision/ui_audit.py`'s
+    # `_NAV_VOCAB`/`_CTA_VOCAB`/`_FOOTER_VOCAB` fallback only runs in the
+    # `else` branch below, when `dom_page is None` (or the extractor is
+    # disabled) -- the one condition that governs the fallback, matching
+    # `CONVENTIONS.md`'s intended single-rule framing.
+    all_elements: list = []
+    discovery_source = "ocr"
     if settings.enable_dom_extractor and dom_page is not None:
         try:
             from agents.vision.dom_extractor import to_ui_elements
 
             page_height = dom_page.evaluate("document.documentElement.scrollHeight") or 8000
-            dom_elements = to_ui_elements(dom_page, page_height)
-            dom_ground_truth_available = True
-            existing_keys = {(e.text.strip().lower(), round(e.cx / 12), round(e.cy / 12)) for e in all_elements}
-            for de in dom_elements:
-                key = (de.text.strip().lower(), round(de.cx / 12), round(de.cy / 12))
-                if key not in existing_keys:
-                    all_elements.append(de)
-                    existing_keys.add(key)
-                    dom_sourced_keys.add(key)
-
-            # Ground-truth cross-check: OCR's looks_interactive flag is a
-            # text-shape heuristic ("short, title-case text") which also
-            # matches plain headings/labels that aren't actually clickable
-            # (e.g. a footer's "Get In Touch" heading, a hero's title) --
-            # exactly the false-positive class reported in practice. Now
-            # that a real DOM scan succeeded, use it as ground truth: an
-            # OCR-flagged element only stays a click candidate if either
-            # (a) it's an exact match against the curated nav/CTA/footer
-            # vocabulary (very low false-positive rate on its own), or
-            # (b) a real DOM-detected interactive control sits at
-            # essentially the same on-screen position. This only ever
-            # removes candidates it can positively rule out; a
-            # DOM-extraction failure/absence (dom_ground_truth_available
-            # stays False) leaves OCR's original heuristic completely
-            # untouched, same as before this cross-check existed.
-            from agents.vision.ui_audit import _CTA_VOCAB, _FOOTER_VOCAB, _NAV_VOCAB
-
-            confident_vocab = _NAV_VOCAB | _CTA_VOCAB | _FOOTER_VOCAB
-            dom_positions = [(de.cx, de.cy) for de in dom_elements]
-            for e in all_elements:
-                key = (e.text.strip().lower(), round(e.cx / 12), round(e.cy / 12))
-                if not e.looks_interactive or key in dom_sourced_keys:
-                    continue
-                if e.text.strip().lower() in confident_vocab:
-                    continue
-                if not any(abs(e.cx - dx) <= 20 and abs(e.cy - dy) <= 20 for dx, dy in dom_positions):
-                    e.looks_interactive = False
+            all_elements = to_ui_elements(dom_page, page_height)
+            discovery_source = "dom"
         except Exception:
-            # Best-effort supplement only -- a DOM-extraction failure (page
-            # navigated away, no browser session, JS evaluate error) must
-            # never break the OCR-based audit that already succeeded above.
-            pass
+            # A live page existed but the DOM walk itself failed
+            # (detached page, navigation mid-scan, evaluate() error) --
+            # treated the same as "no DOM page available," falling back
+            # to the OCR path below rather than reporting an empty audit.
+            discovery_source = "ocr"
 
-    if dom_ground_truth_available:
-        # Recompute landmark presence from the merged (OCR + DOM) element
-        # set, not just the OCR-only pass above -- a nav/hero built from
-        # icon-only controls or client-rendered custom elements with no
-        # static OCR-readable text was previously invisible to has_nav/
-        # has_hero/has_footer even when a live DOM scan found it just fine.
-        nav_elems = [e for e in all_elements if e.band == "nav"]
-        hero_elems = [e for e in all_elements if e.band == "hero"]
-        footer_elems = [e for e in all_elements if e.band == "footer"]
-        report.has_nav = report.has_nav or len(nav_elems) > 0
-        report.has_footer = report.has_footer or len(footer_elems) > 0
-        report.has_hero = report.has_hero or any(e.looks_interactive for e in hero_elems) or len(hero_elems) >= 2
+    if discovery_source == "ocr":
+        landmarks = audit_screenshot(baseline_path)
+        all_elements = landmarks.nav_elements + landmarks.hero_elements + landmarks.footer_elements + landmarks.body_elements
+
+    nav_elems = [e for e in all_elements if e.band == "nav"]
+    hero_elems = [e for e in all_elements if e.band == "hero"]
+    footer_elems = [e for e in all_elements if e.band == "footer"]
+    report = UIAuditReport(
+        has_nav=len(nav_elems) > 0,
+        has_hero=any(e.looks_interactive for e in hero_elems) or len(hero_elems) >= 2,
+        has_footer=len(footer_elems) > 0,
+        page_issues=detect_page_issues(baseline_path),
+        requirement_prompt=requirement_prompt,
+    )
+
+    # Every element in all_elements is DOM-sourced when discovery_source
+    # is "dom" (there's no separate OCR supplement to distinguish from
+    # anymore) -- dom_sourced_keys drives the dom_extractor_direct
+    # fallback further down in the click-resolution loop for elements
+    # that resolved by position but not by accessible name.
+    dom_sourced_keys: set[tuple[str, int, int]] = (
+        {(e.text.strip().lower(), round(e.cx / 12), round(e.cy / 12)) for e in all_elements}
+        if discovery_source == "dom" else set()
+    )
+
+    baseline_hash = file_hash(baseline_path)
 
     candidates = [e for e in all_elements if e.looks_interactive and band_filter(e)][:max_elements]
 
@@ -316,6 +291,7 @@ def _run_click_audit(
                 resolution_strategy = "ocr"
             else:
                 report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=False, state_changed=None))
+                click_resolution_log.log(run_id, 8100 + i, element.text, element.band, discovery_source, element.looks_interactive, "ocr", clicked=False, rejected_reason="unreachable")
                 continue
 
             try:
@@ -360,6 +336,7 @@ def _run_click_audit(
                         interact.click(click_x, click_y)
             except NoDisplayError:
                 report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=False, state_changed=None))
+                click_resolution_log.log(run_id, 8100 + i, element.text, element.band, resolution_strategy, element.looks_interactive, resolution_strategy, clicked=False, rejected_reason="no_display")
                 continue
             except Exception:
                 # Playwright mouse.click can raise its own errors (page
@@ -367,6 +344,7 @@ def _run_click_audit(
                 # NoDisplayError -- treat the same as any other failed
                 # dispatch: record as not clicked, keep auditing the rest.
                 report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=False, state_changed=None))
+                click_resolution_log.log(run_id, 8100 + i, element.text, element.band, resolution_strategy, element.looks_interactive, resolution_strategy, clicked=False, rejected_reason="dispatch_error")
                 continue
 
             if dispatch_via_playwright:
@@ -389,6 +367,7 @@ def _run_click_audit(
             # this element as clicked-but-unverifiable and stop the audit
             # rather than crashing the whole run on the next iteration too.
             report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=True, state_changed=None, new_tab_opened=new_tab_opened, new_tab_url=new_tab_url, resolution_strategy=resolution_strategy))
+            click_resolution_log.log(run_id, 8100 + i, element.text, element.band, resolution_strategy, element.looks_interactive, resolution_strategy, clicked=True, state_changed=None, new_tab_opened=new_tab_opened, rejected_reason="no_display_after_click")
             break
         after_path = after_guard.value
         after_hash = file_hash(after_path)
@@ -401,6 +380,11 @@ def _run_click_audit(
             label=element.text, band=element.band, clicked=True, state_changed=state_changed,
             new_tab_opened=new_tab_opened, new_tab_url=new_tab_url, resolution_strategy=resolution_strategy,
         ))
+        click_resolution_log.log(
+            run_id, 8100 + i, element.text, element.band, resolution_strategy, element.looks_interactive,
+            resolution_strategy, clicked=True, state_changed=state_changed, new_tab_opened=new_tab_opened,
+            change_detection_method="hash_diff",
+        )
         report.page_issues.extend(issue for issue in detect_page_issues(after_path) if issue not in report.page_issues)
 
         after_landmarks = audit_screenshot(after_path)

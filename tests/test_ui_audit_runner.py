@@ -55,7 +55,11 @@ def test_run_ui_audit_reports_landmark_presence(tmp_path, monkeypatch):
     def provider(run_id, index):
         return _make_screenshot(tmp_path, f"shot_{index}.png", b"baseline")
 
-    fake_landmarks = FakeLandmarks(nav_elements=[], footer_elements=[], has_nav=True, has_hero=False, has_footer=True)
+    fake_landmarks = FakeLandmarks(
+        nav_elements=[FakeLandmarkElement(text="About", band="nav", looks_interactive=True)],
+        footer_elements=[FakeLandmarkElement(text="Privacy", band="footer", looks_interactive=True)],
+        hero_elements=[],
+    )
     monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
     monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
 
@@ -351,3 +355,70 @@ def test_run_ui_audit_handles_no_display_on_baseline_capture():
     assert report.has_footer is False
     assert report.checked == []
     assert any("No display available" in issue for issue in report.page_issues)
+
+
+def test_discovery_uses_dom_path_and_never_calls_ocr_when_dom_page_available(tmp_path, monkeypatch):
+    """
+    Re-architecture Phase 2 (docs/decisions.md D-073): the plan's explicit
+    acceptance test -- when a live DOM page is available (and the
+    extractor is enabled), discovery must go through
+    agents.vision.dom_extractor.to_ui_elements exclusively.
+    agents.vision.ui_audit.audit_screenshot (the OCR/vocab path) must
+    never even be called, not just "not relied upon" -- asserted directly
+    against the branch condition, per the plan's own instruction.
+    """
+    import agents.vision.ui_audit as ui_audit_module
+    from agents.vision.ui_audit import UIElement
+    from config.settings import settings
+
+    def provider(run_id, index):
+        return _make_screenshot(tmp_path, f"shot_{index}.png", b"baseline")
+
+    ocr_called = {"n": 0}
+
+    def _spy_audit_screenshot(path):
+        ocr_called["n"] += 1
+        raise AssertionError("OCR path (audit_screenshot) must not be called when a DOM page is available")
+
+    monkeypatch.setattr(ui_audit_module, "audit_screenshot", _spy_audit_screenshot)
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr(settings, "enable_dom_extractor", True)
+
+    class FakePage:
+        def evaluate(self, js):
+            return 2000  # scrollHeight
+
+    fake_page = FakePage()
+    monkeypatch.setattr("runtime.hooks.browser.has_active_page", lambda: True)
+    monkeypatch.setattr("runtime.hooks.browser.get_page", lambda: fake_page)
+
+    dom_elements = [UIElement(text="About", cx=50, cy=30, band="nav", looks_interactive=True)]
+    monkeypatch.setattr("agents.vision.dom_extractor.to_ui_elements", lambda page, height: dom_elements)
+
+    report = run_ui_audit(provider, run_id="dom-run")
+
+    assert ocr_called["n"] == 0
+    assert report.has_nav is True
+
+
+def test_discovery_falls_back_to_ocr_when_no_dom_page(tmp_path, monkeypatch):
+    """The other half of the same branch condition: no live DOM page (or
+    the extractor disabled) -- OCR is the only path, as before Phase 2."""
+    from config.settings import settings
+
+    def provider(run_id, index):
+        return _make_screenshot(tmp_path, f"shot_{index}.png", b"baseline")
+
+    fake_landmarks = FakeLandmarks(
+        nav_elements=[FakeLandmarkElement(text="About", band="nav", looks_interactive=True)],
+        footer_elements=[],
+        hero_elements=[],
+    )
+    monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr(settings, "enable_dom_extractor", True)
+    monkeypatch.setattr("runtime.hooks.browser.has_active_page", lambda: False)
+
+    report = run_ui_audit(provider, run_id="ocr-run")
+
+    assert report.has_nav is True

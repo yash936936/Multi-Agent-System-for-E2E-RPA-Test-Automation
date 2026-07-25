@@ -6,6 +6,23 @@ created: 2026-07-01
 
 # AURA — Build Plan (6 Phases)
 
+> **⚠️ Naming disambiguation (added 2026-07-25, D-072):** "Phase 1"
+> through "Phase 6" in *this file* are the **original MVP build plan**
+> from 2026-07-01 — all six completed long ago (see `docs/STATUS.md`).
+> They are unrelated to "Phase 1" (and "Phase 0", "Phase 2" ... "Phase 6")
+> in `docs/AURA_REARCHITECTURE_PLAN.md`, a separate, much later plan with
+> its own independent 0–6 numbering (fixture tier, unified logging,
+> DOM-first dispatch, OS-mouse removal, MutationObserver detection, CLI
+> UX, docs). The two numbering schemes collided by coincidence, not
+> design, and have caused real confusion about which "Phase 1" a given
+> conversation means. Going forward: **always write "MVP Phase N" for
+> this file's phases and "Re-architecture Phase N" for the other plan's**
+> when either could be ambiguous from context. This file's own phases
+> below are kept as-written (historical record) rather than renumbered,
+> per `context.md`'s "don't rewrite history" convention — only this
+> banner and the stale "say start phase 1" line further down were
+> touched.
+
 ## Engineering note before we start
 
 The docs (`TRD.md`, `APPFLOW.md`) name **"Hermes Agent API"** (`hermes-agent.nousresearch.com`) as the orchestration layer. That host isn't reachable from this environment (network egress is restricted to package registries and GitHub), and it isn't a pinnable, inspectable dependency. Rather than block the build on an external service we can't verify or install, Phase 2 implements an **in-repo tool-calling orchestration kernel** that satisfies the exact contract described in the TRD:
@@ -134,7 +151,9 @@ Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
 (scaffold)  (kernel)   (planner)  (vision)  (integration)  (UX/reporting)
 ```
 
-Say **"start phase 1"** (or just "next") when ready and I'll begin execution.
+**All six MVP phases above are long complete** — see `docs/STATUS.md` for
+current state. This section is kept as the historical build-order record,
+not an active prompt.
 
 ---
 
@@ -149,3 +168,10 @@ for *this* roadmap's phases; later re-sequencing lives directly in
 `Roadmap.md` alongside its own "what's real today" table). See
 `docs/Roadmap.md` §9 for the current phase (Phase I, delivered
 2026-07-15) and what's still ahead (Phases J–M).
+
+**Separately, as of 2026-07-25:** `docs/AURA_REARCHITECTURE_PLAN.md`
+(Re-architecture Phase 0 fixture tier through Phase 6 docs) and
+`docs/AURA_BRAIN_ARCHITECTURE.md` (Phase B1/B2/B3 Brain scaffolding) are
+two more, independent, currently-active phase sequences — not part of
+this file's numbering, not part of `Roadmap.md`'s either. Current state
+of both: `docs/STATUS.md`'s "Next action" section, always.

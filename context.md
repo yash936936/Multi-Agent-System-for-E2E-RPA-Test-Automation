@@ -329,3 +329,20 @@ merging it.
     decisions live in the codebase (those decisions are being
     consolidated into `orchestrator/brain/policy.py`, not left where
     D-0xx entries before D-068 describe them).
+
+11. **Rule 4, concretely (2026-07-25 precedent, second instance same day):**
+    Re-architecture Phase 1 (unified click-resolution logging + `aura
+    explain`) shipped as D-072, with `docs/STATUS.md`'s "Next action"
+    corrected and `docs/progress.md` appended in the same pass. This pass
+    also found that `docs/PHASES.md`'s "Phase 1"–"Phase 6" (the original
+    2026-07-01 MVP build plan) collided in name only with
+    `docs/AURA_REARCHITECTURE_PLAN.md`'s own independent "Phase 0"–"Phase
+    6" — a genuine source of confusion when either is referenced without
+    qualification. `docs/PHASES.md` now carries an explicit
+    disambiguation banner; going forward, say **"MVP Phase N"** vs
+    **"Re-architecture Phase N"** whenever ambiguous. Also surfaced (not
+    yet fixed): `docs/STATUS.md`'s D-061 entry claims `aura audit-report`
+    shipped as a CLI command; it does not exist in `aura/main.py`. That's
+    logged as a known drift in the current "Next action," not silently
+    corrected mid-pass, since building or removing a documented CLI
+    command is its own decision worth its own pass.

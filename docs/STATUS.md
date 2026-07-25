@@ -413,3 +413,68 @@ D-068.
 > remaining CLI intents (`execute_spec`/`execute_prompt`/
 > `execute_interactive`/`ui_audit`/`capability_check`) onto
 > `orchestrator/brain/router.py`, same pattern as B1's `_handle_explore()`.
+
+## Update — 2026-07-25 — Re-architecture Phase 1 shipped (D-072), supersedes the "Next action" above
+
+**Phase 1 is done.** Unified click-resolution logging
+(`orchestrator/click_resolution_log.py`) is wired into every click-audit
+decision point in `orchestrator/ui_audit_runner.py`, `orchestrator/run_timeline.py`
+merges it with the two pre-existing structured logs
+(`decision_trace_log.py`, `assertion_audit_log.py`), and `aura explain
+<run_id>` (`--json` flag included) renders the merged result. Full
+detail: `docs/decisions.md` D-072. Verified: 733 passed / 18 failed / 5
+errors / 1 xfailed (three capability-adapter test files deselected --
+missing optional cloud-SDK deps in this sandbox, unrelated) -- every
+failure/error is the pre-existing Chromium-binary/no-display sandbox
+baseline, zero regressions.
+
+**Explicitly deferred, not silently dropped:** the plan's `--screenshot`
+annotated-overlay flag on `aura explain` is real follow-on work, not done
+in this pass.
+
+**Doc/code drift surfaced during this pass (not yet fixed):** this file's
+own D-061 entry above claims `aura audit-report <run_id>` shipped as a
+CLI command. It does not exist in `aura/main.py` today -- `find_anomalies()`
+exists on the relevant logs, but nothing calls it from a CLI command. This
+needs a deliberate follow-up pass (build the command for real, or correct
+the D-061 entry), not a silent fix folded into an unrelated phase.
+
+## Next action (current, supersedes both pointers above)
+Three real next steps, not mutually exclusive:
+1. **Re-architecture Phase 2** -- DOM-first dispatch rewrite
+   (`docs/AURA_REARCHITECTURE_PLAN.md`). Also where the new click-resolution
+   log's `change_detection_method` field stops being hardcoded `"hash_diff"`
+   once Phase 4 lands `MutationObserver`-based detection.
+2. **Phase B3** -- migrate the remaining CLI intents
+   (`execute_spec`/`execute_prompt`/`execute_interactive`/`ui_audit`/
+   `capability_check`) onto `orchestrator/brain/router.py`, same pattern
+   as B1's `_handle_explore()`.
+3. Resolve the `aura audit-report` doc/code drift noted just above.
+
+## Update — 2026-07-25 — Re-architecture Phase 2 shipped (D-073), supersedes the "Next action" above
+
+**Phase 2 is done.** `orchestrator/ui_audit_runner.py::_run_click_audit`
+now runs exactly one discovery path per audit: DOM
+(`agents/vision/dom_extractor.py::to_ui_elements`) whenever
+`settings.enable_dom_extractor` is on and a live page exists, OCR
+(`agents/vision/ui_audit.py::audit_screenshot`) otherwise -- the
+previous "OCR discovers, DOM supplements, cross-check downgrades OCR's
+false positives after the fact" logic is gone. Full detail:
+`docs/decisions.md` D-073. Verified: 735 passed / 18 failed / 5 errors /
+1 xfailed -- identical pre-existing Chromium/no-display sandbox
+baseline, zero regressions.
+
+**Still open, unrelated to this phase:** the `aura audit-report` doc/code
+drift noted in the previous update.
+
+## Next action (current, supersedes the pointer above)
+Three real next steps, not mutually exclusive:
+1. **Re-architecture Phase 3** -- remove the OS-level mouse/keyboard/
+   screen dependency (`runtime/hooks/interact.py`'s `pyautogui` path,
+   `runtime/hooks/capture.py`'s `mss` path) now that DOM-first dispatch
+   is the enforced default whenever a page exists. Needs the one open
+   product decision from the plan first: does `--interactive` mode ever
+   need to watch a window AURA didn't launch itself?
+2. **Phase B3** -- migrate the remaining CLI intents onto
+   `orchestrator/brain/router.py`.
+3. Resolve the `aura audit-report` doc/code drift.
