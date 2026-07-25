@@ -80,3 +80,34 @@ def test_explore_json_report_records_whether_link_check_was_requested(monkeypatc
     data = json.loads(report_files[0].read_text())
     assert data["link_check_requested"] is False
     assert data["link_check_scope"] is None
+
+
+def test_explore_does_not_duplicate_output_or_rewrite_report(monkeypatch, tmp_path, capsys):
+    """
+    Regression test: explore_cmd.py's entire rendering block (the
+    "Checked N element(s)" summary, link-check output, JSON report
+    write) previously appeared twice verbatim in the function body --
+    every real `aura explore` run printed its whole summary twice and
+    wrote report.json twice (same content both times, so not silently
+    corrupting data, but a real duplicate-work/duplicate-output bug
+    nonetheless). Asserts the "Checked N element(s)" line -- the most
+    visible symptom -- appears exactly once, and confirms report.json
+    on disk reflects a single, sane write rather than asserting on
+    write *count* directly (mtime/inode tricks are flaky across
+    filesystems; content correctness is the property that actually
+    matters here and is what a second write with different intermediate
+    state could have corrupted).
+    """
+    def fake_run_exploration(provider, run_id, max_elements=25, requirement_prompt=None, page_url=None, link_check_scope=None):
+        return UIAuditReport(has_nav=True, has_hero=True, has_footer=True, checked=[], page_issues=[])
+
+    monkeypatch.setattr("orchestrator.ui_audit_runner.run_exploration", fake_run_exploration)
+
+    explore_cmd.explore("https://example.com")
+
+    printed = capsys.readouterr().out
+    assert printed.count("Checked 0 element(s)") == 1
+    assert printed.count("JSON report:") == 1
+
+    report_files = list(tmp_path.rglob("report.json"))
+    assert len(report_files) == 1

@@ -2,7 +2,7 @@
 type: master-context
 project: AURA (Multi-Agent-System-for-E2E-RPA-Test-Automation)
 root_file: true
-last_updated: 2026-07-23
+last_updated: 2026-07-25
 ---
 
 # context.md — Master Orientation File
@@ -64,6 +64,8 @@ Two things are true at once and must not be conflated:
   external_repos.md      ← extracted logic/snippets from external reference repos (see §5) — all 6 batches / 18 repos complete
 /agents/                 ← the actual sub-agents: planner, vision, capability, data_synth, auditor
 /orchestrator/           ← Hermes-Agent-API-style kernel: run_engine, healing_loop, memory, skill_store, guardrails, capability_router
+/orchestrator/brain/     ← Intent/Policy/Router -- one place cross-cutting decisions (DOM-vs-OCR, retry policy, etc.) get made, see docs/AURA_BRAIN_ARCHITECTURE.md. Partial migration -- only the "explore" intent routes through this today (Phase B1); see that doc's §5.1 for why the rest isn't a quick follow-on.
+/brain_knowledge/        ← the Brain's externalized policy source (context, guidelines, YAML rules, playbooks) -- distinct from orchestrator/memory.py's per-run RunMemoryStore and from this file/decisions.md
 /api/                    ← FastAPI service layer (Phase 17) — check docs/STATUS.md for what's actually wired
 /aura/                   ← CLI entry point and commands (aura/main.py, aura/cli/*)
 /runtime/hooks/          ← low-level OS interaction: browser.py, capture.py, interact.py (screenshot/click/type primitives)
@@ -108,6 +110,8 @@ something to silently work around.
 | `docs/decisions.md` | Why choices were made (architecture decision records) | Any non-obvious technical decision, especially ones that reject an alternative |
 | `docs/progress.md` | Append-only changelog, dated entries | Every pass — append, never rewrite history |
 | `docs/debug.md` | **Mandatory checklist run before any code change is considered done** | Only when the debug process itself needs to evolve |
+| `docs/AURA_REARCHITECTURE_PLAN.md` | Phased re-architecture plan (fixture tier → unified logging/`aura explain` → DOM-first dispatch → OS-mouse removal → MutationObserver → CLI UX → docs), own independent Phase 0–6 numbering | A re-architecture phase's scope/sequencing changes. **Read `docs/STATUS.md`'s latest "Next action" for current phase state, not this file's own text** — this file is the plan as originally written, not a live status tracker. |
+| `docs/AURA_BRAIN_ARCHITECTURE.md` | The structural fix underneath the plan above: `orchestrator/brain/` (`Intent`/`Policy`/`Router`) as the one place every entrypoint routes cross-cutting decisions through, plus `brain_knowledge/` as its externalized policy source. Own Phase B1/B2/B3 numbering (see its own §4 "Revised phase order" table). | The Brain's scope or phase table changes |
 | `docs/debug_report.md` | **Generated** output of `aura debug <path>` (ruff-backed static analysis) | Never hand-edit — regenerate by re-running the command. Stale copies should be deleted, not edited. |
 | `docs/external_repos.md` | Extracted, verified code/logic pulled from external reference repos, mapped to where it's used in AURA | Whenever a new external repo is reviewed per §5 below (currently: all 18 in-scope repos done) |
 

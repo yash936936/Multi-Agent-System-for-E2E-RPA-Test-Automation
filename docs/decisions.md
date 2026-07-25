@@ -4214,3 +4214,97 @@ hardcoded `"hash_diff"` until then.
 **Revisit when:** Phase 3 (remove OS-mouse dependency) or Phase 4
 (MutationObserver change detection) starts -- both build directly on
 this phase's DOM-first-when-available branch.
+
+## D-074 — Structure audit, a real duplicate-output bug, and doc-consolidation before starting Phase B3 (2026-07-25)
+
+**Context:** asked to (1) check whether the repo's folder structure
+matches its own documentation, (2) start "Phase B3", and (3) fix the
+doc-sprawl making `context.md` (the stated single entry point) an
+unreliable orientation source. Did the audit first, found real things,
+fixed what was safe to fix immediately, and stopped short of a rushed
+B3 migration once its actual scope turned out to be bigger than
+advertised.
+
+**Structure audit findings:**
+1. Phase 0 (fixture tier), Phase 1 (unified logging + `aura explain`),
+   Phase 2 (DOM-first dispatch), Phase B1, and Phase B2 are all
+   genuinely shipped -- verified by checking for the actual files each
+   phase's decisions.md entry claims (`orchestrator/click_resolution_log.py`,
+   `orchestrator/run_timeline.py`, `aura/cli/explain_cmd.py`,
+   `orchestrator/brain/*`, `brain_knowledge/rules/*.yaml` all present and
+   non-empty), not assumed from the log entries' text alone -- this
+   repo's own history (D-061) already contains one instance of a
+   confidently-written decisions.md entry describing work that was
+   never actually committed, so "the log says so" is not sufficient
+   evidence on its own anymore in this project.
+2. Phase 3 (`agents/vision/dom_change_detector.py`) and part of Phase 3
+   (`runtime/hooks/os_fallback.py`) are genuinely not started --
+   confirmed missing, matching `STATUS.md`'s own "Next action."
+3. **`AURA_BRAIN_ARCHITECTURE.md`'s own §4 phase table never actually
+   defined "B3"**, despite `docs/PHASES.md` and `docs/STATUS.md` both
+   referencing it as a real, current next-action item. Fixed: added B3
+   to that table, plus a new §5.1 documenting why it's not a mechanical
+   repeat of B1 (see below).
+4. **`context.md`, the file every session is told to "read first,"
+   had zero mentions of `docs/AURA_REARCHITECTURE_PLAN.md`,
+   `docs/AURA_BRAIN_ARCHITECTURE.md`, `orchestrator/brain/`, or
+   `brain_knowledge/`** anywhere in its directory map or doc-purpose
+   table, despite both docs and both directories being real,
+   substantial, and current as of two days before this pass. This is
+   the actual source of the "entry point is creating confusion"
+   complaint that prompted this pass -- fixed by adding both docs to
+   `context.md`'s doc-by-doc table and both directories to its
+   directory map, with a pointer to `STATUS.md`'s latest "Next action"
+   as the authoritative live-state source rather than either plan
+   document's own (necessarily static) text.
+
+**A real bug found and fixed while reading `explore_cmd.py` to
+understand B1's migration pattern (not something this pass was looking
+for):** the entire rendering block after `AuraBrain().handle()` --
+the "Checked N element(s)" summary, link-check output, and the
+`report.json` write -- was duplicated verbatim in the function body.
+Every real `aura explore <url>` run printed its whole summary twice and
+wrote `report.json` twice (identical content both times, so not data
+corruption, but genuine duplicate work and confusing doubled terminal
+output). No existing test caught this: `test_explore_json_report_records_whether_link_check_was_requested`
+only asserted `report.json` *exists*, never that writes/prints happen
+*once*. Fixed (single copy of the block kept) and a new regression test
+added (`test_explore_does_not_duplicate_output_or_rewrite_report`)
+asserting the "Checked N element(s)" line and "JSON report:" line each
+appear exactly once in captured output.
+
+**On "start Phase B3":** checked the actual call graph before writing
+any migration code, rather than assuming B1's pattern generalizes
+mechanically to the remaining four intents (documented in full in
+`AURA_BRAIN_ARCHITECTURE.md`'s new §5.1). Two real complications found:
+(1) `execute_spec`/`execute_prompt`/`execute_interactive` share a core
+(`_run_requirement_text()`) that passes rendering callbacks
+(`on_step_start`/`on_step_result`/`on_skill_learned`) directly into
+`RunEngine`, calling `live_view` *during* the run -- unlike `explore`,
+which only ever rendered from a completed report. Moving this into
+`Router` as-is would make the Router do rendering, directly violating
+the Brain's own stated scope boundary (§5). The correct fix is a
+Router-returns-typed-events redesign, not a copy-paste move -- a real
+design task, not started in this pass rather than rushed. (2) `ui_audit`
+and `capability_check` are not actually standalone CLI entrypoints
+today despite being listed as `IntentKind` values -- `ui_audit` is a
+flag threaded through `_run_requirement_text()`'s shared core, and
+`capability_check` has no CLI command at all, only reachable as a step
+action inside a spec. There's nothing at either name to migrate until a
+product decision is made about what standalone commands for either
+would even take as input.
+
+**Verified:** full unit suite (`pytest -q --ignore=tests/integration`):
+728 passed / 30 failed / 1 xfailed / 5 errors, all pre-existing
+Chromium-binary/no-display environment gaps in this sandbox (same
+categories as every prior pass in this project's history: performance
+adapter, real-browser fixtures, run-engine trace/video attachment,
+DOM-path executor) -- zero regressions from the `explore_cmd.py` fix,
+one new passing test.
+
+**Still open:** the real Phase B3 (needs the Router-events redesign
++ the ui_audit/capability_check product decision, neither done here),
+Phase 3 (OS-mouse removal, needs its own open product decision on
+`--interactive`'s scope per `AURA_REARCHITECTURE_PLAN.md`), Phase 4
+(MutationObserver), and the still-unresolved `aura audit-report`
+doc/code drift noted in `STATUS.md` since D-072.
