@@ -4684,3 +4684,86 @@ pass) — largely superseded already by this file's own incremental
 updates throughout D-068 through D-078, per the plan's own allowance
 for that. No other open items from `docs/STATUS.md`'s "Next action"
 remain as of this entry.
+
+---
+
+## D-079 — Gap #1 (`api/routers/runs.py` onto the Brain) and Gap #2 (`Policy` wired into `ui_audit.py`) closed (2026-07-26)
+
+**Decided:** 2026-07-26
+**Context:** a repo audit against `docs/AURA_REARCHITECTURE_PLAN.md` and
+`docs/AURA_BRAIN_ARCHITECTURE.md` found two real, pre-existing gaps
+(not regressions from any single phase): `api/routers/runs.py` — the
+"fourth variant" §1 of the architecture doc explicitly named — was
+never migrated onto `AuraBrain`, still calling `RunEngine`/
+`run_exploration` directly; and `Policy.discovery_source()`/
+`ocr_vocab()`/`band_boundaries()` were fully built and unit-tested
+(Phase B2, D-071) but nothing outside `orchestrator/brain/`'s own
+tests called them — editing `brain_knowledge/rules/discovery.yaml` or
+`bands.yaml` had zero effect on real OCR classification behavior.
+
+**Gap #1, shipped:**
+- `api/routers/runs.py`'s `execute_run`, `execute_autonomous_run`, and
+  `execute_full_exploration_run` now call `AuraBrain().handle(Intent(...))`
+  instead of constructing `RunEngine`/calling `run_exploration` directly.
+  `_new_engine()` removed — `AuraBrain`'s own router already builds a
+  fresh `RunEngine` per call, preserving Phase J's (D-031) no-shared-
+  singleton guarantee.
+- `orchestrator/brain/router.py::_handle_execute_requirement` gained a
+  `built_spec` param (skips `planner_generate_spec` and calls
+  `RunEngine.run_spec()` directly when the caller — the API's "guided"
+  mode — already has a hand-assembled `TestSpec`) and a `run_id`
+  override param. `_handle_explore` gained the same `run_id` override.
+  Both overrides exist because API callers pre-create a `run_store`
+  record under their own generated UUID before the background task
+  runs and cannot let the Brain derive a different run_id.
+- `tests/test_parallel_execution.py`'s `test_api_new_engine_returns_independent_instances`
+  (which called the now-removed `runs._new_engine()`) replaced with
+  `test_brain_hands_out_independent_run_engine_instances`, which proves
+  the same guarantee at the `Router`/`RunEngine` level instead.
+
+**Gap #2, shipped:**
+- `agents/vision/ui_audit.py`: `_looks_interactive()` and
+  `classify_landmarks()` now accept optional `vocab`/`band_boundaries`
+  overrides (default to the original hardcoded
+  `_NAV_VOCAB`/`_CTA_VOCAB`/`_FOOTER_VOCAB`/`_NAV_BAND_END`/
+  `_HERO_BAND_END`/`_FOOTER_BAND_START` module constants, so every
+  existing 2-arg caller, including this module's own test suite, is
+  unaffected). `audit_screenshot()` now accepts an optional `policy`
+  param and, when none is given, constructs its own `Policy()` and
+  sources vocab/band values from it — this is the load-bearing change:
+  editing `brain_knowledge/rules/discovery.yaml`/`bands.yaml` now
+  actually changes OCR classification behavior for the first time since
+  Phase B2 shipped those files.
+- **Deliberately not done:** passing a shared `Policy` instance down
+  from `orchestrator/ui_audit_runner.py` into its two `audit_screenshot()`
+  call sites (which would avoid rebuilding `Policy()`/
+  `BrainKnowledge.load()` per screenshot). This repo's test suite
+  widely monkeypatches `agents.vision.ui_audit.audit_screenshot` with
+  single-arg (`path`-only) fakes across `tests/test_ui_audit_runner.py`;
+  passing an extra `policy=` kwarg from the runner broke 14 of those
+  tests for a pure micro-optimization that isn't the actual gap (the
+  gap was "YAML edits have zero effect," which `audit_screenshot()`'s
+  own default-`Policy()` construction fully closes on its own).
+  `agents/planner/page_grounding.py`'s one-off `audit_screenshot()` call
+  similarly left to use the default — it's not a hot loop, so there's
+  no real cost to it constructing its own `Policy()`.
+
+**Verified:** `tests/test_api_service.py`, `test_parallel_execution.py`,
+`test_analytics_api.py`, `test_project_tag_permissions.py`,
+`test_brain_b3.py` (34/34), then `test_ui_audit.py`,
+`test_ui_audit_runner.py`, `test_brain.py` (47/47) after the Gap #2
+fix. Full suite re-run after both gaps: 752 passed / 30 failed / 5
+errors — identical, failure-by-failure, to the sandbox-only Chromium/
+no-display baseline maintained since D-074. Zero regressions.
+
+**Explicitly not done in this pass:** Gap #3 (missing
+`brain_knowledge/playbooks/execute.md`, `execute_interactive.md`,
+`ui_audit.md`) and Gap #4 (planner prompts still living in
+`agents/planner/prompts.py` instead of `brain_knowledge/prompts/*.txt`)
+— both queued as this session's next work, not silently dropped.
+
+**Revisit when:** Gap #3/#4 are picked up, or if a future caller of
+`audit_screenshot()` turns out to be a genuine hot loop where the
+per-call `Policy()`/`BrainKnowledge.load()` cost matters enough to
+justify threading a shared instance through despite the test-mock
+friction noted above.

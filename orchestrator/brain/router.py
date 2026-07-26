@@ -26,6 +26,17 @@ pattern (full rationale in `docs/AURA_BRAIN_ARCHITECTURE.md` §5.1/§5.2):
    that renders, via callbacks the CLI itself constructed -- the Router
    just carries them to where `RunEngine` already expected callbacks to
    begin with.
+
+   **Gap #1 follow-up (docs/decisions.md D-079):**
+   `_handle_execute_requirement` also accepts an optional `built_spec`
+   param (skips `planner_generate_spec` and calls
+   `RunEngine.run_spec()` directly when the caller -- api/routers/runs.py's
+   "guided" mode -- already has a hand-assembled `TestSpec`, since there
+   is no free-text requirement to re-plan from). Both
+   `_handle_execute_requirement` and `_handle_explore` also accept an
+   optional `run_id` param, since API callers pre-create a `run_store`
+   record under their own generated UUID before the background task
+   runs and cannot let the Brain derive a different one.
 2. **`ui_audit` and `capability_check` became real, minimal standalone
    CLI commands** (`aura ui-audit <url>`, `aura capability-check
    <tool> --args '{...}'`) rather than staying flags/step-actions with
@@ -95,7 +106,13 @@ class Router:
         check_links = intent.get("check_links", False)
         link_scope = intent.get("link_scope", "all")
 
-        run_id = f"explore_{uuid.uuid4().hex[:8]}"
+        # `run_id` override (API callers, e.g. api/routers/runs.py, pre-create
+        # a run_store record under their own generated UUID before the
+        # background task runs -- the Brain can't be allowed to derive a
+        # different run_id here, or the report would be written under an id
+        # the caller never learns about). CLI callers omit this and keep the
+        # original explore_<hex8> scheme.
+        run_id = intent.get("run_id") or f"explore_{uuid.uuid4().hex[:8]}"
         normalized = normalize_url(url)
 
         open_error: str | None = None
@@ -187,6 +204,16 @@ class Router:
         continuous_audit = intent.get("continuous_audit")
         screenshot_provider = intent.get("screenshot_provider")
 
+        # `built_spec` (API "guided" mode): the caller already has a fully
+        # structured TestSpec (built via api/spec_builder.py::build_test_spec
+        # from hand-assembled JSON steps), so there is no free-text
+        # requirement to hand to the Planner -- skip planner_generate_spec
+        # entirely and run the spec as given.
+        built_spec = intent.get("built_spec")
+
+        # `run_id` override -- see the matching note in _handle_explore.
+        run_id_override = intent.get("run_id")
+
         # CLI-supplied closures -- each defaults to a no-op so this
         # method never needs to know whether the caller wired rendering
         # up; `approve_spec` additionally defaults to "approve" (matches
@@ -199,14 +226,18 @@ class Router:
         confirm_heal_accept = intent.get("confirm_heal_accept") or (lambda step_id, skill: True)
         on_scan_progress = intent.get("on_scan_progress") or (lambda message: None)
 
-        page_context = None
-        nav_url = extract_navigate_url(requirement_text)
-        if nav_url:
-            from agents.planner.page_grounding import snapshot_page_elements
+        nav_url = extract_navigate_url(requirement_text) if requirement_text else None
 
-            page_context = snapshot_page_elements(nav_url)
+        if built_spec is not None:
+            spec = built_spec
+        else:
+            page_context = None
+            if nav_url:
+                from agents.planner.page_grounding import snapshot_page_elements
 
-        spec = planner_generate_spec(RequirementInput(requirement_text=requirement_text, page_context=page_context))
+                page_context = snapshot_page_elements(nav_url)
+
+            spec = planner_generate_spec(RequirementInput(requirement_text=requirement_text, page_context=page_context))
 
         if not auto_approve and not approve_spec(spec):
             return BrainResult(run_id=spec.test_id, kind=intent.kind, data={"cancelled": True, "spec": spec})
@@ -233,12 +264,28 @@ class Router:
             on_skill_learned=_on_skill_learned,
         )
 
-        result = engine.run(
-            requirement_text,
-            run_id=spec.test_id.lower().replace(" ", "-"),
-            keep_browser_open=scroll_test or ui_audit,
-            continuous_audit=continuous_audit,
-        )
+        resolved_run_id = run_id_override or spec.test_id.lower().replace(" ", "-")
+
+        if built_spec is not None:
+            # Execute the already-built spec directly -- engine.run() would
+            # otherwise re-derive a spec from requirement_text via
+            # Planner.generate_spec, discarding the caller's hand-assembled
+            # steps (the API's "guided" mode has no free-text requirement
+            # to re-plan from in the first place).
+            result = engine.run_spec(
+                spec,
+                run_id=resolved_run_id,
+                requirement_text=requirement_text,
+                keep_browser_open=scroll_test or ui_audit,
+                continuous_audit=continuous_audit,
+            )
+        else:
+            result = engine.run(
+                requirement_text,
+                run_id=resolved_run_id,
+                keep_browser_open=scroll_test or ui_audit,
+                continuous_audit=continuous_audit,
+            )
 
         for step_id, skill in learned_skills:
             if auto_approve:

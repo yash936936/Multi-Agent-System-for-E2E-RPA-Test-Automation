@@ -7,9 +7,11 @@ Phase J (decisions.md D-031): tests for the two concurrency changes --
    through a ThreadPoolExecutor and every requirement doc still gets run
    exactly once, regardless of N.
 2. `api/routers/runs.py` no longer serializes every run behind a single
-   process-wide `RunEngine` + lock -- each call to `_new_engine()` returns
-   a fresh, independent instance, so two concurrent background tasks can
-   never observe "Vision Core busy" (that message/behavior is gone).
+   process-wide `RunEngine` + lock -- each background task now calls
+   `AuraBrain().handle(...)`, and the Brain's router builds a fresh
+   `RunEngine` per call (docs/decisions.md D-079), so two
+   concurrent background tasks can never observe "Vision Core busy"
+   (that message/behavior is gone).
 
 `execute_cmd.execute_test` itself is monkeypatched here (same reasoning
 as test_cli.py's module docstring: a real run needs a live display/
@@ -117,17 +119,47 @@ def test_parallel_propagates_a_failed_run_as_nonzero_exit(monkeypatch, isolated_
     assert result.exit_code == 1
 
 
-def test_api_new_engine_returns_independent_instances():
+def test_brain_hands_out_independent_run_engine_instances():
     """
-    Phase J: the API layer must never hand out the same RunEngine
-    instance twice -- that was the whole point of removing the
-    module-level singleton + lock.
+    Phase J (still true post-D-079): the API layer must never hand
+    out the same RunEngine instance twice. `_new_engine()` was removed
+    when api/routers/runs.py migrated onto AuraBrain -- the equivalent
+    guarantee now lives in orchestrator/brain/router.py, which builds a
+    fresh RunEngine inside `_handle_execute_requirement`/`_handle_explore`
+    on every call rather than reusing one across runs.
     """
-    from api.routers import runs
+    from unittest.mock import patch
 
-    e1 = runs._new_engine()
-    e2 = runs._new_engine()
-    assert e1 is not e2
+    from orchestrator.brain.router import Router
+    from orchestrator.brain.policy import Policy
+    from orchestrator.brain.context import BrainKnowledge
+    from orchestrator.brain.intent import Intent
+    from orchestrator.run_engine import RunEngine
+
+    seen: list[RunEngine] = []
+    real_init = RunEngine.__init__
+
+    def spy_init(self, *args, **kwargs):
+        seen.append(self)
+        return real_init(self, *args, **kwargs)
+
+    router = Router(Policy(BrainKnowledge.load()))
+
+    with patch.object(RunEngine, "__init__", spy_init):
+        for _ in range(2):
+            try:
+                router.resolve(
+                    Intent(
+                        kind="execute_interactive",
+                        caller="api",
+                        params={"prompt": "noop", "timeout": 0, "screenshot_provider": lambda rid, i: ""},
+                    )
+                )
+            except Exception:
+                pass
+
+    assert len(seen) == 2
+    assert seen[0] is not seen[1]
 
 
 def test_api_runs_module_has_no_global_lock_or_singleton():

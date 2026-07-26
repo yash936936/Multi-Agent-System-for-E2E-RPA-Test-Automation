@@ -119,11 +119,21 @@ def _plausible_word(word: str) -> bool:
     return True
 
 
-def _looks_interactive(text: str) -> bool:
+def _looks_interactive(text: str, vocab: dict[str, set[str]] | None = None) -> bool:
+    """
+    `vocab`: optional {"nav": set(...), "cta": set(...), "footer": set(...)}
+    override, sourced from Policy.ocr_vocab() (Gap #2, docs/decisions.md
+    D-079). Defaults to this module's own hardcoded
+    _NAV_VOCAB/_CTA_VOCAB/_FOOTER_VOCAB sets when omitted, so every
+    existing caller of this private helper is unaffected.
+    """
     normalized = text.strip().lower()
     if not normalized:
         return False
-    if normalized in _NAV_VOCAB or normalized in _CTA_VOCAB or normalized in _FOOTER_VOCAB:
+    nav_vocab = vocab["nav"] if vocab else _NAV_VOCAB
+    cta_vocab = vocab["cta"] if vocab else _CTA_VOCAB
+    footer_vocab = vocab["footer"] if vocab else _FOOTER_VOCAB
+    if normalized in nav_vocab or normalized in cta_vocab or normalized in footer_vocab:
         return True
     # Short (<=4 words), title-case-ish text is a common button/link
     # pattern ("Get Started", "Learn More", "Book a Demo") even when it
@@ -138,25 +148,41 @@ def _looks_interactive(text: str) -> bool:
     return all(_plausible_word(w) for w in words)
 
 
-def classify_landmarks(elements: list[dict], page_height: int) -> LandmarkAudit:
+def classify_landmarks(
+    elements: list[dict],
+    page_height: int,
+    band_boundaries: dict[str, float] | None = None,
+    vocab: dict[str, set[str]] | None = None,
+) -> LandmarkAudit:
     """
     Pure function: given OCR elements (as returned by
     agents.vision.locator.list_text_elements) and the page height in
     pixels, buckets each element into a landmark band and flags whether
     it looks like an interactive nav/button element.
+
+    `band_boundaries`/`vocab`: optional overrides (Gap #2, docs/decisions.md
+    D-079), sourced from Policy.band_boundaries()/Policy.ocr_vocab()
+    by audit_screenshot() below. Both default to this module's own
+    hardcoded constants when omitted, so every existing 2-arg call site
+    (including this module's own test suite) is unaffected.
     """
     audit = LandmarkAudit()
     if page_height <= 0:
         return audit
 
-    nav_cutoff = page_height * _NAV_BAND_END
-    hero_cutoff = page_height * _HERO_BAND_END
-    footer_cutoff = page_height * _FOOTER_BAND_START
+    bounds = band_boundaries or {
+        "nav_band_end": _NAV_BAND_END,
+        "hero_band_end": _HERO_BAND_END,
+        "footer_band_start": _FOOTER_BAND_START,
+    }
+    nav_cutoff = page_height * bounds["nav_band_end"]
+    hero_cutoff = page_height * bounds["hero_band_end"]
+    footer_cutoff = page_height * bounds["footer_band_start"]
 
     for el in elements:
         text = el.get("text", "")
         cy = el.get("cy", 0)
-        interactive = _looks_interactive(text)
+        interactive = _looks_interactive(text, vocab)
 
         if cy <= nav_cutoff:
             band = "nav"
@@ -173,10 +199,27 @@ def classify_landmarks(elements: list[dict], page_height: int) -> LandmarkAudit:
     return audit
 
 
-def audit_screenshot(screenshot_path: str) -> LandmarkAudit:
-    """I/O wrapper: runs OCR on a real screenshot and classifies the result. See classify_landmarks() for the pure logic."""
+def audit_screenshot(screenshot_path: str, policy=None) -> LandmarkAudit:
+    """
+    I/O wrapper: runs OCR on a real screenshot and classifies the result.
+    See classify_landmarks() for the pure logic.
+
+    `policy`: optional Policy instance (Gap #2, docs/decisions.md
+    D-079) supplying band_boundaries()/ocr_vocab() -- pass one in
+    from a caller that already has one (e.g. ui_audit_runner.py, which
+    builds a single Policy and reuses it across every screenshot in a
+    run) to avoid constructing a fresh Policy()/BrainKnowledge.load() per
+    call. Defaults to constructing its own Policy() when omitted, so
+    existing single-arg callers keep working -- editing
+    brain_knowledge/rules/discovery.yaml or bands.yaml now actually
+    changes this function's behavior either way.
+    """
     from agents.vision.locator import image_dimensions, list_text_elements
+    from orchestrator.brain.policy import Policy
+
+    policy = policy or Policy()
 
     elements = list_text_elements(screenshot_path)
     _, height = image_dimensions(screenshot_path)
-    return classify_landmarks(elements, height)
+    vocab = {"nav": policy.ocr_vocab("nav"), "cta": policy.ocr_vocab("cta"), "footer": policy.ocr_vocab("footer")}
+    return classify_landmarks(elements, height, band_boundaries=policy.band_boundaries(), vocab=vocab)

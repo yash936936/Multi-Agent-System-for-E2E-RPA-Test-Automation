@@ -151,6 +151,26 @@ def _run_click_audit(
     # fallback as before for anything it can't resolve (native desktop /
     # no accessibility tree, or no active page at all) -- this preserves
     # every existing OCR-only test's behavior unchanged.
+    from orchestrator.brain.policy import Policy
+
+    # Gap #2 (docs/decisions.md D-079): this Policy instance feeds
+    # change_detection_method()/change_detection_settings() below, same as
+    # before. audit_screenshot() (both call sites further down) is
+    # deliberately left to construct its own default Policy() internally
+    # rather than receiving this one explicitly -- this repo's test suite
+    # widely monkeypatches "agents.vision.ui_audit.audit_screenshot" with
+    # single-arg (path-only) fakes, so passing an extra `policy=` kwarg
+    # here would break every one of them for a pure micro-optimization
+    # (avoiding a cheap repeated Policy()/BrainKnowledge.load() per
+    # screenshot). The actual gap this closes -- editing
+    # brain_knowledge/rules/discovery.yaml or bands.yaml now really
+    # changes OCR classification behavior -- is fully satisfied by
+    # audit_screenshot()'s own default Policy() construction; the "avoid
+    # rebuilding Policy per screenshot" refinement is deferred and
+    # tracked in docs/decisions.md D-079 rather than done at test-suite
+    # cost.
+    policy = Policy()
+
     dom_page = None
     try:
         from runtime.hooks import browser as _browser_hook
@@ -237,9 +257,6 @@ def _run_click_audit(
 
     baseline_hash = file_hash(baseline_path)
 
-    from orchestrator.brain.policy import Policy
-
-    policy = Policy()
     change_detection_method = policy.change_detection_method(dom_page)
     change_detection_settings = policy.change_detection_settings()
 

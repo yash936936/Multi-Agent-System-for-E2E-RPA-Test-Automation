@@ -9,7 +9,8 @@ from api.run_store import run_store
 from api.spec_builder import build_test_spec
 from config.settings import settings
 from orchestrator.audit_logger import audit_logger
-from orchestrator.run_engine import RunEngine
+from orchestrator.brain.brain import AuraBrain
+from orchestrator.brain.intent import Intent
 from orchestrator.spec_validator import SpecValidationError
 
 router = APIRouter(prefix="/api/v1/test-runs")
@@ -24,31 +25,14 @@ def _make_api_screenshot_provider():
     return provider
 
 
-def _new_engine() -> RunEngine:
-    """
-    Phase J (decisions.md D-031): every background task gets its own
-    RunEngine instance instead of a shared process-wide singleton.
-
-    Previously a single module-level `_engine` was built once and reused,
-    guarded by a global `_run_lock` that made every run wait for the
-    previous one to finish end to end (each caller was told "Vision Core
-    busy" if a run was already in flight) -- full serialization dressed
-    up as a lock, not real concurrency. RunEngine itself holds no
-    run-scoped mutable state on `self` (its LoopGuardrail is a fresh local
-    variable created inside `run_spec()` per call, and its
-    SkillStore/RunMemoryStore open a new sqlite3 connection per operation
-    rather than holding one open across calls -- see
-    orchestrator/guardrails.py and orchestrator/skill_store.py /
-    orchestrator/memory.py), so instantiating one engine per run is both
-    correct and cheap. Concurrent runs now genuinely execute in parallel.
-
-    Honest scope note: this removes *artificial* serialization at the
-    Python-object level. It does not make two concurrent real-browser
-    vision runs safe to point at the same physical display/screenshot
-    surface on one machine -- that's a hardware/OS constraint, unchanged
-    by this pass.
-    """
-    return RunEngine(screenshot_provider=_make_api_screenshot_provider())
+# Gap #1 (docs/decisions.md D-079): this router now goes through
+# AuraBrain.handle() instead of constructing RunEngine directly. Each call
+# below builds a fresh AuraBrain() (which itself builds a fresh RunEngine
+# per orchestrator/brain/router.py), preserving the Phase J per-run-instance
+# behavior the old `_new_engine()` helper used to provide -- no shared
+# process-wide singleton, no serialization lock. See the module docstring
+# note in orchestrator/brain/router.py for the `built_spec`/`run_id`
+# additions this migration needed.
 
 
 @router.post("/")
@@ -121,8 +105,20 @@ async def create_run(
 def execute_run(tenant_id: str, run_id: str, test_spec) -> None:
     try:
         run_store.update(run_id, status="running")
-        engine = _new_engine()
-        result = engine.run_spec(test_spec, run_id=run_id)
+        brain_result = AuraBrain().handle(
+            Intent(
+                kind="execute_spec",
+                caller="api",
+                params={
+                    "built_spec": test_spec,
+                    "run_id": run_id,
+                    "requirement_text": f"Guided run: {test_spec.test_id}",
+                    "auto_approve": True,
+                    "screenshot_provider": _make_api_screenshot_provider(),
+                },
+            )
+        )
+        result = brain_result.data["result"]
         report = result.report
         run_store.update(run_id, status=report.status.value, report=report.model_dump(mode="json"))
     except SpecValidationError as e:
@@ -145,8 +141,19 @@ def execute_autonomous_run(tenant_id: str, run_id: str, requirement_text: str) -
     """
     try:
         run_store.update(run_id, status="running")
-        engine = _new_engine()
-        result = engine.run(requirement_text, run_id=run_id)
+        brain_result = AuraBrain().handle(
+            Intent(
+                kind="execute_prompt",
+                caller="api",
+                params={
+                    "requirement_text": requirement_text,
+                    "run_id": run_id,
+                    "auto_approve": True,
+                    "screenshot_provider": _make_api_screenshot_provider(),
+                },
+            )
+        )
+        result = brain_result.data["result"]
         report = result.report
         run_store.update(run_id, status=report.status.value, report=report.model_dump(mode="json"))
     except SpecValidationError as e:
@@ -187,31 +194,32 @@ def execute_full_exploration_run(
     try:
         run_store.update(run_id, status="running")
 
-        from orchestrator.ui_audit_runner import run_exploration
-        from runtime.hooks import browser
-        from runtime.errors import NoDisplayError
-        from runtime.hooks.capture import capture_screenshot
-
-        try:
-            browser.open_url(browser.normalize_url(target))
-        except NoDisplayError:
-            # No live display/browser in this environment -- run_exploration
-            # itself will report each element as clicked=False rather than
-            # silently faking success (same honesty fix as executor.py's
-            # NAVIGATE_URL handling).
-            pass
-
-        def provider(rid: str, index: int) -> str:
-            return str(capture_screenshot(rid, index))
-
-        audit = run_exploration(
-            provider,
-            run_id=run_id,
-            max_elements=max_elements,
-            requirement_prompt=prompt or None,
-            page_url=target if check_links else None,
-            link_check_scope=link_scope,
+        # Gap #1 (docs/decisions.md D-079): routed through
+        # AuraBrain's "explore" intent instead of calling
+        # orchestrator/ui_audit_runner.run_exploration directly.
+        # _handle_explore's own try/except around browser.open_url() is a
+        # broader catch than the old NoDisplayError-only guard here, but
+        # produces the same net effect: run_exploration still runs and
+        # reports each element as clicked=False rather than faking success
+        # when there's no live display/browser in this environment.
+        # scroll_scan=False keeps parity with this endpoint's prior
+        # behavior, which never ran the autoscan step.
+        brain_result = AuraBrain().handle(
+            Intent(
+                kind="explore",
+                caller="api",
+                params={
+                    "url": target,
+                    "run_id": run_id,
+                    "max_elements": max_elements,
+                    "prompt": prompt or None,
+                    "scroll_scan": False,
+                    "check_links": check_links,
+                    "link_scope": link_scope,
+                },
+            )
         )
+        audit = brain_result.data["report"]
 
         broken = [c.__dict__ for c in audit.possibly_broken]
         unreachable = [c.__dict__ for c in audit.unreachable]
