@@ -606,7 +606,7 @@ This section exists so the next work session (or the next `debug-qa-finalize` pa
 
 ---
 
-## Phase B1/B2 + Phase 0-6 — Brain core + re-architecture (2026-07-25, planned, not started)
+## Phase B1/B2/B3 + Phase 0-5 — Brain core + re-architecture (started 2026-07-25, code-complete)
 
 Full detail lives in two dedicated documents rather than inline here,
 since both are substantial enough to need their own structure:
@@ -615,18 +615,32 @@ OS-mouse removal, MutationObserver change detection, unified logging +
 `aura explain`, CLI spinners) and `docs/AURA_BRAIN_ARCHITECTURE.md`
 (the `orchestrator/brain/` `Intent`/`Policy`/`Router` core and the
 `brain_knowledge/` externalized policy folder that everything else in
-the first document gets implemented through). See D-068 in
-`docs/decisions.md` for the decision record and `docs/STATUS.md`'s
-"Next action" for the current starting point (Phase B1).
+the first document gets implemented through). See `docs/decisions.md`
+D-068 through D-078 for the full decision record.
 
-Revised phase order (both docs' tables merged): **0** fixture tier,
-**B1** Brain scaffolding (pass-through only), **B2** rule extraction
-into `brain_knowledge/rules/*.yaml`, **1** unified logging + `aura
-explain`, **2** DOM-first dispatch via `Policy.discovery_source()`,
-**3** OS-mouse dependency removal, **4** MutationObserver change
-detection via `Policy.change_detection_method()`, **5** CLI spinners,
-**6** docs. Non-negotiable gate between every phase: the fixture tier
-(0) plus the full existing unit suite green before moving on — this is
-stated explicitly in both documents to avoid repeating the historical
-pattern (visible throughout this file and `decisions.md`'s D-0xx
-history) of layering phase N+1 on top of an unverified phase N.
+Status as of 2026-07-25, all phases code-complete: **0** fixture tier
+(D-069), **B1** Brain scaffolding (D-070), **B2** rule extraction
+(D-071), **1** unified logging + `aura explain` (D-072), **2**
+DOM-first dispatch (D-073), **B3** remaining-intent migration (D-075),
+**3** OS-mouse dependency isolation (D-076), **4** MutationObserver
+change detection (D-077), **5** CLI spinners (D-078). Also resolved in
+this pass: the `aura audit-report` doc/code drift flagged since D-072
+(D-078).
+
+**One item threading through 0, 4, and the whole `tests/integration/`
+tier remains genuinely open, not closeable from this environment:**
+none of it has ever run against a real Chromium binary — confirmed
+repeatedly (D-069, D-074, D-077, D-078), most recently by directly
+re-attempting `playwright install chromium` in the same pass as D-078
+and getting the identical `403 Host not in allowlist` this sandbox has
+returned every time. Whoever next has a machine with normal network
+access should run `python3 -m playwright install chromium && pytest
+tests/integration/` there as the true, still-outstanding acceptance
+check for Phase 0 and Phase 4 both — everything else in this track has
+been verified as thoroughly as a mocked/unit test suite can verify it,
+but that's a real, stated limit, not glossed over.
+
+Non-negotiable gate held to throughout every phase above: full existing
+unit suite green before moving on, verified by diffing the exact
+failure set by test name against the prior phase's baseline (not just
+comparing pass/fail counts) before marking each phase done.

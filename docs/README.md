@@ -173,6 +173,21 @@ aura execute --interactive --url https://example.com --prompt "click the submit 
 
 Under the hood this is a new step type, `WAIT_FOR_HUMAN_ACTION` (`orchestrator/schemas.py`), executed by `RunEngine.run_spec()`'s polling branch (`orchestrator/run_engine.py`) — it re-screenshots every `human_action_poll_interval_seconds` (default 2s, `config/settings.py`) and compares against the baseline, so it reacts as soon as you act rather than on a fixed timer.
 
+**Scope note (Phase 3, `docs/decisions.md` D-076):** as of the DOM-first
+dispatch rewrite, AURA drives its target exclusively through its own
+Playwright-launched browser session everywhere *except* one narrow
+case — `--interactive` with **no `--url` given**, i.e. "watch whatever
+I already have open." That one case has no live AURA-owned page to
+screenshot or dispatch through by definition, so it's the one place a
+real OS-level fallback (`runtime/hooks/os_fallback.py` — full-monitor
+`mss` capture, `pyautogui` mouse/keyboard) remains, deliberately
+isolated into its own module rather than threaded through the rest of
+the codebase. **Native, non-browser desktop app automation is out of
+scope** — if you need that, it's a separate RPA-adapter effort (e.g. a
+`pywinauto`-based adapter with its own accessibility tree, same
+DOM-first philosophy applied to Windows UIA), not something this
+fallback path is meant to grow into.
+
 ### The gap this closes (and what's still `--yes`-shaped elsewhere)
 
 Previously, `execute_prompt()` hardcoded `auto_approve=True` and `--yes` set it for every other path too — tracing the flow, `confirm_spec_approval`, `low_confidence_prompt`, and `confirm_heal_accept` were only ever called `if not auto_approve`, so a `--prompt` or `--yes` run genuinely never paused, start to finish. That's still true and is the *correct* behavior for Mode A — the actual gap wasn't "it doesn't wait for a human," it was that **AURA had no way to act like a professional QA tester with no explicit instructions at all** (give it one step, it does one step) and no way to **deliberately hand control to a human mid-run and wait for them**, rather than just skip a confirmation prompt. `aura explore` and `aura execute --interactive` are exactly those two missing pieces. A plain `aura execute <spec>` (no `--yes`/`--autonomous`/`--interactive`) still uses the original spec-approval / low-confidence / heal-accept checkpoints exactly as before — nothing about that path changed.

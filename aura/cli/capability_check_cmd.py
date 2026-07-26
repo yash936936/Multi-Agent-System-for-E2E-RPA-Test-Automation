@@ -38,7 +38,8 @@ def capability_check(capability_type: str, target: str, params: str | None = Non
         kind="capability_check",
         params={"capability_type": capability_type, "target": target, "params": parsed_params, "expected": parsed_expected},
     )
-    result = AuraBrain().handle(intent)
+    with live_view.spinner(f"Checking {capability_type} capability against '{target}'..."):
+        result = AuraBrain().handle(intent)
 
     if result.data["error"]:
         console.print(f"[red]Capability check failed: {result.data['error']}[/red]")

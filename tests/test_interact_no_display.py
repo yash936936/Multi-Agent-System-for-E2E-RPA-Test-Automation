@@ -1,5 +1,5 @@
 """
-Regression tests for runtime/hooks/interact.py's `_pyautogui()` guard.
+Regression tests for runtime/hooks/os_fallback.py's `_pyautogui()` guard.
 
 Bug (found via live testing under Xvfb with tkinter uninstalled): pyautogui
 transitively imports `mouseinfo`, which calls `sys.exit(...)` directly at
@@ -12,6 +12,11 @@ orchestrator/ui_audit_runner.py, and agents/vision/executor.py, silently
 killing the whole process (exit code 1, no traceback, no error message)
 instead of degrading gracefully like every other no-display condition in
 this codebase already does.
+
+Phase 3 (docs/decisions.md D-076): `_pyautogui()` moved from
+`runtime/hooks/interact.py` to `runtime/hooks/os_fallback.py` -- the one
+deliberately-isolated OS-level fallback module. This test's subject
+moved with it; the bug and fix it guards are unchanged.
 """
 from __future__ import annotations
 
@@ -20,7 +25,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from runtime.hooks.interact import NoDisplayError, _pyautogui
+from runtime.hooks.os_fallback import NoDisplayError, _pyautogui
 
 
 def test_pyautogui_systemexit_from_mouseinfo_becomes_no_display_error(monkeypatch):

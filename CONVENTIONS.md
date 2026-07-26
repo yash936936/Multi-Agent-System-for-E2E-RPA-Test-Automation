@@ -17,7 +17,7 @@ a subsystem's design, see `docs/TRD.md` and `docs/decisions.md`.
 convention, not the native DOM one**:
 
 - **Negative `delta_y` means "scroll down."** Positive means "scroll up."
-- This matches `pyautogui.scroll()`'s own sign (which `runtime/hooks/interact.py`'s
+- This matches `pyautogui.scroll()`'s own sign (which `runtime/hooks/os_fallback.py`'s
   `scroll()` passes straight through), and is why `orchestrator/autoscan.py`'s
   default `scroll_amount=-600` and `agents/vision/executor.py`'s `SCROLL`
   handler passing `-300` both mean "scroll down."
@@ -34,7 +34,7 @@ convention, not the native DOM one**:
   `window.scrollBy()` is a silent no-op on such pages regardless of sign.
 
 **Rule of thumb:** if you're writing a new caller of `dom_scroll()`,
-`interact.scroll()`, or `autoscan`'s scroll loop, pass negative to scroll
+`os_fallback.scroll()`, or `autoscan`'s scroll loop, pass negative to scroll
 down. If you're writing new code that talks to the DOM directly
 (`window.scrollBy`, `scrollTo`, etc.), the sign you want is the opposite
 of what you'd pass to those.
@@ -43,15 +43,27 @@ of what you'd pass to those.
 
 ## 2. Coordinate spaces
 
-AURA has (at least) three coordinate spaces in play, and mixing them up
-sends clicks to the wrong place with no exception raised. This is real:
-see `runtime/hooks/browser.py`'s `get_click_point_in_page()` docstring
-for the actual bug (an OCR/screen click landing on the OS taskbar) this
-was written to fix.
+**Phase 3 update (docs/decisions.md D-076):** DOM-first dispatch means
+almost every real click in AURA now goes through `page.locator(...).click()`
+or `page.mouse` directly — no pixel math, no coordinate translation, at
+all. The three-space problem below is now confined to exactly one
+narrow, isolated place: `runtime/hooks/os_fallback.py`, used only when
+no live Playwright page exists at all (the no-URL `aura execute
+--interactive` case — see that module's docstring for the specific,
+deliberate reason this fallback still exists rather than being removed
+entirely) and `agents/vision/executor.py::_dispatch_ocr()`'s own
+last-resort branch. If you're not touching either of those two files,
+this section doesn't apply to what you're working on.
+
+AURA has (at least) three coordinate spaces in play in that one
+fallback path, and mixing them up sends clicks to the wrong place with
+no exception raised. This is real: see `runtime/hooks/browser.py`'s
+`get_click_point_in_page()` docstring for the actual bug (an OCR/screen
+click landing on the OS taskbar) this was written to fix.
 
 | Space | Origin / units | Produced by | Consumed by |
 |---|---|---|---|
-| **OS / physical screen pixels** | top-left of the physical monitor, device pixels (not CSS pixels) | `runtime/hooks/capture.py`'s `mss` full-monitor screenshot; OCR's `(x, y)` result is an offset *into that image* | `runtime/hooks/interact.py`'s `pyautogui.moveTo/click` — expects absolute OS coordinates |
+| **OS / physical screen pixels** | top-left of the physical monitor, device pixels (not CSS pixels) | `runtime/hooks/os_fallback.py`'s `mss` full-monitor screenshot; OCR's `(x, y)` result is an offset *into that image* | `runtime/hooks/os_fallback.py`'s `pyautogui.moveTo/click` — expects absolute OS coordinates |
 | **Browser window CSS pixels** | top-left of the *page viewport* (below browser chrome), CSS pixels, DPI-independent | `window.devicePixelRatio`, `outerWidth/innerWidth` deltas read from the page | Playwright's `page.mouse` — its coordinate space |
 | **DOM / accessibility-tree targets** | no pixel coordinate at all — resolved by role/name, not position | `agents/vision/dom_locator.py`'s `locate_dom()`/`relocate_dom()` | `page.locator(...).click()` directly, bypassing pixel math entirely |
 
@@ -71,7 +83,8 @@ guaranteed correct — which is exactly why the function fails soft into
 `None` rather than ever returning a guessed-wrong point silently. Prefer
 the DOM path (no pixel math needed at all) whenever a live page and an
 accessibility tree are available; the OS-pixel path is a fallback for
-targets with no DOM (native desktop apps).
+targets with no DOM (native desktop apps, or AURA watching a window it
+didn't launch itself).
 
 ---
 

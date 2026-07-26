@@ -32,7 +32,7 @@ def test_run_autoscan_stops_when_screenshot_stops_changing(tmp_path, monkeypatch
         def scroll(amount):
             scrolled["count"] += 1
 
-    import runtime.hooks.interact as real_interact
+    import runtime.hooks.os_fallback as real_interact
 
     monkeypatch.setattr(real_interact, "scroll", FakeInteract.scroll)
     monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
@@ -48,7 +48,7 @@ def test_run_autoscan_respects_max_scrolls_cap(tmp_path, monkeypatch):
     def always_different_provider(run_id: str, index: int) -> str:
         return _make_screenshot(tmp_path, f"shot_{index}.png", f"frame-{index}".encode())
 
-    import runtime.hooks.interact as real_interact
+    import runtime.hooks.os_fallback as real_interact
 
     monkeypatch.setattr(real_interact, "scroll", lambda amount: None)
     monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
@@ -63,7 +63,7 @@ def test_run_autoscan_collects_issues(tmp_path, monkeypatch):
     def provider(run_id: str, index: int) -> str:
         return _make_screenshot(tmp_path, f"shot_{index}.png", f"frame-{index}".encode())
 
-    import runtime.hooks.interact as real_interact
+    import runtime.hooks.os_fallback as real_interact
 
     monkeypatch.setattr(real_interact, "scroll", lambda amount: None)
 
@@ -182,7 +182,7 @@ def test_run_autoscan_handles_no_display_mid_scan(tmp_path, monkeypatch):
         path.write_bytes(frames[i])
         return str(path)
 
-    import runtime.hooks.interact as real_interact
+    import runtime.hooks.os_fallback as real_interact
 
     monkeypatch.setattr(real_interact, "scroll", lambda amount: None)
     monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
@@ -197,7 +197,7 @@ def test_run_autoscan_handles_no_display_mid_scan(tmp_path, monkeypatch):
 def test_run_autoscan_prefers_dom_scroll_over_os_scroll_when_page_is_live(tmp_path, monkeypatch):
     """Regression test for the 'reached_bottom fires instantly, nothing
     visibly scrolled' bug: when a live Playwright page exists,
-    interact.scroll() (a raw OS wheel event to whatever window has OS
+    os_fallback.scroll() (a raw OS wheel event to whatever window has OS
     focus) must NOT be the thing that scrolls the page -- the DOM-scoped
     browser_hook.dom_scroll() should be tried first, and OS-level scroll
     should not run at all in that case."""
@@ -211,7 +211,7 @@ def test_run_autoscan_prefers_dom_scroll_over_os_scroll_when_page_is_live(tmp_pa
         path.write_bytes(content)
         return str(path)
 
-    import runtime.hooks.interact as real_interact
+    import runtime.hooks.os_fallback as real_interact
     import runtime.hooks.browser as real_browser
 
     os_scroll_calls = {"count": 0}
@@ -231,7 +231,7 @@ def test_run_autoscan_prefers_dom_scroll_over_os_scroll_when_page_is_live(tmp_pa
 def test_run_autoscan_falls_back_to_os_scroll_when_no_live_page(tmp_path, monkeypatch):
     """When there's no live Playwright page (dom_scroll returns False,
     e.g. running against a native/non-browser target), the OS-level
-    interact.scroll() fallback must still fire -- this preserves pre-fix
+    os_fallback.scroll() fallback must still fire -- this preserves pre-fix
     behavior for non-browser targets."""
     frames = [b"frame-0", b"frame-1", b"frame-1"]
     calls = {"i": 0}
@@ -243,7 +243,7 @@ def test_run_autoscan_falls_back_to_os_scroll_when_no_live_page(tmp_path, monkey
         path.write_bytes(content)
         return str(path)
 
-    import runtime.hooks.interact as real_interact
+    import runtime.hooks.os_fallback as real_interact
     import runtime.hooks.browser as real_browser
 
     os_scroll_calls = {"count": 0}

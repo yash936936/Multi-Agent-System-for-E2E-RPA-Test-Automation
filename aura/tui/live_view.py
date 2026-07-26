@@ -14,6 +14,8 @@ control flow and calls into these functions.
 """
 from __future__ import annotations
 
+import contextlib
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -21,6 +23,27 @@ from rich.table import Table
 from orchestrator.schemas import TestSpec, VisionActionResult
 
 console = Console()
+
+
+@contextlib.contextmanager
+def spinner(message: str):
+    """
+    Phase 5 (docs/AURA_REARCHITECTURE_PLAN.md, docs/decisions.md D-078):
+    a persistent status line for any operation that can take >1s of
+    otherwise-silent wait -- the planner LLM call (the ~9s dead-air case
+    the plan specifically calls out), browser launch, a full-page scan,
+    a click-and-diff pass. Coexists fine with ordinary `console.print()`
+    calls happening during the same span (rich.status.Status is
+    designed for exactly that -- other output scrolls above the
+    persistent status line, same terminal). Degrades gracefully when
+    stdout isn't a real TTY (piped to a file, CI logs): rich detects
+    this itself and falls back to a single plain line instead of
+    animating escape codes into a file.
+
+    Usage: `with live_view.spinner("Running the audit..."): ...`
+    """
+    with console.status(f"[bold]{message}[/bold]", spinner="dots"):
+        yield
 
 
 # --------------------------------------------------------------------------

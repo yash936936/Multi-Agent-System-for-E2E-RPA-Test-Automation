@@ -75,7 +75,7 @@ def run_autoscan(
     max_scrolls: int = 25,
     scroll_amount: int = -600,
 ) -> AutoScanReport:
-    from runtime.hooks import interact
+    from runtime.hooks import os_fallback
     from runtime.hooks import browser as browser_hook
     from runtime.errors import NoDisplayError, display_guard
 
@@ -131,7 +131,7 @@ def run_autoscan(
             prev_hash = current_hash
 
         # Prefer a DOM-scoped scroll (window.scrollBy on the live Playwright
-        # page) over the OS-level interact.scroll() fallback: the OS scroll
+        # page) over the OS-level os_fallback.scroll() fallback: the OS scroll
         # is a raw wheel event sent to whatever window currently has OS
         # focus, so a background/non-focused/minimized browser window
         # simply doesn't receive it -- the screenshot then looks identical
@@ -141,7 +141,7 @@ def run_autoscan(
         # runs inside the page's own JS context regardless of OS focus.
         if not browser_hook.dom_scroll(scroll_amount):
             try:
-                interact.scroll(scroll_amount)
+                os_fallback.scroll(scroll_amount)
             except NoDisplayError:
                 break
 

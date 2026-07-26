@@ -243,11 +243,15 @@ that one narrow path is documented and kept, isolated behind a single
 clearly-named module (`runtime/hooks/os_fallback.py`) instead of being
 threaded through the main execution/audit paths as it is today.
 
-**Exit criteria:** `pyautogui` and `mss` either fully removed from
-`pyproject.toml`, or reduced to the one documented, isolated fallback
-module above; Phase 0's fixture tier still green; `CONVENTIONS.md`'s
-coordinate-space section gets deleted (nothing left to document once
-there's only one coordinate space, Playwright's own).
+**Exit criteria — met 2026-07-25 (docs/decisions.md D-076):**
+`pyautogui`/`mss` reduced to the one documented, isolated fallback
+module (`runtime/hooks/os_fallback.py`) — the resolved product decision
+above was "yes, narrowly" for `--interactive` with no `--url`, so full
+removal wasn't the applicable branch of this exit criteria.
+`CONVENTIONS.md`'s coordinate-space section wasn't deleted (there's
+still one narrow place with three coordinate spaces in play) but was
+rewritten to state that scope explicitly rather than read as if it
+still applied everywhere.
 
 ---
 
@@ -292,11 +296,20 @@ payoff is maximized once DOM-first dispatch is already the norm.
   cheap `page.evaluate()` poll) and removes another `capture_screenshot`
   call site ahead of Phase 3.
 
-**Exit criteria:** Phase 0's `spa_like_no_reload.html` fixture (DOM
-mutation without navigation) passes; a fixture with only a CSS
-animation/pure visual noise (no real mutation) correctly reports
-`state_changed=False` where the old hash-diff approach would have
-false-positived.
+**Exit criteria — code shipped 2026-07-25 (docs/decisions.md D-077),
+fixture-tier verification still open:** the mutation-vs-hash-diff logic
+is implemented and unit/mocked-integration tested (proven via two
+tests specifically constructed to show it, not just "also runs" —
+byte-identical screenshots with a real recorded mutation reporting
+`state_changed=True`, and genuinely different screenshots with no
+recorded mutation reporting `state_changed=False`). Phase 0's
+`spa_like_no_reload.html` fixture existing and passing under a real
+Chromium is the true acceptance check for this phase and has **not**
+been run yet — same open item D-069 already flagged for the whole
+`tests/integration/` tier (no Chromium binary installable in the
+sandbox this was built in). Whoever next runs this with a real browser
+available should treat that run as Phase 4's actual exit criteria, not
+this session's mocked verification.
 
 ---
 
@@ -358,8 +371,8 @@ non-animated log lines, not raw ANSI escape codes.
 | 0. Fixture tier | — | 2-3d | Low — additive only |
 | 1. Unified logging + `aura explain` | 0 (for validation) | 2d | Low — additive only |
 | 2. DOM-first dispatch rewrite | 0, 1 | 4-5d | **High** — core path rewrite |
-| 3. Remove OS-mouse dependency | 2 | 3-4d | Medium — deletion, needs the product decision on `--interactive` scope |
-| 4. MutationObserver change detection | 2, 3 | 3d | Medium — new JS injection surface |
+| 3. Remove OS-mouse dependency | 2 | 3-4d | **Done 2026-07-25 (D-076)** — isolated to `os_fallback.py`, not fully deleted; see resolved product decision above |
+| 4. MutationObserver change detection | 2, 3 | 3d | **Code done 2026-07-25 (D-077)** — mocked/unit verified; real-Chromium fixture-tier run still open, see exit criteria above |
 | 5. CLI spinners | none (parallelizable) | 1-2d | Low |
 | 6. Docs | all above | 1d | Low |
 

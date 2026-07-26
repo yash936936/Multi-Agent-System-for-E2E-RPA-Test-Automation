@@ -132,6 +132,24 @@ class Policy:
             "footer_band_start": bands.get("footer_band_start", 0.88),
         }
 
+    def change_detection_settings(self) -> dict:
+        """
+        Reads `brain_knowledge/rules/change_detection.yaml`'s
+        `mutation_observer.*` block for
+        `agents/vision/dom_change_detector.py` -- `settle_wait_seconds`
+        (a short wait before reading back the mutation buffer) and
+        `ignore_selectors` (known-noisy nodes -- ad iframes, analytics
+        beacons, live regions -- that shouldn't count as a real change).
+        Falls back to the same values `rules/change_detection.yaml`
+        ships with by default, so a missing/broken knowledge folder
+        degrades to a sane default rather than "no denylist at all."
+        """
+        rules = self.knowledge.rules.get("change_detection", {}).get("mutation_observer", {})
+        return {
+            "settle_wait_seconds": rules.get("settle_wait_seconds", 0.5),
+            "ignore_selectors": rules.get("ignore_selectors", ["[data-ad]", ".analytics-beacon", "[aria-live]"]),
+        }
+
     def retry_policy(self, operation_kind: str) -> RetryPolicy:
         """
         Replaces three independent, currently-hardcoded retry ladders:

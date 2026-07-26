@@ -301,12 +301,12 @@ def _dispatch_ocr(ocr_result, action_taken: str, value) -> bool:
     page's CSS/viewport space first (browser.get_click_point_in_page) --
     never the raw OS coordinate directly when a page exists, since that's
     what caused the "taskbar jump" bug (see that function's docstring).
-    Falls back to the OS-level interact.click() path only when no page
-    exists at all (a native, non-browser target) or the translation can't
-    be computed -- same fail-soft contract, unchanged for that case.
+    Falls back to the OS-level os_fallback.click() path only when no
+    page exists at all (a native, non-browser target) or the translation
+    can't be computed -- same fail-soft contract, unchanged for that case.
     """
     from runtime.errors import NoDisplayError
-    from runtime.hooks import interact
+    from runtime.hooks import os_fallback
     from runtime.hooks import browser as browser_hook
 
     try:
@@ -315,12 +315,12 @@ def _dispatch_ocr(ocr_result, action_taken: str, value) -> bool:
             page = browser_hook.get_page()
             page.mouse.click(*page_point)
         elif action_taken == "click":
-            interact.click(ocr_result.x, ocr_result.y)
+            os_fallback.click(ocr_result.x, ocr_result.y)
         else:
-            interact.click(ocr_result.x, ocr_result.y)  # focus the field first
+            os_fallback.click(ocr_result.x, ocr_result.y)  # focus the field first
 
         if action_taken == "type":
-            interact.type_text(value or "")
+            os_fallback.type_text(value or "")
         return True
     except NoDisplayError:
         return False
@@ -375,18 +375,18 @@ def execute_step(payload: VisionStepInput) -> VisionActionResult:
         )
 
     if step.action == ActionType.SCROLL:
-        from runtime.hooks import interact
+        from runtime.hooks import os_fallback
         from runtime.hooks import browser as browser_hook
 
         # Phase 2 (next-phase plan): prefer the DOM-scoped scroll (JS
         # window.scrollBy on the live page, orchestrator/autoscan.py
         # already established this same pattern for its own scroll loop)
-        # over the OS-level interact.scroll() fallback -- a raw OS wheel
+        # over the OS-level os_fallback.scroll() fallback -- a raw OS wheel
         # event goes to whatever window currently has OS focus, which
         # silently does nothing useful if that isn't the browser. Only
         # falls back to the OS path when no live page exists at all.
         if not browser_hook.dom_scroll(-300):
-            interact.scroll(-300)
+            os_fallback.scroll(-300)
         return VisionActionResult(
             step_id=step.step_id,
             action_taken="scroll",

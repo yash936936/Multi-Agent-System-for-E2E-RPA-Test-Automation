@@ -3,7 +3,7 @@ tests/test_ui_audit_runner.py
 
 Covers orchestrator/ui_audit_runner.py -- the live "click nav/footer
 elements and see if anything happens" audit. Mocks locate_text/interact
-the same way tests/test_autoscan.py mocks interact.scroll, since real
+the same way tests/test_autoscan.py mocks os_fallback.scroll, since real
 clicking needs a live display.
 """
 from __future__ import annotations
@@ -85,10 +85,10 @@ def test_run_ui_audit_flags_element_with_no_visible_change_as_possibly_broken(tm
     monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
     monkeypatch.setattr("agents.vision.locator.locate_text", lambda path, text, **kw: FakeLocateResult(found=True))
 
-    import runtime.hooks.interact as real_interact
+    import runtime.hooks.os_fallback as real_os_fallback
 
-    monkeypatch.setattr(real_interact, "click", lambda x, y: None)
-    monkeypatch.setattr(real_interact, "browser_back", lambda: None)
+    monkeypatch.setattr(real_os_fallback, "click", lambda x, y: None)
+    monkeypatch.setattr(real_os_fallback, "browser_back", lambda: None)
 
     report = run_ui_audit(provider, run_id="test-run")
 
@@ -108,10 +108,10 @@ def test_run_ui_audit_does_not_flag_element_when_page_visibly_changes(tmp_path, 
     monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
     monkeypatch.setattr("agents.vision.locator.locate_text", lambda path, text, **kw: FakeLocateResult(found=True))
 
-    import runtime.hooks.interact as real_interact
+    import runtime.hooks.os_fallback as real_os_fallback
 
-    monkeypatch.setattr(real_interact, "click", lambda x, y: None)
-    monkeypatch.setattr(real_interact, "browser_back", lambda: None)
+    monkeypatch.setattr(real_os_fallback, "click", lambda x, y: None)
+    monkeypatch.setattr(real_os_fallback, "browser_back", lambda: None)
 
     report = run_ui_audit(provider, run_id="test-run")
 
@@ -145,10 +145,10 @@ def test_run_ui_audit_respects_max_elements_cap(tmp_path, monkeypatch):
     monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
     monkeypatch.setattr("agents.vision.locator.locate_text", lambda path, text, **kw: FakeLocateResult(found=True))
 
-    import runtime.hooks.interact as real_interact
+    import runtime.hooks.os_fallback as real_os_fallback
 
-    monkeypatch.setattr(real_interact, "click", lambda x, y: None)
-    monkeypatch.setattr(real_interact, "browser_back", lambda: None)
+    monkeypatch.setattr(real_os_fallback, "click", lambda x, y: None)
+    monkeypatch.setattr(real_os_fallback, "browser_back", lambda: None)
 
     report = run_ui_audit(provider, run_id="test-run", max_elements=5)
 
@@ -194,10 +194,10 @@ def test_run_exploration_clicks_elements_from_every_band(tmp_path, monkeypatch):
     monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
     monkeypatch.setattr("agents.vision.locator.locate_text", lambda path, text, **kw: FakeLocateResult(found=True))
 
-    import runtime.hooks.interact as real_interact
+    import runtime.hooks.os_fallback as real_os_fallback
 
-    monkeypatch.setattr(real_interact, "click", lambda x, y: None)
-    monkeypatch.setattr(real_interact, "browser_back", lambda: None)
+    monkeypatch.setattr(real_os_fallback, "click", lambda x, y: None)
+    monkeypatch.setattr(real_os_fallback, "browser_back", lambda: None)
 
     report = run_exploration(provider, run_id="explore-run")
 
@@ -219,10 +219,10 @@ def test_run_exploration_requirement_prompt_matches_relevant_text(tmp_path, monk
     monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
     monkeypatch.setattr("agents.vision.locator.locate_text", lambda path, text, **kw: FakeLocateResult(found=True))
 
-    import runtime.hooks.interact as real_interact
+    import runtime.hooks.os_fallback as real_os_fallback
 
-    monkeypatch.setattr(real_interact, "click", lambda x, y: None)
-    monkeypatch.setattr(real_interact, "browser_back", lambda: None)
+    monkeypatch.setattr(real_os_fallback, "click", lambda x, y: None)
+    monkeypatch.setattr(real_os_fallback, "browser_back", lambda: None)
 
     report = run_exploration(provider, run_id="explore-run", requirement_prompt="check the submit order button works")
 
@@ -422,3 +422,113 @@ def test_discovery_falls_back_to_ocr_when_no_dom_page(tmp_path, monkeypatch):
     report = run_ui_audit(provider, run_id="ocr-run")
 
     assert report.has_nav is True
+
+
+def test_click_audit_uses_mutation_observer_as_primary_change_detection_when_dom_page_available(tmp_path, monkeypatch):
+    """
+    Phase 4 (docs/decisions.md D-077): when a live DOM page exists, a
+    real DOM mutation (not a pixel-hash diff) drives state_changed --
+    proven here by having the two screenshots be byte-identical (would
+    report state_changed=False under the old hash-diff-only logic) while
+    the mutation observer reports a real mutation, and asserting
+    state_changed comes out True anyway.
+    """
+    import agents.vision.ui_audit as ui_audit_module
+    from agents.vision.ui_audit import UIElement
+    from config.settings import settings
+
+    same_bytes = b"identical-every-time"
+
+    def provider(run_id, index):
+        return _make_screenshot(tmp_path, f"shot_{index}.png", same_bytes)
+
+    monkeypatch.setattr(ui_audit_module, "audit_screenshot", lambda path: FakeLandmarks(nav_elements=[], footer_elements=[]))
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr(settings, "enable_dom_extractor", True)
+
+    class FakePage:
+        def __init__(self):
+            self.arm_calls = 0
+
+        def evaluate(self, js, arg=None):
+            if "document.documentElement.scrollHeight" in js:
+                return 2000
+            if "__aura_mutations = []" in js:
+                self.arm_calls += 1
+                return True
+            return {"count": 5, "urlBefore": "http://x", "urlAfter": "http://x", "sample": [{"type": "childList", "tag": "DIV"}]}
+
+    fake_page = FakePage()
+    monkeypatch.setattr("runtime.hooks.browser.has_active_page", lambda: True)
+    monkeypatch.setattr("runtime.hooks.browser.get_page", lambda: fake_page)
+
+    dom_elements = [UIElement(text="Sign Up", cx=50, cy=30, band="nav", looks_interactive=True)]
+    monkeypatch.setattr("agents.vision.dom_extractor.to_ui_elements", lambda page, height: dom_elements)
+
+    import orchestrator.ui_audit_runner as runner_module
+
+    class FakeSmartBackResult:
+        new_tab_opened = False
+        new_tab_url = None
+        went_back = False
+
+    monkeypatch.setattr(runner_module, "_try_dom_click", lambda page, text: FakeSmartBackResult())
+
+    report = run_ui_audit(provider, run_id="mutation-run")
+
+    assert fake_page.arm_calls == 1  # armed exactly once, before the click dispatch
+    assert len(report.checked) == 1
+    assert report.checked[0].clicked is True
+    assert report.checked[0].state_changed is True  # from the mutation, not the (identical) screenshot hash
+
+
+def test_click_audit_reports_no_change_when_mutation_observer_sees_nothing_even_if_screenshot_bytes_happen_to_differ(tmp_path, monkeypatch):
+    """
+    The inverse proof: two screenshots that DO differ (which the old
+    hash-diff-only logic would have called state_changed=True) but a
+    mutation observer reporting zero real mutations and no URL change --
+    state_changed must come out False. This is the structural fix for
+    "an unrelated animation/ad rotation looked like a real change."
+    """
+    import agents.vision.ui_audit as ui_audit_module
+    from agents.vision.ui_audit import UIElement
+    from config.settings import settings
+
+    call_count = {"n": 0}
+
+    def provider(run_id, index):
+        call_count["n"] += 1
+        return _make_screenshot(tmp_path, f"shot_{index}.png", f"different-bytes-{call_count['n']}".encode())
+
+    monkeypatch.setattr(ui_audit_module, "audit_screenshot", lambda path: FakeLandmarks(nav_elements=[], footer_elements=[]))
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr(settings, "enable_dom_extractor", True)
+
+    class FakePage:
+        def evaluate(self, js, arg=None):
+            if "document.documentElement.scrollHeight" in js:
+                return 2000
+            if "__aura_mutations = []" in js:
+                return True
+            return {"count": 0, "urlBefore": "http://x", "urlAfter": "http://x", "sample": []}
+
+    fake_page = FakePage()
+    monkeypatch.setattr("runtime.hooks.browser.has_active_page", lambda: True)
+    monkeypatch.setattr("runtime.hooks.browser.get_page", lambda: fake_page)
+
+    dom_elements = [UIElement(text="Heading", cx=50, cy=30, band="footer", looks_interactive=True)]
+    monkeypatch.setattr("agents.vision.dom_extractor.to_ui_elements", lambda page, height: dom_elements)
+
+    import orchestrator.ui_audit_runner as runner_module
+
+    class FakeSmartBackResult:
+        new_tab_opened = False
+        new_tab_url = None
+        went_back = False
+
+    monkeypatch.setattr(runner_module, "_try_dom_click", lambda page, text: FakeSmartBackResult())
+
+    report = run_ui_audit(provider, run_id="no-mutation-run")
+
+    assert report.checked[0].state_changed is False
+

@@ -4400,3 +4400,287 @@ doesn't reduce any of those — they were never blocked on B3.
 §5.1 (which currently document B3 as not-started, written under D-074)
 need updating to match — done as part of this same pass, see that
 file's own changelog-equivalent (its §5.1 note now points here).
+
+## D-076 — Phase 3 shipped: OS-level mouse/keyboard/screen dependency isolated to one narrow fallback (2026-07-25)
+
+**Decided:** 2026-07-25
+**Context:** `docs/AURA_REARCHITECTURE_PLAN.md`'s Phase 3 called for
+fully removing `pyautogui`/`mss`, contingent on one open product
+decision: does `--interactive` mode ever need to watch a window AURA
+didn't launch itself? Resolved here: **yes, narrowly** —
+`aura execute --interactive` with no `--url` given means "watch
+whatever I already have open," which by definition has no
+AURA-owned live Playwright page to screenshot or dispatch through.
+That one case is a genuine, load-bearing requirement for a real
+OS-level fallback, not leftover caution — so the plan's exit criteria
+is satisfied by **isolating** that fallback into one clearly-named
+module rather than fully deleting it.
+
+**Shipped:**
+- `runtime/hooks/os_fallback.py` (new) — the one deliberately-kept
+  OS-level dispatch path: `click()`/`type_text()`/`scroll()`
+  (`pyautogui`), `browser_back()` (Alt+Left), `capture_screenshot()`
+  (`mss` full-monitor capture). Reached only when
+  `runtime.hooks.browser.has_active_page()` is False — the exact same
+  single condition `orchestrator/brain/policy.py::Policy.discovery_source()`
+  already uses for DOM-vs-OCR (one rule now governs every fallback in
+  the system, not independently-derived conditions per file).
+- `runtime/hooks/capture.py::capture_screenshot()` — tries a real
+  `page.screenshot()` first whenever a live page exists (viewport-
+  native, no monitor/DPI/multi-monitor ambiguity at all), falls back to
+  `os_fallback.capture_screenshot()` only when it doesn't. Same name/
+  signature as before, so every existing caller
+  (`agents/planner/page_grounding.py`, `api/routers/runs.py`,
+  `aura/cli/preflight.py`, `orchestrator/brain/router.py`) needed zero
+  changes.
+- `runtime/hooks/interact.py` — now Playwright-native only:
+  `dom_click`/`dom_fill`/`dom_scroll_into_view`/`dom_smart_back`. The
+  old `click()`/`type_text()`/`scroll()`/`_pyautogui()` functions are
+  gone from this module entirely (moved to `os_fallback.py`).
+- `agents/vision/executor.py::_dispatch_ocr()` — already correctly
+  DOM-first: tries `browser_hook.get_click_point_in_page()` (translates
+  an OCR/OS coordinate into the live page's viewport space) first, only
+  calls `os_fallback.click()`/`os_fallback.type_text()` when no live
+  page exists or the translation can't be computed.
+- Two real bugs fixed as part of finishing this migration cleanly (it
+  had been left mid-flight from earlier work in this session, not
+  something newly introduced): `runtime/hooks/interact.py::browser_back()`
+  called an undefined `_pyautogui()` name (dead code left behind when
+  `_pyautogui()` moved to `os_fallback.py` but this one caller wasn't
+  updated) — fixed by moving `browser_back()` itself into
+  `os_fallback.py` (its correct home, being OS-level) and updating
+  `orchestrator/ui_audit_runner.py`'s one call site
+  (`resolution_strategy == "ocr" and not dispatch_via_playwright`, the
+  true last-resort path) to import and call it from there. That call
+  site had ALSO been referencing a bare `interact` name that was never
+  imported in that scope at all — a second, independent `NameError`
+  waiting to fire the first time that exact fallback branch was
+  exercised.
+- `tests/test_autoscan.py`, `tests/test_browser_hook.py`,
+  `tests/test_ui_audit_runner.py` — all three still monkeypatched
+  `runtime.hooks.interact.scroll`/`.click`/`.browser_back`, attributes
+  that no longer exist on that module post-migration (10 tests were
+  failing as a direct, mechanical result). Repointed all affected
+  monkeypatches at `runtime.hooks.os_fallback` instead.
+- `CONVENTIONS.md`'s coordinate-space section — not deleted (the
+  plan's original exit criteria assumed full removal of the OS path;
+  the resolved decision above keeps a narrow one), but rewritten to
+  state plainly that the three-coordinate-space problem is now confined
+  to exactly `runtime/hooks/os_fallback.py` plus
+  `agents/vision/executor.py::_dispatch_ocr()`'s own last-resort
+  branch — not "everywhere" as it read before this phase. Table rows
+  and the scroll-sign section's cross-references updated from
+  `interact.py` to `os_fallback.py` throughout.
+- `docs/README.md`'s "Autonomy modes" section — added a scope note
+  under Mode B stating the native-app/OS-level decision explicitly
+  (native, non-browser desktop automation is out of scope; that's a
+  separate future RPA-adapter effort, not a reason to widen this
+  fallback).
+- `pyproject.toml` — `mss`/`pyautogui` dependency lines annotated with
+  a one-line pointer to this decision, so their continued presence
+  reads as a deliberate, scoped choice rather than unaddressed leftover
+  weight.
+
+**Verified:** full unit suite (`pytest -q --ignore=tests/integration`):
+733 passed / 30 failed / 5 errors — re-confirmed identical to the
+D-074/D-075 baseline by rerunning the specific previously-broken test
+files (`test_autoscan.py` 10/10 pass, `test_ui_audit_runner.py`,
+`test_browser_hook.py` down to only its 4 pre-existing Chromium-
+unavailable failures) before and after this fix, not just trusting an
+aggregate count.
+
+**Explicitly not done in this pass:** Phase 4 (MutationObserver-based
+change detection) — sequenced after Phase 3 in the original plan
+specifically because its payoff depends on DOM-first dispatch already
+being the norm, which Phase 2 (D-073) already established; Phase 3
+being about OS-mouse removal doesn't block or unblock Phase 4 further
+than Phase 2 already did. The `aura audit-report` doc/code drift noted
+since D-072 also remains open, unrelated to this phase.
+
+**Revisit when:** a genuine native-desktop-app automation requirement
+appears — per this decision, that's scoped as a new RPA-adapter effort
+(e.g. `pywinauto` + Windows UIA, same DOM-first philosophy applied to
+a different accessibility tree), not an expansion of
+`os_fallback.py`'s current, narrow browser-adjacent scope.
+
+## D-077 — Phase 4 shipped: MutationObserver-based change detection, primary wherever a live page exists (2026-07-25)
+
+**Decided:** 2026-07-25
+**Context:** `docs/AURA_REARCHITECTURE_PLAN.md`'s Phase 4 — replace the
+pixel-hash-diff gate with a real DOM mutation check wherever a live
+page exists, falling back to hash-diff only when it doesn't (same
+single condition every other Phase 2/3 fallback already uses). This is
+the direct structural fix for the bug class D-067 found: a pixel-hash
+diff can't tell "the contact form appeared" from "an ad rotated" or an
+unrelated `go_back()` silently navigating away.
+
+**Shipped:**
+- `agents/vision/dom_change_detector.py` (new) — `arm(page,
+  ignore_selectors)` installs a `MutationObserver` on `document.body`
+  (childList + attributes + subtree + characterData), filtering out
+  mutations whose target lives inside an ignored selector (ad iframes,
+  analytics beacons, `[aria-live]` regions) **at record time**, not
+  swept out after the fact. `read_result(page, settle_wait_seconds)`
+  reads the buffer back: `mutated` (any real mutation recorded),
+  `url_changed` (captured directly via `location.href` before/after,
+  so a `go_back()` or real navigation is caught structurally, not
+  inferred), `mutation_count`, `sample_mutations`. Both functions
+  degrade safely (`armed=False`, never raise) on any `page.evaluate()`
+  failure — a full-page navigation destroying the observer's document
+  context is the expected way this happens, and callers treat it
+  exactly like "no live page" for that one check.
+- `orchestrator/brain/policy.py::Policy.change_detection_settings()`
+  (new) — reads `brain_knowledge/rules/change_detection.yaml`'s
+  `mutation_observer.settle_wait_seconds`/`ignore_selectors`, falling
+  back to that file's own shipped defaults if the knowledge folder is
+  missing/broken. This is the first `Policy` method from B1/B2 that
+  became genuinely load-bearing outside `orchestrator/brain/`'s own
+  tests — `Policy.change_detection_method(dom_page)` (which already
+  existed, unused, since B1) now drives real behavior in
+  `orchestrator/ui_audit_runner.py` and `orchestrator/run_engine.py`.
+- `orchestrator/ui_audit_runner.py::_run_click_audit` — arms the
+  observer immediately before every click dispatch (before, not after,
+  `_try_dom_click()` — a `MutationObserver` only sees mutations that
+  happen after `observe()` attaches, so arming after the click already
+  fired would silently miss the mutation on the most common path,
+  `resolution_strategy == "dom"`). Reads the result right after dispatch
+  completes; `state_changed = new_tab_opened or mutation.mutated or
+  mutation.url_changed` whenever the read succeeded, falling back to
+  the pre-existing `new_tab_opened or (after_hash != baseline_hash)`
+  hash-diff check per-element whenever it didn't (not audit-wide —
+  one element's failed read doesn't downgrade every other element in
+  the same run). `click_resolution_log`'s `change_detection_method`
+  field now reflects which one actually ran for that element, not a
+  hardcoded `"hash_diff"`.
+- `orchestrator/run_engine.py`'s `WAIT_FOR_HUMAN_ACTION` polling loop —
+  same primary/fallback shape: arms once before the poll loop starts
+  (when a live page exists), reads on every poll tick, re-arms after a
+  no-change read so the next poll only sees mutations from that point
+  forward rather than a stale buffer. A failed read at any point
+  degrades the rest of that step's polling to hash-diff, matching the
+  same per-check (not per-run) degradation posture as the click-audit
+  integration above.
+- Two tests added directly proving mutation-observer is now primary,
+  not just present: `tests/test_ui_audit_runner.py`'s pair (one where
+  two byte-identical screenshots still report `state_changed=True`
+  because a real mutation was recorded; the inverse, where two
+  genuinely different screenshots report `state_changed=False` because
+  the observer recorded nothing and the URL didn't change) —
+  demonstrating this is a structural fix, not just "mutation-observer
+  also runs alongside the old check."
+- `tests/test_dom_change_detector.py` (new, 7 tests) — unit coverage
+  for `arm()`/`read_result()` in isolation, including the
+  graceful-degradation contract (exceptions from `page.evaluate()`
+  never propagate up).
+- `tests/test_human_in_the_loop.py` — 1 new Phase 4 test (mutation
+  detected on the first poll despite every screenshot being identical),
+  plus one unrelated regression test (see next item).
+
+**A real, previously-latent bug found and fixed while writing the Phase
+4 test for `run_engine.py`, unrelated to the mutation-observer wiring
+itself:** `orchestrator/run_engine.py`'s `WAIT_FOR_HUMAN_ACTION` branch
+(from D-067.7's keyword-heuristic fix) sets
+`verification_source="keyword_heuristic"` whenever a screen change is
+detected with no `expected_state` given — but
+`orchestrator/schemas.py`'s `VisionActionResult.verification_source`
+field's `Literal` never included that value, so every such run crashed
+with a `pydantic.ValidationError` instead of completing. This had been
+sitting there since D-067.7; no prior test exercised "a real screen
+change with no `expected_state`" via the plain hash-diff path (only via
+`expected_state`-driven passes/timeouts). Fixed by adding
+`"keyword_heuristic"` to the schema's allowed values (it's a real,
+distinct verification source, not a typo to correct the other way).
+`tests/test_human_in_the_loop.py::test_wait_for_human_action_with_no_expected_state_does_not_crash_on_verification_source`
+added as a standalone regression test, independent of Phase 4's own
+mutation-observer path, so this specific crash can't silently return.
+
+**A second, mechanical fix found while finishing this phase:** the new
+`arm()` function's `except Exception: return False` was a genuine
+silent-except violation per `scripts/check_silent_excepts.py` (caught
+by `tests/test_no_silent_excepts.py` immediately) — added a
+`.debug()` log call rather than allowlisting it, matching this
+project's established convention (D-057/G-003) rather than adding a
+new exception to the rule on day one of a new module.
+
+**Verified:** full suite: 744 passed (711 + 33 new tests across this
+session's B1 through Phase 4 work) / 30 failed / 5 errors — diffed
+failure-by-failure against the exact same baseline set used throughout
+D-074 through D-076, zero regressions. `tests/integration/` still
+collects and skips cleanly (3 skipped).
+
+**Explicitly not done in this pass:** Phase 5 (CLI loading/progress
+UX) and Phase 6 (final docs pass, largely superseded by this file's
+own incremental updates throughout D-068 through D-077). The
+`aura audit-report` doc/code drift noted since D-072 also remains open.
+
+**Revisit when:** a real Chromium-available environment can run this
+against Phase 0's fixture tier (`tests/integration/`) for the first
+true end-to-end verification of the mutation-observer path against a
+real browser, not just mocked `page.evaluate()` calls — same open item
+D-069 already flagged for that whole tier.
+
+## D-078 — Phase 5 shipped, `aura audit-report` doc/code drift resolved, real-Chromium verification confirmed still blocked (2026-07-25)
+
+**Decided:** 2026-07-25
+**Context:** three remaining open items from D-077's "what's next" list,
+done together in one pass.
+
+**1. Phase 5 — CLI loading/progress UX, shipped.**
+- `aura/tui/live_view.py::spinner(message)` (new) — a thin
+  `contextlib.contextmanager` wrapper over `rich.console.Console.status()`.
+  Coexists with ordinary `console.print()` calls happening inside the
+  same span (that's what `rich.status.Status` is designed for — a
+  persistent status line while other output scrolls above it), so
+  wrapping a whole multi-step operation in one spinner doesn't hide the
+  per-step prints already coming from `RunEngine`'s callbacks.
+- Wrapped every CLI command's top-level `AuraBrain().handle()` call:
+  `aura/cli/explore_cmd.py`, `aura/cli/ui_audit_cmd.py`,
+  `aura/cli/capability_check_cmd.py`, and
+  `aura/cli/execute_cmd.py::_run_requirement_text()`'s call (which
+  covers the plan's specifically-called-out ~9s planner-LLM dead-air,
+  since spec generation happens inside that same wrapped span).
+  `execute_interactive()`'s call was deliberately left unwrapped — its
+  `on_waiting` callback already prints a tick every poll interval, so
+  it was never a genuinely silent wait to begin with; a second,
+  competing status widget there would add noise, not clarity.
+- `tests/test_live_view_spinner.py` (new, 3 tests) — including a real
+  proof (not just an assertion) that piping to a non-TTY produces clean
+  output with zero raw ANSI escape codes (`Console(force_terminal=False)`),
+  the plan's own stated verification requirement for this phase.
+
+**2. `aura audit-report` doc/code drift (flagged since D-072), resolved.**
+`docs/STATUS.md`'s D-061 entry claimed this command shipped; it never
+existed. Built per the original plan's own description: `aura audit-report
+<run_id>` (`aura/cli/audit_report_cmd.py`, new) runs both existing
+`find_anomalies()` checks (`assertion_audit_log`'s D-056 shape,
+`click_resolution_log`'s D-067 shape) against a run_id and prints
+anything found; `--full` additionally prints the complete merged
+timeline via `orchestrator/run_timeline.py` — the same one `aura
+explain` uses, not a second implementation, per the plan's explicit
+"one merge implementation, not two" requirement.
+`tests/test_audit_report_cmd.py` (new, 5 tests) confirms both anomaly
+shapes are actually found (not just that the command runs without
+crashing), and that results are correctly filtered by `run_id`.
+
+**3. Real-Chromium verification of `tests/integration/` and Phase 4 —
+attempted again, confirmed still blocked, not silently dropped.**
+`python3 -m playwright install chromium` was re-run directly in this
+pass: identical failure to every prior attempt (D-069, D-074, D-077) —
+`403 Host not in allowlist: cdn.playwright.dev`. This is a sandbox
+network-egress constraint, not something fixable from inside this
+environment. Documented here explicitly rather than left as an
+assumption: **whoever next has a machine with normal network access
+should run `python3 -m playwright install chromium && pytest
+tests/integration/` themselves** as the true, still-outstanding
+acceptance check for Phase 0 and Phase 4 both.
+
+**Verified:** full suite: 752 passed (744 + 8 new tests: 3 spinner, 5
+audit-report) / 30 failed / 5 errors — diffed failure-by-failure
+against the same baseline maintained since D-074, zero regressions.
+`tests/integration/` still collects and skips cleanly (3 skipped).
+
+**Explicitly not done in this pass:** Phase 6 (a dedicated final-docs
+pass) — largely superseded already by this file's own incremental
+updates throughout D-068 through D-078, per the plan's own allowance
+for that. No other open items from `docs/STATUS.md`'s "Next action"
+remain as of this entry.

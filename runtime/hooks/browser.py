@@ -160,10 +160,10 @@ class _BrowserSession:
         page regardless of OS window focus/z-order. Returns True if it was
         actually able to scroll (a page exists and the call didn't raise),
         False otherwise -- callers fall back to the OS-level
-        interact.scroll() when this returns False.
+        os_fallback.scroll() when this returns False.
 
         `delta_y` follows this codebase's existing convention (matching
-        interact.scroll()'s direct pass-through to pyautogui.scroll()):
+        os_fallback.scroll()'s direct pass-through to pyautogui.scroll()):
         NEGATIVE means "scroll down", positive means "scroll up" -- e.g.
         orchestrator/autoscan.py's default scroll_amount=-600, and
         agents/vision/executor.py's SCROLL handler passing -300, both mean
@@ -266,14 +266,14 @@ class _BrowserSession:
         against an OS-level mss screenshot (runtime/hooks/capture.py) --
         into this page's own CSS/viewport coordinate space, so a click can
         be dispatched through Playwright's page.mouse (guaranteed on-
-        target) instead of runtime/hooks/interact.click's raw OS pixel
+        target) instead of runtime/hooks/os_fallback.click's raw OS pixel
         coordinate.
 
         Root cause of the bug this replaces: capture.py's mss screenshot
         is a full-monitor grab in physical/device screen pixels; OCR's
         (x, y) result is a pixel offset *into that image*, with no notion
         of where the Chromium window actually sits on screen or of the
-        display's DPI scale factor. interact.click() hands that same
+        display's DPI scale factor. os_fallback.click() hands that same
         number straight to pyautogui.moveTo() as if it were already a
         correct absolute OS coordinate. Any DPI scaling, multi-monitor
         offset, or non-(0,0) window position means the two coordinate
@@ -303,7 +303,7 @@ class _BrowserSession:
         transform step failing, or the translated point landing outside
         the page's own content area (negative x/y -- i.e. the original
         point wasn't actually over the browser window's content at all).
-        Callers fall back to the OS-level interact.click() path exactly as
+        Callers fall back to the OS-level os_fallback.click() path exactly as
         before whenever this returns None.
         """
         if self._page is None or settings.playwright_browser != "chromium":

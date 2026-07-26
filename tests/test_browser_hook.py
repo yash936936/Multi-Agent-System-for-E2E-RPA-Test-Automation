@@ -55,7 +55,7 @@ def test_close_resets_session(server):
 def test_dom_scroll_returns_false_when_no_active_page():
     """No live page yet -- dom_scroll must report failure (not raise) so
     callers like orchestrator/autoscan.py know to fall back to the
-    OS-level interact.scroll() path."""
+    OS-level os_fallback.scroll() path."""
     from runtime.hooks import browser
 
     assert browser.has_active_page() is False
@@ -109,7 +109,7 @@ def test_dom_scroll_moves_page_downward_on_a_plain_tall_page(server=None):
     full iteration budget but the page never visibly moved off the hero
     section. Root cause: dom_scroll's delta_y follows this codebase's
     pyautogui-based convention (negative = scroll down, matching
-    interact.scroll()), but was passed straight through to
+    os_fallback.scroll()), but was passed straight through to
     window.scrollBy(), which uses the OPPOSITE native sign (positive Y =
     down). Starting at scrollY=0, a "scroll down" call became
     scrollBy(0, negative), which clamps to 0 and never moves at all --

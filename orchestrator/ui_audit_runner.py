@@ -138,7 +138,7 @@ def _run_click_audit(
     from runtime.errors import NoDisplayError, display_guard
 
     # Debug pass (D-044): this engine previously only used the OCR/pixel
-    # path (locate_text + interact.click(x, y) + OS-level browser_back()),
+    # path (locate_text + os_fallback.click(x, y) + OS-level browser_back()),
     # even though Phase C added a Playwright DOM-first locator
     # (agents/vision/dom_locator.py) with Scrapling-style self-heal to
     # agents/vision/executor.py for spec-driven `aura execute` runs. That
@@ -237,9 +237,15 @@ def _run_click_audit(
 
     baseline_hash = file_hash(baseline_path)
 
+    from orchestrator.brain.policy import Policy
+
+    policy = Policy()
+    change_detection_method = policy.change_detection_method(dom_page)
+    change_detection_settings = policy.change_detection_settings()
+
     candidates = [e for e in all_elements if e.looks_interactive and band_filter(e)][:max_elements]
 
-    from runtime.hooks import interact
+    from runtime.hooks import os_fallback
 
     all_seen_text: list[str] = [e.text for e in all_elements]
 
@@ -247,6 +253,18 @@ def _run_click_audit(
         el_cx, el_cy = getattr(element, "cx", 0), getattr(element, "cy", 0)
         element_key = (element.text.strip().lower(), round(el_cx / 12), round(el_cy / 12))
         is_dom_sourced = element_key in dom_sourced_keys
+
+        mutation_armed = False
+        if change_detection_method == "mutation_observer" and dom_page is not None:
+            from agents.vision.dom_change_detector import arm as arm_mutation_observer
+
+            # Must arm before ANY click dispatch below, including
+            # _try_dom_click()'s -- a MutationObserver only sees
+            # mutations that happen after observe() attaches, so arming
+            # after the click already fired would silently miss the
+            # exact mutation this exists to detect on the most common
+            # path (resolution_strategy == "dom").
+            mutation_armed = arm_mutation_observer(dom_page, change_detection_settings["ignore_selectors"])
 
         dom_click_result = _try_dom_click(dom_page, element.text) if dom_page is not None else None
 
@@ -282,7 +300,7 @@ def _run_click_audit(
                 resolution_strategy = "dom_extractor_direct"
             elif el_cx and el_cy:
                 # Same direct-coordinate fallback, but in OS/screenshot-
-                # pixel space (interact.click's expected space) -- for an
+                # pixel space (os_fallback.click's expected space) -- for an
                 # OCR-sourced element whose text re-search on this specific
                 # baseline screenshot happened to miss, even though its
                 # original OCR detection pass did find real coordinates.
@@ -307,7 +325,7 @@ def _run_click_audit(
                     # click_x/click_y here came from OCR against the
                     # OS-level baseline screenshot (mss full-monitor
                     # capture) -- never valid as a raw OS coordinate for
-                    # interact.click (see runtime/hooks/browser.py's
+                    # os_fallback.click (see runtime/hooks/browser.py's
                     # get_click_point_in_page docstring for the root
                     # cause: DPI scaling / multi-monitor offset / window
                     # position all send that number somewhere else on the
@@ -333,7 +351,7 @@ def _run_click_audit(
                         # dom_extractor_direct strategy.
                         dispatch_via_playwright = True
                     else:
-                        interact.click(click_x, click_y)
+                        os_fallback.click(click_x, click_y)
             except NoDisplayError:
                 report.checked.append(ClickCheckResult(label=element.text, band=element.band, clicked=False, state_changed=None))
                 click_resolution_log.log(run_id, 8100 + i, element.text, element.band, resolution_strategy, element.looks_interactive, resolution_strategy, clicked=False, rejected_reason="no_display")
@@ -358,6 +376,12 @@ def _run_click_audit(
                 new_tab_opened = smart_back_result.new_tab_opened
                 new_tab_url = smart_back_result.new_tab_url
 
+        mutation_result = None
+        if mutation_armed:
+            from agents.vision.dom_change_detector import read_result as read_mutation_result
+
+            mutation_result = read_mutation_result(dom_page, settle_wait_seconds=change_detection_settings["settle_wait_seconds"])
+
         with display_guard() as after_guard:
             after_guard.value = screenshot_provider(run_id, 8100 + i)
         if after_guard.no_display:
@@ -370,12 +394,26 @@ def _run_click_audit(
             click_resolution_log.log(run_id, 8100 + i, element.text, element.band, resolution_strategy, element.looks_interactive, resolution_strategy, clicked=True, state_changed=None, new_tab_opened=new_tab_opened, rejected_reason="no_display_after_click")
             break
         after_path = after_guard.value
+
+        # Mutation-observer result is primary whenever it was actually
+        # read back successfully (mutation_result.armed); a mid-click
+        # full-page navigation destroys the observer's document context,
+        # which makes read_result() fail closed (armed=False) rather
+        # than silently report zero mutations -- that case, same as
+        # "no live page at all", degrades to the pixel-hash-diff check
+        # for this one element instead of failing the whole audit.
         after_hash = file_hash(after_path)
-        # A new tab opening (and being closed again) is itself proof the
-        # click worked, even if the original page's own screenshot ends up
-        # byte-identical to the baseline -- report it as changed/working
-        # rather than an old "no visible change" false negative.
-        state_changed = new_tab_opened or (after_hash != baseline_hash)
+        used_change_detection_method = "hash_diff"
+        if mutation_result is not None and mutation_result.armed:
+            used_change_detection_method = "mutation_observer"
+            state_changed = new_tab_opened or mutation_result.mutated or mutation_result.url_changed
+        else:
+            # A new tab opening (and being closed again) is itself proof
+            # the click worked, even if the original page's own
+            # screenshot ends up byte-identical to the baseline --
+            # report it as changed/working rather than an old "no
+            # visible change" false negative.
+            state_changed = new_tab_opened or (after_hash != baseline_hash)
         report.checked.append(ClickCheckResult(
             label=element.text, band=element.band, clicked=True, state_changed=state_changed,
             new_tab_opened=new_tab_opened, new_tab_url=new_tab_url, resolution_strategy=resolution_strategy,
@@ -383,7 +421,7 @@ def _run_click_audit(
         click_resolution_log.log(
             run_id, 8100 + i, element.text, element.band, resolution_strategy, element.looks_interactive,
             resolution_strategy, clicked=True, state_changed=state_changed, new_tab_opened=new_tab_opened,
-            change_detection_method="hash_diff",
+            change_detection_method=used_change_detection_method,
         )
         report.page_issues.extend(issue for issue in detect_page_issues(after_path) if issue not in report.page_issues)
 
@@ -404,8 +442,10 @@ def _run_click_audit(
         # calls simply fail to find their target and get recorded as
         # clicked=False rather than crashing the whole audit.
         if resolution_strategy == "ocr" and not dispatch_via_playwright:
+            from runtime.hooks import os_fallback
+
             try:
-                interact.browser_back()
+                os_fallback.browser_back()
             except NoDisplayError:
                 pass
 

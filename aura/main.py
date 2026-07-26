@@ -22,7 +22,7 @@ import typer
 from rich.console import Console
 
 from agents.planner.spec_generator import infer_test_id
-from aura.cli import baselines_cmd, capability_check_cmd, debug_cmd, execute_cmd, explain_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd, ui_audit_cmd
+from aura.cli import audit_report_cmd, baselines_cmd, capability_check_cmd, debug_cmd, execute_cmd, explain_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd, ui_audit_cmd
 from config.settings import PLAYWRIGHT_BROWSER_CHOICES, settings
 from orchestrator import quarantine_store
 from orchestrator.schemas import RunReport, RunStatus
@@ -342,6 +342,20 @@ def explain(
 ) -> None:
     """Re-architecture Phase 1: prints the merged, chronological timeline of every logged decision (planner backend attempts, click-audit decisions, assertion checks) for one run_id."""
     explain_cmd.explain(run_id, as_json=as_json)
+
+
+@app.command(name="audit-report")
+def audit_report(
+    run_id: str = typer.Argument(..., help="Run ID to check for logged anomalies."),
+    full: bool = typer.Option(False, "--full", help="Also print the complete merged timeline (same one `aura explain` uses)."),
+) -> None:
+    """
+    Resolves the D-072-flagged doc/code drift: checks a run's logged
+    assertion and click-resolution records for known anomaly shapes
+    (D-056's silently-non-escalated failure, D-067's clicked-but-no-
+    change) without needing to eyeball the full timeline by hand.
+    """
+    audit_report_cmd.audit_report(run_id, full=full)
 
 
 @app.command()

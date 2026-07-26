@@ -97,7 +97,8 @@ def explore(
             "link_scope": link_scope,
         },
     )
-    result = AuraBrain().handle(intent)
+    with live_view.spinner(f"Exploring {url}..."):
+        result = AuraBrain().handle(intent)
 
     run_id = result.run_id
     normalized = result.data["normalized_url"]

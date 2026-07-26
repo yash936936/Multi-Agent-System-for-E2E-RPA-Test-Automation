@@ -22,7 +22,8 @@ def ui_audit(url: str, max_elements: int = 12, link_scope: str = "all") -> None:
     console.print(f"[bold]Running UI audit on {url}[/bold]")
 
     intent = Intent(kind="ui_audit", params={"url": url, "max_elements": max_elements, "link_scope": link_scope})
-    result = AuraBrain().handle(intent)
+    with live_view.spinner(f"Running UI audit on {url}..."):
+        result = AuraBrain().handle(intent)
 
     run_id = result.run_id
     open_error = result.data["open_error"]

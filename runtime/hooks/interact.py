@@ -1,11 +1,14 @@
 """
-OS-level interaction — runtime/hooks/interact.py
+Playwright-native interaction — runtime/hooks/interact.py
 
-Thin wrapper over `pyautogui` for mouse/keyboard dispatch. Like
-capture.py, the import is deferred into each function body so this
-module (and anything that imports it, like agents/vision/executor.py)
-stays importable in headless/no-display environments — real dispatch
-only happens when a step is actually executed against a live target app.
+Phase 3 (docs/decisions.md D-076): this module used to be a thin
+`pyautogui` wrapper (OS-absolute-pixel-space click/type/scroll). That
+OS-level path has moved to `runtime/hooks/os_fallback.py` -- the one
+deliberately-isolated fallback module, used only when no live
+Playwright page exists (see that module's docstring for exactly when
+and why). Every function remaining in *this* module is
+Playwright-native: viewport-space, dispatched through a live `Page`/
+`Locator`, no coordinate translation involved at all.
 
 Phase S (decisions.md D-040): NoDisplayError is now the one shared class
 from runtime.errors, not a module-local lookalike -- see runtime/errors.py.
@@ -15,44 +18,6 @@ from __future__ import annotations
 from runtime.errors import NoDisplayError
 
 __all__ = ["NoDisplayError"]  # re-exported for existing `from runtime.hooks.interact import NoDisplayError` call sites
-
-
-def _pyautogui():
-    try:
-        import pyautogui
-
-        pyautogui.FAILSAFE = True
-        return pyautogui
-    except SystemExit as e:
-        # mouseinfo (a pyautogui dependency) calls sys.exit(...) directly
-        # at import time when tkinter isn't installed on Linux, instead of
-        # raising a normal ImportError. SystemExit is a BaseException, not
-        # an Exception, so it isn't caught below and previously killed the
-        # whole process silently (no traceback, just exit code 1) instead
-        # of surfacing as the same NoDisplayError every other no-display
-        # condition in this module already produces. Converting it here
-        # means every caller (autoscan.py, ui_audit_runner.py,
-        # agents/vision/executor.py) gets the graceful fallback it already
-        # expects, instead of the process dying underneath it.
-        raise NoDisplayError(f"pyautogui unavailable (tkinter missing -- see mouseinfo's message: {e}))") from e
-    except Exception as e:  # pragma: no cover - exercised only without a display
-        raise NoDisplayError(f"pyautogui unavailable: {e}") from e
-
-
-def click(x: int, y: int) -> None:
-    pg = _pyautogui()
-    pg.moveTo(x, y, duration=0.15)
-    pg.click()
-
-
-def type_text(text: str, interval: float = 0.02) -> None:
-    pg = _pyautogui()
-    pg.typewrite(text, interval=interval)
-
-
-def scroll(amount: int) -> None:
-    pg = _pyautogui()
-    pg.scroll(amount)
 
 
 def dom_click(locator) -> None:
@@ -84,23 +49,6 @@ def dom_scroll_into_view(locator) -> None:
         locator.scroll_into_view_if_needed(timeout=5000)
     except Exception as e:  # pragma: no cover - exercised only against a real/mocked browser
         raise NoDisplayError(f"Playwright scroll_into_view failed: {e}") from e
-
-
-def browser_back() -> None:
-    """
-    Sends the OS/browser-standard 'back' shortcut (Alt+Left, honored by
-    Chrome/Firefox/Edge on Windows and most Linux browsers) so the UI
-    audit runner (orchestrator/ui_audit_runner.py) can return to the
-    original page after test-clicking a nav/footer link, without needing
-    to track and re-navigate to the original URL.
-
-    Kept as the fallback path for the OCR/pixel pipeline only. When a live
-    Playwright page is available, dom_smart_back() below is used instead --
-    see its docstring for why this OS-level shortcut can't reliably handle
-    a target="_blank" link (decisions.md D-044).
-    """
-    pg = _pyautogui()
-    pg.hotkey("alt", "left")
 
 
 def dom_smart_back(page, pages_before: int, url_before: str | None = None):

@@ -284,7 +284,7 @@ class VisionActionResult(BaseModel):
     # actually ran for this step -- None is only valid for steps where no
     # verification was applicable at all (e.g. a bare SCROLL/NAVIGATE_URL
     # with no expected_state attached).
-    verification_source: Optional[Literal["ocr", "dom", "capability_adapter", "none_required"]] = None
+    verification_source: Optional[Literal["ocr", "dom", "capability_adapter", "keyword_heuristic", "none_required"]] = None
     raw_evidence: Optional[Dict[str, Any]] = None
 
 

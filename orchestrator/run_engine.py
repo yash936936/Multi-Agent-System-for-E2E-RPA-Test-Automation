@@ -531,6 +531,30 @@ class RunEngine:
                     continue
                 baseline_hash = file_hash(baseline_path)
 
+                # Phase 4 (docs/decisions.md D-077): a real DOM mutation
+                # check is primary whenever a live page exists -- same
+                # single condition (dom_page is not None) every other
+                # Phase-2/3 fallback in the codebase uses. Falls back to
+                # the pre-existing hash-diff polling below whenever it
+                # doesn't (or the observer itself can't be armed/read for
+                # any reason -- arm()/read_result() never raise).
+                dom_page = None
+                mutation_armed = False
+                change_detection_settings = None
+                try:
+                    from runtime.hooks import browser as _browser_hook
+
+                    if _browser_hook.has_active_page():
+                        dom_page = _browser_hook.get_page()
+                except Exception:
+                    dom_page = None
+                if dom_page is not None:
+                    from agents.vision.dom_change_detector import arm as arm_mutation_observer
+                    from orchestrator.brain.policy import Policy
+
+                    change_detection_settings = Policy().change_detection_settings()
+                    mutation_armed = arm_mutation_observer(dom_page, change_detection_settings["ignore_selectors"])
+
                 elapsed = 0.0
                 changed = False
                 latest_path = baseline_path
@@ -540,6 +564,28 @@ class RunEngine:
                     self._sleep(poll_interval)
                     elapsed += poll_interval
 
+                    used_mutation_check_this_poll = False
+                    if mutation_armed:
+                        from agents.vision.dom_change_detector import read_result as read_mutation_result
+
+                        mutation_result = read_mutation_result(dom_page, settle_wait_seconds=0.0)
+                        if mutation_result.armed:
+                            used_mutation_check_this_poll = True
+                            if mutation_result.mutated or mutation_result.url_changed:
+                                changed = True
+                            else:
+                                # Nothing changed yet -- re-arm so the next
+                                # poll only sees mutations from here forward,
+                                # not a stale/already-read buffer.
+                                arm_mutation_observer(dom_page, change_detection_settings["ignore_selectors"])
+                        else:
+                            # Observer read failed this poll (e.g. a
+                            # full-page navigation destroyed the document
+                            # context) -- degrade to hash-diff from here on
+                            # rather than treating a failed read as "nothing
+                            # happened."
+                            mutation_armed = False
+
                     latest_path = self._safe_screenshot(run_id, step.step_id)
                     if latest_path is None:
                         # Display disappeared mid-poll -- stop waiting on
@@ -547,8 +593,9 @@ class RunEngine:
                         # crashing on file_hash(None).
                         latest_path = baseline_path
                         break
-                    if file_hash(latest_path) != baseline_hash:
+                    if not changed and not used_mutation_check_this_poll and file_hash(latest_path) != baseline_hash:
                         changed = True
+                    if changed:
                         break
                     if timeout and elapsed >= timeout:
                         break

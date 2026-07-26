@@ -468,21 +468,34 @@ baseline, zero regressions.
 drift noted in the previous update.
 
 ## Next action (current, supersedes the pointer above)
-**Phase B3 is done (D-075) — all 6 `IntentKind` values are migrated
-onto `orchestrator/brain/router.py`.** Two new standalone commands
-shipped as part of it: `aura ui-audit <url>` and `aura capability-check
-<type> <target>`. Full suite re-verified against the exact D-074
-baseline set (diffed failure-by-failure, not just counted): zero
-regressions, 733 passed (728 + 5 new B3 tests).
+**All three items from Phase 4's "what's next" list are done (D-078):**
+Phase 5 CLI spinners shipped (`live_view.spinner()`, wrapped around
+every command's top-level `AuraBrain().handle()` call, including the
+plan's specifically-called-out ~9s planner-LLM dead-air); the `aura
+audit-report` doc/code drift flagged since D-072 is resolved (the
+command now genuinely exists, `aura/cli/audit_report_cmd.py`, and
+finds both known anomaly shapes); real-Chromium verification was
+attempted again (`playwright install chromium`) and confirmed still
+blocked by the sandbox's network allowlist — same `403` as every prior
+attempt, documented rather than silently retried forever. Full suite:
+752 passed / 30 failed / 5 errors, same baseline maintained since
+D-074, zero regressions.
 
-Two real next steps remain, not mutually exclusive:
-1. **Re-architecture Phase 3** -- remove the OS-level mouse/keyboard/
-   screen dependency (`runtime/hooks/interact.py`'s `pyautogui` path,
-   `runtime/hooks/capture.py`'s `mss` path) now that DOM-first dispatch
-   is the enforced default whenever a page exists. Needs the one open
-   product decision from the plan first: does `--interactive` mode ever
-   need to watch a window AURA didn't launch itself? (Note: B3's
-   `execute_interactive` migration didn't resolve this -- it kept
-   `--interactive`'s existing behavior unchanged, callback-injected
-   like everything else in B3, not redesigned.)
-2. Resolve the `aura audit-report` doc/code drift noted since D-072.
+**The re-architecture track (`docs/AURA_REARCHITECTURE_PLAN.md`,
+`docs/AURA_BRAIN_ARCHITECTURE.md`) has no further phases planned.**
+Phases 0 through 5 and B1 through B3 are all code-complete. Two things
+remain, neither blocking anything else:
+1. **Real-Chromium verification** of `tests/integration/` (Phase 0's
+   fixture tier) and, by extension, Phase 4's mutation-observer path —
+   needs an environment with normal network egress, not fixable from
+   inside this sandbox. Run `python3 -m playwright install chromium &&
+   pytest tests/integration/` there as the true acceptance check.
+2. Migrating the remaining CLI entrypoints that still hand-assemble
+   their own logic instead of routing through `orchestrator/brain/` —
+   B3 covered `execute_spec`/`execute_prompt`/`execute_interactive`/
+   `ui_audit`/`capability_check`; `aura/cli/audit_report_cmd.py`,
+   `aura/cli/explain_cmd.py`, and the batch/`--all` execution loop in
+   `execute_cmd.py` were built or left as direct subsystem calls in
+   this pass and this session's B3 pass respectively, not migrated —
+   not urgent, since none of them duplicate cross-cutting policy
+   decisions the way the original five did.

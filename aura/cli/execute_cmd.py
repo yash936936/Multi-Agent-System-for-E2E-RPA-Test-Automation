@@ -365,7 +365,8 @@ def _run_requirement_text(
     )
 
     try:
-        brain_result = AuraBrain().handle(intent)
+        with live_view.spinner(f"Running: {display_source}..."):
+            brain_result = AuraBrain().handle(intent)
     except SpecValidationError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1)
