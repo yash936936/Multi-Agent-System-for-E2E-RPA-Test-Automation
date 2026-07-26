@@ -672,12 +672,22 @@ def _build_grounded_text(payload: RequirementInput) -> str:
     heuristic backend ignores" there rather than corrupting its parse --
     only the LLM backends, which read the whole prompt as context, benefit
     from it today.
+
+    Gap #4 (docs/decisions.md D-080): the wrapper wording below is now
+    sourced from brain_knowledge/prompts/requirement_grounding_prompt.txt
+    via BrainKnowledge, with the original hardcoded wording as its
+    fallback -- mirroring the same load-with-fallback posture
+    agents/planner/prompts.py already uses for the system/user prompts,
+    and orchestrator/brain/policy.py uses for rules/*.yaml.
     """
     if not payload.page_context:
         return payload.requirement_text
     elements_block = "\n".join(f"- {name}" for name in payload.page_context)
-    return (
-        f"{payload.requirement_text}\n\n"
+
+    from orchestrator.brain.context import BrainKnowledge
+
+    grounding_template = BrainKnowledge.load().prompts.get(
+        "requirement_grounding_prompt",
         "---\n"
         "Elements actually found on the live target page just now "
         "(real accessible names/visible text, not a guess). When a step "
@@ -686,8 +696,9 @@ def _build_grounded_text(payload: RequirementInput) -> str:
         "plausible-sounding label. If nothing in the requirement above "
         "corresponds to anything in this list, say so via the step's "
         "target_description rather than fabricating one:\n"
-        f"{elements_block}"
+        "{elements_block}",
     )
+    return f"{payload.requirement_text}\n\n{grounding_template.format(elements_block=elements_block)}"
 
 
 def generate_spec(payload: RequirementInput, backend: SpecBackend | None = None) -> TestSpec:

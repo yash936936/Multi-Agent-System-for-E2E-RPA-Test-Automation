@@ -43,3 +43,38 @@ Every edit here gets a dated entry.
   work, tracked here rather than done silently as part of B3 itself.
 - No `rules/*.yaml` changes in this pass -- B3 was Router/CLI wiring,
   not policy data; B2's files are unaffected.
+
+## 2026-07-26 — Gap #3 (D-079): remaining playbooks written
+- `playbooks/execute.md` — mirrors
+  `orchestrator/brain/router.py::Router._handle_execute_requirement()`
+  (serves both `execute_spec` and `execute_prompt` intents), including
+  the `built_spec`/`run_id` override params D-079's Gap #1 work added.
+- `playbooks/execute_interactive.md` — mirrors
+  `Router._handle_execute_interactive()`.
+- `playbooks/ui_audit.md` — mirrors `Router._handle_ui_audit()`.
+- No `capability_check.md` — `docs/AURA_BRAIN_ARCHITECTURE.md`'s own
+  `playbooks/` tree listing names exactly these four files
+  (`explore.md`, `execute.md`, `execute_interactive.md`, `ui_audit.md`);
+  `capability_check` was never specified to have one.
+- Still open, tracked separately: extending
+  `scripts/check_doc_drift.py` to mechanically diff each playbook's
+  declared step list against its router handler's actual call
+  sequence — these four files are accurate as of this dated entry, kept
+  in sync by hand like `explore.md` already was, not yet enforced by
+  tooling.
+
+## 2026-07-26 — Gap #4 (D-080): planner prompts moved into `prompts/*.txt`
+- `prompts/planner_system_prompt.txt`, `prompts/planner_retry_prompt.txt`,
+  `prompts/requirement_grounding_prompt.txt` written -- `prompts/` no
+  longer holds just a `.gitkeep`.
+- `orchestrator/brain/context.py::BrainKnowledge` now loads these into
+  `.prompts`, same load-with-fallback contract `rules/*.yaml` already
+  has via `Policy`.
+- `planner_retry_prompt.txt` is named to match
+  `docs/AURA_BRAIN_ARCHITECTURE.md`'s tree, but its actual content is
+  the user-message template used on every `generate()` call (initial
+  and retry alike) -- there is no separate retry-specific wording in
+  current behavior to extract instead. See D-080 for the full trace.
+- `agents/planner/prompts.py::DIAGNOSIS_SYSTEM_PROMPT`/
+  `DIAGNOSIS_USER_TEMPLATE` left as-is (flagged as apparent dead code
+  in D-080, out of this gap's scope).

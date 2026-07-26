@@ -4756,14 +4756,109 @@ fix. Full suite re-run after both gaps: 752 passed / 30 failed / 5
 errors — identical, failure-by-failure, to the sandbox-only Chromium/
 no-display baseline maintained since D-074. Zero regressions.
 
-**Explicitly not done in this pass:** Gap #3 (missing
-`brain_knowledge/playbooks/execute.md`, `execute_interactive.md`,
-`ui_audit.md`) and Gap #4 (planner prompts still living in
-`agents/planner/prompts.py` instead of `brain_knowledge/prompts/*.txt`)
-— both queued as this session's next work, not silently dropped.
+**Gap #3, shipped (same pass):**
+- `brain_knowledge/playbooks/execute.md`, `execute_interactive.md`,
+  `ui_audit.md` written, matching `explore.md`'s existing style and
+  mirroring `Router._handle_execute_requirement()`/
+  `_handle_execute_interactive()`/`_handle_ui_audit()` respectively.
+  `playbooks/` now matches `docs/AURA_BRAIN_ARCHITECTURE.md`'s
+  documented tree in full — no `capability_check.md`, since that tree
+  listing never specified one for that intent.
+- `brain_knowledge/CHANGELOG.md` updated with a dated entry, per this
+  folder's own "reviewed like code" convention.
+
+**Verified (Gap #3):** full suite re-run after adding the three
+playbook docs (docs-only change, no code touched): 752 passed / 30
+failed / 5 errors — identical to the baseline above.
+
+**Explicitly not done in this pass:** Gap #4 (planner prompts still
+living in `agents/planner/prompts.py` instead of
+`brain_knowledge/prompts/*.txt`) — queued as this session's next work,
+not silently dropped. Extending `scripts/check_doc_drift.py` to
+mechanically diff each playbook against its router handler (flagged
+since B1/B3) also remains open — the four playbook files are correct
+as of this entry but still kept in sync by hand, same as before.
 
 **Revisit when:** Gap #3/#4 are picked up, or if a future caller of
 `audit_screenshot()` turns out to be a genuine hot loop where the
 per-call `Policy()`/`BrainKnowledge.load()` cost matters enough to
 justify threading a shared instance through despite the test-mock
 friction noted above.
+
+---
+
+## D-080 — Gap #4 (planner prompts moved into `brain_knowledge/prompts/*.txt`) closed (2026-07-26)
+
+**Decided:** 2026-07-26
+**Context:** the same audit that produced D-079 found a fourth gap:
+`docs/AURA_BRAIN_ARCHITECTURE.md`'s `brain_knowledge/` tree names
+`prompts/planner_system_prompt.txt`, `planner_retry_prompt.txt`, and
+`requirement_grounding_prompt.txt` as first-class deliverables, but
+`brain_knowledge/prompts/` held only a `.gitkeep` — the actual planner
+prompt-generation extraction did happen (Phase B1/B2 era), but landed
+as Python string constants in `agents/planner/prompts.py` instead.
+
+**Shipped:**
+- `brain_knowledge/prompts/planner_system_prompt.txt` — the Planner's
+  system prompt, extracted verbatim from
+  `agents/planner/prompts.py::SPEC_GENERATION_SYSTEM_PROMPT`.
+- `brain_knowledge/prompts/requirement_grounding_prompt.txt` — the
+  "elements actually found on the live target page" wrapper wording
+  from `agents/planner/spec_generator.py::_build_grounded_text`,
+  extracted with an `{elements_block}` placeholder.
+- `brain_knowledge/prompts/planner_retry_prompt.txt` — see the naming
+  caveat below.
+- `orchestrator/brain/context.py::BrainKnowledge` gained a
+  `_load_prompts()` step (mirroring `_load_rules()`'s exact
+  non-fatal-degradation posture): every `*.txt` under `prompts/` is
+  read into `BrainKnowledge.prompts`, keyed by filename stem.
+- `agents/planner/prompts.py::SPEC_GENERATION_SYSTEM_PROMPT`/
+  `SPEC_GENERATION_USER_TEMPLATE` are now `BrainKnowledge.load().prompts.get(...)`
+  lookups, falling back to the original hardcoded strings (renamed
+  `_SPEC_GENERATION_SYSTEM_PROMPT_FALLBACK`/
+  `_SPEC_GENERATION_USER_TEMPLATE_FALLBACK`) when the file is missing,
+  unreadable, or its stem doesn't match — same fallback contract
+  `orchestrator/brain/policy.py` already established for `rules/*.yaml`.
+  `agents/planner/spec_generator.py::_build_grounded_text` does the
+  equivalent lookup directly for the grounding wording.
+- Verified byte-for-byte: `_build_grounded_text()`'s output with the
+  new file-backed template is identical to its pre-D-080 hardcoded
+  output for the same input.
+
+**Naming caveat, documented rather than silently papered over:**
+`planner_retry_prompt.txt` maps to `SPEC_GENERATION_USER_TEMPLATE`, not
+a genuinely distinct retry-specific prompt. Traced
+`agents/planner/spec_generator.py::_generate_with_retry()` directly: a
+validation/backend failure triggers exactly one re-call of
+`backend.generate(text)` with the *identical* `text` computed for the
+first attempt — there is no separate wording sent on retry anywhere in
+current behavior, and no other code path referencing "retry prompt" or
+"requirement grounding prompt" by any name exists in the repo outside
+`docs/AURA_BRAIN_ARCHITECTURE.md`'s own tree listing. Rather than
+inventing new retry-specific wording that the running system doesn't
+actually use (which would make the file lie about what happens), the
+file is named to match the architecture doc's spec but its real
+content and role is "the user-message template used identically on
+every `generate()` call, first attempt and retry alike."
+
+**Found but explicitly not touched (out of Gap #4's scope):**
+`agents/planner/prompts.py::DIAGNOSIS_SYSTEM_PROMPT`/
+`DIAGNOSIS_USER_TEMPLATE` appear to be dead code —
+`agents/planner/diagnoser.py` uses its own separate inline
+`_SYSTEM_PROMPT`/`_USER_TEMPLATE` class attributes instead, and grep
+confirms nothing in the repo imports the `DIAGNOSIS_*` constants from
+`prompts.py`. Left untouched and unmigrated (Gap #4 was specifically
+the Planner's *spec-generation* prompts, matching the architecture
+doc's three named files, none of which are diagnosis-related).
+Flagging this rather than fixing it silently or ignoring it.
+
+**Verified:** `python -m pytest -k "planner or spec_generator or prompt or brain"`
+→ 63/63 pass. Full suite re-run: 752 passed / 30 failed / 5 errors —
+identical to the baseline maintained since D-074. Zero regressions.
+
+**Revisit when:** deciding whether the dead `DIAGNOSIS_*` constants in
+`prompts.py` should be removed, or `diagnoser.py` repointed to use them
+(and externalized as `brain_knowledge/prompts/diagnosis_*.txt`) instead
+of its own inline duplicates — two parallel, silently-diverging prompt
+definitions for the same task is a real latent bug, just not one this
+entry's scope covers.

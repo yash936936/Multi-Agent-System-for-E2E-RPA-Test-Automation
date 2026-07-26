@@ -6,10 +6,45 @@ iterated on without touching control flow. These are consumed by
 LLMBackend implementations (see agents/planner/spec_generator.py); the
 default LocalHeuristicBackend does not use them at all since it runs
 without any model.
+
+**Gap #4 (docs/decisions.md D-080):** the two SPEC_GENERATION_*
+constants below are no longer the source of truth for their wording --
+they're now the hardcoded fallback for when `brain_knowledge/prompts/`
+is missing, unreadable, or a file's stem doesn't match. The real
+content lives in `brain_knowledge/prompts/*.txt`, loaded once here via
+`orchestrator.brain.context.BrainKnowledge.load()`, mirroring the exact
+same fallback posture `orchestrator/brain/policy.py` already uses for
+`rules/*.yaml`. Editing a `.txt` file there is now a live prompt-wording
+change for every LLM-backed planner backend, without touching this
+module.
+
+**Naming caveat, documented rather than silently papered over:**
+`brain_knowledge/prompts/planner_retry_prompt.txt` maps to
+SPEC_GENERATION_USER_TEMPLATE, not a genuinely distinct retry-specific
+prompt -- `agents/planner/spec_generator.py::_generate_with_retry()`
+retries by calling `backend.generate(text)` a second time with the
+identical text; there is no separate wording sent on retry in current
+behavior. `docs/AURA_BRAIN_ARCHITECTURE.md`'s `brain_knowledge/`
+directory listing names this file `planner_retry_prompt.txt`, so the
+file is named to match that spec, but its actual content and role is
+"the user-message template used on every generate() call, initial and
+retry alike." See D-080 for the full trace of why no separate retry
+wording exists to extract.
+
+DIAGNOSIS_SYSTEM_PROMPT / DIAGNOSIS_USER_TEMPLATE below are unrelated
+to this migration and unaffected by it -- see D-080's note that they
+appear to be dead code (agents/planner/diagnoser.py uses its own
+separate inline `_SYSTEM_PROMPT`/`_USER_TEMPLATE` class attributes
+instead), flagged but deliberately not touched as part of Gap #4's
+scope, which is the Planner's *spec-generation* prompts specifically.
 """
 from __future__ import annotations
 
-SPEC_GENERATION_SYSTEM_PROMPT = """\
+from orchestrator.brain.context import BrainKnowledge
+
+_knowledge = BrainKnowledge.load()
+
+_SPEC_GENERATION_SYSTEM_PROMPT_FALLBACK = """\
 You are the Planner agent inside AURA, an offline RPA test automation system.
 Convert the given requirement document into a single JSON object matching
 this exact schema (no prose, no markdown fences, JSON only):
@@ -59,13 +94,23 @@ Rules:
                      explicitly rather than defaulting to literal_text
 """
 
-SPEC_GENERATION_USER_TEMPLATE = """\
+_SPEC_GENERATION_USER_TEMPLATE_FALLBACK = """\
 Requirement document:
 ---
 {requirement_text}
 ---
 Produce the TestSpec JSON now.
 """
+
+SPEC_GENERATION_SYSTEM_PROMPT = _knowledge.prompts.get("planner_system_prompt", _SPEC_GENERATION_SYSTEM_PROMPT_FALLBACK)
+SPEC_GENERATION_USER_TEMPLATE = _knowledge.prompts.get("planner_retry_prompt", _SPEC_GENERATION_USER_TEMPLATE_FALLBACK)
+
+# The grounding block itself (agents/planner/spec_generator.py::_build_grounded_text)
+# is a separate, third piece of prompt wording -- also externalized as
+# part of Gap #4, read directly by that function via BrainKnowledge
+# rather than through a module-level constant here, since it's only
+# ever used in that one place and needs its own {elements_block}
+# substitution done there, not here.
 
 DIAGNOSIS_SYSTEM_PROMPT = """\
 You are the Auditor agent inside AURA. You are given a test step that

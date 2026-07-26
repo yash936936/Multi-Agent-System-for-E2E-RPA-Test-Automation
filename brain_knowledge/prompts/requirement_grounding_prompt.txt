@@ -1,0 +1,3 @@
+---
+Elements actually found on the live target page just now (real accessible names/visible text, not a guess). When a step below requires clicking or filling in something, prefer an exact or close match from this list over inventing a plausible-sounding label. If nothing in the requirement above corresponds to anything in this list, say so via the step's target_description rather than fabricating one:
+{elements_block}

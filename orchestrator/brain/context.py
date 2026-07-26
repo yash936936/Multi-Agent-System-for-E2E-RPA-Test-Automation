@@ -4,8 +4,8 @@ orchestrator/brain/context.py
 Loads `brain_knowledge/` (repo root) -- the Brain's externalized policy
 source (docs/AURA_BRAIN_ARCHITECTURE.md §3). `rules/*.yaml` is parsed
 into `BrainKnowledge.rules` (Phase B2, docs/decisions.md D-071);
-`prompts/*.txt` loading is still pending (tracked against migrating the
-`execute_*` intents onto the Brain, not yet done).
+`prompts/*.txt` is read into `BrainKnowledge.prompts` (Gap #4,
+docs/decisions.md D-080).
 """
 from __future__ import annotations
 
@@ -53,12 +53,35 @@ def _load_rules(root: Path) -> dict:
     return rules
 
 
+def _load_prompts(root: Path) -> dict:
+    """
+    Reads every `*.txt` file under `root/prompts/` into a dict keyed by
+    filename stem (`planner_system_prompt.txt` ->
+    `prompts["planner_system_prompt"]`). Same non-fatal-degradation
+    posture as `_load_rules()` -- a missing folder/file/unreadable file
+    is not fatal here; `agents/planner/prompts.py`'s own hardcoded
+    string constants are the fallback (Gap #4, docs/decisions.md D-080).
+    """
+    prompts_dir = root / "prompts"
+    prompts: dict = {}
+    if not prompts_dir.is_dir():
+        return prompts
+    for txt_path in sorted(prompts_dir.glob("*.txt")):
+        try:
+            prompts[txt_path.stem] = txt_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.warning(
+                "BrainKnowledge: failed to read %s (%s) -- prompts.py will fall back to its "
+                "built-in default for anything this file would have provided.",
+                txt_path, e,
+            )
+    return prompts
+
+
 @dataclass
 class BrainKnowledge:
     """
-    Read-only view over `brain_knowledge/`. `prompts` stays an empty
-    dict pending the `execute_*` intents' migration -- see module
-    docstring.
+    Read-only view over `brain_knowledge/`.
     """
 
     root: Path
@@ -68,7 +91,7 @@ class BrainKnowledge:
     @classmethod
     def load(cls, root: Path | None = None) -> "BrainKnowledge":
         knowledge_root = root or _find_knowledge_dir()
-        return cls(root=knowledge_root, rules=_load_rules(knowledge_root))
+        return cls(root=knowledge_root, rules=_load_rules(knowledge_root), prompts=_load_prompts(knowledge_root))
 
     def guidelines_path(self) -> Path:
         return self.root / "guidelines.md"
