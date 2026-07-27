@@ -103,9 +103,19 @@ def _extract_egress_host(payload: CapabilityCheckInput) -> str | None:
     `_parse_azure_connection_string_host`'s docstring), and GCP_STORAGE
     calls always resolve to a fixed, well-known host
     (`storage.googleapis.com`) regardless of credential path, so there was
-    no reason to treat that capability as unresolvable. `sharepoint_adapter`
-    (SDK-managed, tenant-specific, no fixed host) remains a genuine
-    fail-open case -- documented, not silently pretended away.
+    no reason to treat that capability as unresolvable. This pass (Phase
+    5b of the debugging pass, decisions.md D-086) closed the same gap for
+    CapabilityType.CLOUD (S3 via `cloud_adapter.py`): its region-based
+    endpoint (`s3.<region>.amazonaws.com`) is just as deterministic as
+    GCS's, but nothing computed it, so the allowlist never actually
+    restricted S3 traffic at all. This same pass also corrected a false
+    claim this docstring used to make about `sharepoint_adapter`: it was
+    previously described as "SDK-managed, tenant-specific, no fixed
+    host" and left as a documented fail-open case, but its
+    `_GRAPH_BASE` is in fact a hardcoded Microsoft Graph host
+    (`graph.microsoft.com`) regardless of tenant -- fixed the same way
+    as S3/GCS above instead of leaving a fixable gap mislabeled as
+    unfixable.
     """
     params = payload.params or {}
 
@@ -146,6 +156,29 @@ def _extract_egress_host(payload: CapabilityCheckInput) -> str | None:
         # No 'endpoint' param override was found above -- GCS always talks
         # to its fixed default host regardless of credential path.
         return _GCS_DEFAULT_HOST
+
+    if payload.capability == CapabilityType.CLOUD:
+        # agents/capability/cloud_adapter.py (S3) never had an 'endpoint'
+        # param at all -- like GCS above, this is a real gap the GCP fix
+        # (D-050) didn't also close for S3, so settings.allowed_capability_hosts
+        # never actually restricted CapabilityType.CLOUD traffic: boto3's
+        # region-based virtual-hosted endpoint (s3.<region>.amazonaws.com)
+        # is deterministic given the same 'region_name' param the adapter
+        # itself reads (defaulting to "us-east-1" to match its own default),
+        # regardless of which credential path is used.
+        region = params.get("region_name") or "us-east-1"
+        return f"s3.{region}.amazonaws.com"
+
+    if payload.capability == CapabilityType.SHAREPOINT:
+        # This docstring previously called sharepoint_adapter a genuine
+        # fail-open case with "no fixed host" -- that claim was simply
+        # wrong. agents/capability/sharepoint_adapter.py's _GRAPH_BASE is
+        # a hardcoded "https://graph.microsoft.com/v1.0" constant, not a
+        # tenant-specific SDK-resolved endpoint (SharePoint's REST surface
+        # is exposed at a fixed Microsoft Graph host regardless of which
+        # tenant_id/site_id/drive_id is being queried). Same class of gap
+        # as the S3 fix directly above (Phase 5b, decisions.md D-086).
+        return "graph.microsoft.com"
 
     if payload.target:
         host = urlparse(str(payload.target)).hostname

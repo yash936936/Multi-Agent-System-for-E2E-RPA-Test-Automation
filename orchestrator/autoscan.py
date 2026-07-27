@@ -40,6 +40,12 @@ class AutoScanStepResult:
     index: int
     screenshot_ref: str
     issues: list[str] = field(default_factory=list)
+    # False only when page_health's OCR check itself failed for this step
+    # (e.g. tesseract not installed) -- distinguishes "checked this step,
+    # found nothing" from "couldn't check this step at all", which an
+    # empty `issues` list alone can't tell apart. See
+    # agents/vision/page_health.py::detect_page_issues_detailed.
+    ocr_checked: bool = True
 
 
 @dataclass
@@ -53,6 +59,13 @@ class AutoScanReport:
     # limit") instead of conflating the two very different reasons a scan
     # can end early. See decisions.md for the fix this field is part of.
     display_unavailable: bool = False
+
+    @property
+    def ocr_unavailable(self) -> bool:
+        """True if OCR failed on any step (see AutoScanStepResult.ocr_checked)
+        -- callers should show this as "couldn't check some pages" rather
+        than silently reporting a clean scan."""
+        return any(not step.ocr_checked for step in self.steps)
 
     @property
     def all_issues(self) -> list[str]:
@@ -79,7 +92,7 @@ def run_autoscan(
     from runtime.hooks import browser as browser_hook
     from runtime.errors import NoDisplayError, display_guard
 
-    from agents.vision.page_health import detect_page_issues
+    from agents.vision.page_health import detect_page_issues_detailed
 
     steps: list[AutoScanStepResult] = []
     prev_hash: str | None = None
@@ -105,8 +118,8 @@ def run_autoscan(
             display_unavailable = True
             break
         path = guard.value
-        issues = detect_page_issues(path)
-        steps.append(AutoScanStepResult(index=i, screenshot_ref=path, issues=issues))
+        issues, ocr_checked = detect_page_issues_detailed(path)
+        steps.append(AutoScanStepResult(index=i, screenshot_ref=path, issues=issues, ocr_checked=ocr_checked))
 
         # Real DOM scroll-position check, before deciding whether/how to
         # scroll further -- catches "already at the bottom" (e.g. a short

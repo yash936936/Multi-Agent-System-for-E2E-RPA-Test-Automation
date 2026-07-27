@@ -4128,576 +4128,411 @@
 {"timestamp": "2026-07-27T14:09:20.243871+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
 {"timestamp": "2026-07-27T14:09:21.362185+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
 {"timestamp": "2026-07-27T14:09:21.362652+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T14:24:53.323516+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T14:24:53.324138+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T14:24:54.897332+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T14:24:54.897705+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T14:24:56.008179+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T14:24:56.008544+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T14:25:29.762426+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T14:25:29.763027+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T14:25:31.092387+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T14:25:31.092797+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T14:25:32.224743+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T14:25:32.225263+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:39:08.794378+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:14.433025+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:39:14.433553+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:39:14.438277+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:39:14.438505+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:39:18.727073+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:18.731349+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:18.761788+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:18.765710+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:18.792736+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:18.796827+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:18.797081+00:00", "category": "capability_adapter", "decision": "success", "backend": "database", "reason": null, "detail": {"target": "orders", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:18.829226+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "automation_anywhere", "reason": "capability check did not pass", "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:18.829416+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:18.859800+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:18.892169+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:43.192477+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:39:43.390928+00:00", "category": "capability_adapter", "decision": "crash_caught", "backend": "fake", "reason": "tool call 'Capability.check' failed: tool execution error: simulated adapter crash", "detail": {"target": ""}}
-{"timestamp": "2026-07-27T20:40:02.187666+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:02.187933+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:05.285867+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "CloudLLMBackend", "reason": "final status 500", "detail": {}}
-{"timestamp": "2026-07-27T20:40:05.322688+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:05.322916+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:40:05.323007+00:00", "category": "planner_backend", "decision": "success", "backend": "CloudLLMBackend", "reason": null, "detail": {"escalated_from": "_AlwaysFailsBackend"}}
-{"timestamp": "2026-07-27T20:40:05.324322+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:05.324514+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_AlwaysFailsBackend", "reason": "RuntimeError: primary backend is down", "detail": {"can_escalate": false}}
-{"timestamp": "2026-07-27T20:40:05.325762+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_FailingCloud", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:05.325925+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_FailingCloud", "reason": "RuntimeError: cloud backend is down", "detail": {"can_escalate": false}}
-{"timestamp": "2026-07-27T20:40:05.327371+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:05.327581+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:40:05.327699+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
-{"timestamp": "2026-07-27T20:40:05.327833+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {"degraded": true, "reason": "every network-capable backend failed"}}
-{"timestamp": "2026-07-27T20:40:05.329482+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:05.329646+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:40:05.329758+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
-{"timestamp": "2026-07-27T20:40:05.329865+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "LocalHeuristicBackend", "reason": "ValueError: heuristic also broke", "detail": {"original_failure": "RuntimeError: cloud also down"}}
-{"timestamp": "2026-07-27T20:40:08.359950+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "HermesAgentClient", "reason": "final status 503", "detail": {}}
-{"timestamp": "2026-07-27T20:40:09.460901+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "CloudLLMBackend", "reason": "succeeded on attempt 2", "detail": {}}
-{"timestamp": "2026-07-27T20:40:10.464055+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "HermesAgentClient", "reason": "succeeded on attempt 2", "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.030623+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.031009+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.031864+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.032190+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.033024+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.033300+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.034264+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.034599+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.036487+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.036809+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.038180+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.038348+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.054810+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.054958+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.055820+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.055940+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.067870+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.068102+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.068992+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.069320+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.070291+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.070470+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.071242+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.071373+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.072232+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.072411+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.073204+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.073375+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.074217+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:16.074402+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:17.376009+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:40:17.598213+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:40:17.816036+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:40:18.210419+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:40:18.610595+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:40:19.441621+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:40:19.666239+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:40:19.703025+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:40:20.103380+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:40:20.411042+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:20.411373+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:21.630263+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:21.630737+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:22.819592+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:22.820105+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:24.098574+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:24.099073+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:25.200113+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:25.200603+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:26.274925+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:26.275385+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:27.950795+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:27.951274+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:30.430580+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:30.431036+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:31.503528+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:31.503976+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:44.320975+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:44.321545+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:45.520762+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:45.521205+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:46.692001+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:40:46.692492+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:44:59.848607+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:03.261835+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:45:03.262375+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:45:03.268084+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:45:03.268279+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:45:06.810619+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:06.814919+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:06.847736+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:06.851805+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:06.882143+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:06.886544+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:06.886776+00:00", "category": "capability_adapter", "decision": "success", "backend": "database", "reason": null, "detail": {"target": "orders", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:06.918458+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "automation_anywhere", "reason": "capability check did not pass", "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:06.918669+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:06.958727+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:06.990561+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:31.133727+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:45:31.336932+00:00", "category": "capability_adapter", "decision": "crash_caught", "backend": "fake", "reason": "tool call 'Capability.check' failed: tool execution error: simulated adapter crash", "detail": {"target": ""}}
-{"timestamp": "2026-07-27T20:45:47.352815+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:45:47.353054+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:45:50.440215+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "CloudLLMBackend", "reason": "final status 500", "detail": {}}
-{"timestamp": "2026-07-27T20:45:50.477490+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:45:50.477699+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:45:50.477790+00:00", "category": "planner_backend", "decision": "success", "backend": "CloudLLMBackend", "reason": null, "detail": {"escalated_from": "_AlwaysFailsBackend"}}
-{"timestamp": "2026-07-27T20:45:50.479182+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:45:50.479319+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_AlwaysFailsBackend", "reason": "RuntimeError: primary backend is down", "detail": {"can_escalate": false}}
-{"timestamp": "2026-07-27T20:45:50.480617+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_FailingCloud", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:45:50.480742+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_FailingCloud", "reason": "RuntimeError: cloud backend is down", "detail": {"can_escalate": false}}
-{"timestamp": "2026-07-27T20:45:50.482587+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:45:50.482787+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:45:50.482911+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
-{"timestamp": "2026-07-27T20:45:50.483066+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {"degraded": true, "reason": "every network-capable backend failed"}}
-{"timestamp": "2026-07-27T20:45:50.485826+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:45:50.486005+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:45:50.486184+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
-{"timestamp": "2026-07-27T20:45:50.486310+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "LocalHeuristicBackend", "reason": "ValueError: heuristic also broke", "detail": {"original_failure": "RuntimeError: cloud also down"}}
-{"timestamp": "2026-07-27T20:45:53.513517+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "HermesAgentClient", "reason": "final status 503", "detail": {}}
-{"timestamp": "2026-07-27T20:45:54.616244+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "CloudLLMBackend", "reason": "succeeded on attempt 2", "detail": {}}
-{"timestamp": "2026-07-27T20:45:55.619323+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "HermesAgentClient", "reason": "succeeded on attempt 2", "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.138163+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.138650+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.140187+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.140719+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.142305+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.142707+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.143804+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.144123+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.145047+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.145326+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.146264+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.146452+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.147331+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.147509+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.148345+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.148492+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.159907+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.160140+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.161038+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.161327+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.162204+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.162341+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.163188+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.163381+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.164761+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.165008+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.166324+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.166604+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.167861+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:01.168070+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:02.623618+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:46:02.845149+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:46:03.073375+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:46:03.474042+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:46:03.864105+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:46:04.732244+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:46:04.964131+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:46:05.004120+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:46:05.402955+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:46:05.714688+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:05.715074+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:06.980503+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:06.980968+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:08.147167+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:08.147783+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:09.588549+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:09.589023+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:10.748971+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:10.749516+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:12.074391+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:12.074938+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:13.907699+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:13.908358+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:16.610782+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:16.611276+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:17.763897+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:17.764375+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:31.962284+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:31.962777+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:33.464232+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:33.464731+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:34.723896+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:46:34.724354+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:47:04.042261+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:07.294582+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:47:07.304354+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:47:07.310394+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:47:07.310615+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:47:11.181127+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:11.186683+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:11.231362+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:11.236291+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:11.271179+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:11.275298+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:11.275614+00:00", "category": "capability_adapter", "decision": "success", "backend": "database", "reason": null, "detail": {"target": "orders", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:11.313706+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "automation_anywhere", "reason": "capability check did not pass", "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:11.313971+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:11.350699+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:11.391754+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:35.017853+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:47:35.224820+00:00", "category": "capability_adapter", "decision": "crash_caught", "backend": "fake", "reason": "tool call 'Capability.check' failed: tool execution error: simulated adapter crash", "detail": {"target": ""}}
-{"timestamp": "2026-07-27T20:47:50.494823+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:47:50.495079+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:47:53.584024+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "CloudLLMBackend", "reason": "final status 500", "detail": {}}
-{"timestamp": "2026-07-27T20:47:53.620994+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:47:53.621324+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:47:53.621450+00:00", "category": "planner_backend", "decision": "success", "backend": "CloudLLMBackend", "reason": null, "detail": {"escalated_from": "_AlwaysFailsBackend"}}
-{"timestamp": "2026-07-27T20:47:53.622699+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:47:53.622836+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_AlwaysFailsBackend", "reason": "RuntimeError: primary backend is down", "detail": {"can_escalate": false}}
-{"timestamp": "2026-07-27T20:47:53.624102+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_FailingCloud", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:47:53.624232+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_FailingCloud", "reason": "RuntimeError: cloud backend is down", "detail": {"can_escalate": false}}
-{"timestamp": "2026-07-27T20:47:53.625682+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:47:53.625846+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:47:53.625954+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
-{"timestamp": "2026-07-27T20:47:53.626131+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {"degraded": true, "reason": "every network-capable backend failed"}}
-{"timestamp": "2026-07-27T20:47:53.628765+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:47:53.628943+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:47:53.629057+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
-{"timestamp": "2026-07-27T20:47:53.629181+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "LocalHeuristicBackend", "reason": "ValueError: heuristic also broke", "detail": {"original_failure": "RuntimeError: cloud also down"}}
-{"timestamp": "2026-07-27T20:47:56.657255+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "HermesAgentClient", "reason": "final status 503", "detail": {}}
-{"timestamp": "2026-07-27T20:47:57.755293+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "CloudLLMBackend", "reason": "succeeded on attempt 2", "detail": {}}
-{"timestamp": "2026-07-27T20:47:58.758496+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "HermesAgentClient", "reason": "succeeded on attempt 2", "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.311204+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.311847+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.316513+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.316984+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.320350+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.320811+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.323794+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.324293+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.327807+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.328237+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.332821+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.333019+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.335517+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.335709+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.340175+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.340344+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.360177+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.360509+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.361840+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.362321+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.363540+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.363736+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.364836+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.365046+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.366209+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.366483+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.367625+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.367859+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.369015+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:04.369245+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:05.691009+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:48:05.915170+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:48:06.142544+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:48:06.541388+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:48:06.932523+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:48:07.816098+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:48:08.075898+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:48:08.135794+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:48:08.550733+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:48:08.989798+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:08.990274+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:10.318059+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:10.318651+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:11.501044+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:11.501532+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:12.747855+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:12.748318+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:13.891004+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:13.891523+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:15.175772+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:15.176265+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:16.928321+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:16.928839+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:19.480693+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:19.481185+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:20.561557+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:20.562050+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:34.799054+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:34.799732+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:35.949590+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:35.950040+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:37.116936+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:48:37.117393+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:50:31.353899+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:50:34.599203+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:50:34.599705+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:50:34.605292+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:50:34.605513+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:50:38.114486+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:50:38.118708+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:50:38.155693+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:50:38.159601+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:50:38.189825+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:50:38.194909+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:50:38.195104+00:00", "category": "capability_adapter", "decision": "success", "backend": "database", "reason": null, "detail": {"target": "orders", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:50:38.238748+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "automation_anywhere", "reason": "capability check did not pass", "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:50:38.238987+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:50:38.262800+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:50:38.287776+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:51:01.841731+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:51:02.036270+00:00", "category": "capability_adapter", "decision": "crash_caught", "backend": "fake", "reason": "tool call 'Capability.check' failed: tool execution error: simulated adapter crash", "detail": {"target": ""}}
-{"timestamp": "2026-07-27T20:51:03.832821+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:03.833088+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:06.927609+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "CloudLLMBackend", "reason": "final status 500", "detail": {}}
-{"timestamp": "2026-07-27T20:51:06.970018+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:06.970321+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:51:06.970443+00:00", "category": "planner_backend", "decision": "success", "backend": "CloudLLMBackend", "reason": null, "detail": {"escalated_from": "_AlwaysFailsBackend"}}
-{"timestamp": "2026-07-27T20:51:06.971927+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:06.972090+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_AlwaysFailsBackend", "reason": "RuntimeError: primary backend is down", "detail": {"can_escalate": false}}
-{"timestamp": "2026-07-27T20:51:06.973914+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_FailingCloud", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:06.974171+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_FailingCloud", "reason": "RuntimeError: cloud backend is down", "detail": {"can_escalate": false}}
-{"timestamp": "2026-07-27T20:51:06.976197+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:06.976440+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:51:06.976645+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
-{"timestamp": "2026-07-27T20:51:06.976813+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {"degraded": true, "reason": "every network-capable backend failed"}}
-{"timestamp": "2026-07-27T20:51:06.979971+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:06.980169+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:51:06.980285+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
-{"timestamp": "2026-07-27T20:51:06.980442+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "LocalHeuristicBackend", "reason": "ValueError: heuristic also broke", "detail": {"original_failure": "RuntimeError: cloud also down"}}
-{"timestamp": "2026-07-27T20:51:10.013846+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "HermesAgentClient", "reason": "final status 503", "detail": {}}
-{"timestamp": "2026-07-27T20:51:11.076682+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "CloudLLMBackend", "reason": "succeeded on attempt 2", "detail": {}}
-{"timestamp": "2026-07-27T20:51:12.079854+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "HermesAgentClient", "reason": "succeeded on attempt 2", "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.176173+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.176562+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.177362+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.177743+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.178770+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.179134+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.180140+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.180485+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.181454+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.181750+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.182636+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.182757+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.183698+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.183846+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.184674+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.184779+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.196583+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.196803+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.197693+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.197981+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.198851+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.198999+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.199878+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.200037+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.200950+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.201138+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.202044+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.202267+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.203093+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:17.203252+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:18.589706+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:51:18.819155+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:51:19.032303+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:51:19.421968+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:51:19.843289+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:51:20.708615+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:51:20.943461+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:51:20.981802+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:51:21.385475+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:51:21.699859+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:21.700226+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:23.004036+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:23.004538+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:24.192698+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:24.193180+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:25.488232+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:25.488702+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:26.632948+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:26.633528+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:27.767608+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:27.768090+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:29.525096+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:29.525663+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:32.176035+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:32.176684+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:33.309279+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:33.309823+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:47.583281+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:47.583805+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:48.776017+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:48.776554+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:49.929127+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:51:49.929636+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.157667+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.158316+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.159376+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.159716+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.160633+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.160926+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.161758+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.162050+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.162915+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.163205+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.164046+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.164162+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.164892+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.165011+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.165748+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.165850+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.183726+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.183952+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.184779+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.185076+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.185842+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.186000+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.186927+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.187122+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.188175+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.188419+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.189242+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.189474+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.190295+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:12.190490+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:27.477866+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:27.479888+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:30.676492+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "CloudLLMBackend", "reason": "final status 500", "detail": {}}
-{"timestamp": "2026-07-27T20:54:30.714516+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:30.714740+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:54:30.714825+00:00", "category": "planner_backend", "decision": "success", "backend": "CloudLLMBackend", "reason": null, "detail": {"escalated_from": "_AlwaysFailsBackend"}}
-{"timestamp": "2026-07-27T20:54:30.716147+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:30.716302+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_AlwaysFailsBackend", "reason": "RuntimeError: primary backend is down", "detail": {"can_escalate": false}}
-{"timestamp": "2026-07-27T20:54:30.717593+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_FailingCloud", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:30.717731+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_FailingCloud", "reason": "RuntimeError: cloud backend is down", "detail": {"can_escalate": false}}
-{"timestamp": "2026-07-27T20:54:30.719254+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:30.719463+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:54:30.719583+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
-{"timestamp": "2026-07-27T20:54:30.719733+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {"degraded": true, "reason": "every network-capable backend failed"}}
-{"timestamp": "2026-07-27T20:54:30.721337+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:54:30.721534+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:54:30.721655+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
-{"timestamp": "2026-07-27T20:54:30.721767+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "LocalHeuristicBackend", "reason": "ValueError: heuristic also broke", "detail": {"original_failure": "RuntimeError: cloud also down"}}
-{"timestamp": "2026-07-27T20:54:33.753098+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "HermesAgentClient", "reason": "final status 503", "detail": {}}
-{"timestamp": "2026-07-27T20:54:34.784581+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "CloudLLMBackend", "reason": "succeeded on attempt 2", "detail": {}}
-{"timestamp": "2026-07-27T20:54:35.787350+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "HermesAgentClient", "reason": "succeeded on attempt 2", "detail": {}}
-{"timestamp": "2026-07-27T20:57:32.957340+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:57:36.291672+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:57:36.292217+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:57:36.297789+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:57:36.298005+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:57:39.849513+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:57:39.852656+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:57:39.876681+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:57:39.879727+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:57:39.907685+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:57:39.910447+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:57:39.910657+00:00", "category": "capability_adapter", "decision": "success", "backend": "database", "reason": null, "detail": {"target": "orders", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:57:39.934675+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "automation_anywhere", "reason": "capability check did not pass", "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:57:39.934836+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:57:39.956780+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:57:39.983084+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:58:04.038627+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:58:04.250014+00:00", "category": "capability_adapter", "decision": "crash_caught", "backend": "fake", "reason": "tool call 'Capability.check' failed: tool execution error: simulated adapter crash", "detail": {"target": ""}}
-{"timestamp": "2026-07-27T20:58:20.027941+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:20.028250+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:23.132947+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "CloudLLMBackend", "reason": "final status 500", "detail": {}}
-{"timestamp": "2026-07-27T20:58:23.171943+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:23.172301+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:58:23.172424+00:00", "category": "planner_backend", "decision": "success", "backend": "CloudLLMBackend", "reason": null, "detail": {"escalated_from": "_AlwaysFailsBackend"}}
-{"timestamp": "2026-07-27T20:58:23.173706+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:23.173863+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_AlwaysFailsBackend", "reason": "RuntimeError: primary backend is down", "detail": {"can_escalate": false}}
-{"timestamp": "2026-07-27T20:58:23.175227+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_FailingCloud", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:23.175359+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_FailingCloud", "reason": "RuntimeError: cloud backend is down", "detail": {"can_escalate": false}}
-{"timestamp": "2026-07-27T20:58:23.176917+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:23.177089+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:58:23.177202+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
-{"timestamp": "2026-07-27T20:58:23.177351+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {"degraded": true, "reason": "every network-capable backend failed"}}
-{"timestamp": "2026-07-27T20:58:23.179261+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:23.179463+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
-{"timestamp": "2026-07-27T20:58:23.179589+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
-{"timestamp": "2026-07-27T20:58:23.179700+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "LocalHeuristicBackend", "reason": "ValueError: heuristic also broke", "detail": {"original_failure": "RuntimeError: cloud also down"}}
-{"timestamp": "2026-07-27T20:58:26.208436+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "HermesAgentClient", "reason": "final status 503", "detail": {}}
-{"timestamp": "2026-07-27T20:58:27.242353+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "CloudLLMBackend", "reason": "succeeded on attempt 2", "detail": {}}
-{"timestamp": "2026-07-27T20:58:28.245217+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "HermesAgentClient", "reason": "succeeded on attempt 2", "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.484587+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.484967+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.486014+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.486435+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.487372+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.487723+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.488638+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.488932+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.489810+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.490155+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.490999+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.491111+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.491976+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.492109+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.493005+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.493142+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.506829+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.507055+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.508011+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.508315+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.509130+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.509256+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.510054+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.510225+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.511058+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.511238+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.512194+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.512419+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.513242+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:33.513435+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:34.888545+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:58:35.097870+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:58:35.312722+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:58:35.694135+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:58:36.068055+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:58:36.879638+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:58:37.083589+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:58:37.115819+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:58:37.487250+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
-{"timestamp": "2026-07-27T20:58:37.790269+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:37.790678+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:39.109207+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:39.109684+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:40.221116+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:40.221610+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:41.419920+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:41.420518+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:42.517261+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:42.517818+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:43.606700+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:43.607177+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:45.275661+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:45.276236+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:47.849472+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:47.849940+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:48.941206+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:58:48.941726+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:59:03.237818+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:59:03.238355+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:59:04.369905+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:59:04.370469+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:59:05.504683+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
-{"timestamp": "2026-07-27T20:59:05.505145+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:46:46.996088+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:49.030940+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:46:49.031371+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:46:49.035268+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:46:49.035455+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:46:49.129321+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:46:49.129707+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:46:50.347355+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:50.351296+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:50.383390+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:50.387784+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:50.415201+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:50.418390+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:50.418605+00:00", "category": "capability_adapter", "decision": "success", "backend": "database", "reason": null, "detail": {"target": "orders", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:50.447751+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "automation_anywhere", "reason": "capability check did not pass", "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:50.447940+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:50.477296+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:50.505176+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:57.591321+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:46:57.817518+00:00", "category": "capability_adapter", "decision": "crash_caught", "backend": "fake", "reason": "tool call 'Capability.check' failed: tool execution error: simulated adapter crash", "detail": {"target": ""}}
+{"timestamp": "2026-07-27T14:46:58.476437+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:46:58.476752+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:15.883739+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "CloudLLMBackend", "reason": "succeeded on attempt 2", "detail": {}}
+{"timestamp": "2026-07-27T14:47:16.886671+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "HermesAgentClient", "reason": "succeeded on attempt 2", "detail": {}}
+{"timestamp": "2026-07-27T14:47:30.037113+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "CloudLLMBackend", "reason": "final status 500", "detail": {}}
+{"timestamp": "2026-07-27T14:47:30.072548+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:30.072714+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
+{"timestamp": "2026-07-27T14:47:30.072796+00:00", "category": "planner_backend", "decision": "success", "backend": "CloudLLMBackend", "reason": null, "detail": {"escalated_from": "_AlwaysFailsBackend"}}
+{"timestamp": "2026-07-27T14:47:30.074095+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:30.074261+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_AlwaysFailsBackend", "reason": "RuntimeError: primary backend is down", "detail": {"can_escalate": false}}
+{"timestamp": "2026-07-27T14:47:30.075561+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_FailingCloud", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:30.075679+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_FailingCloud", "reason": "RuntimeError: cloud backend is down", "detail": {"can_escalate": false}}
+{"timestamp": "2026-07-27T14:47:30.077101+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:30.077245+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
+{"timestamp": "2026-07-27T14:47:30.077362+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
+{"timestamp": "2026-07-27T14:47:30.077526+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {"degraded": true, "reason": "every network-capable backend failed"}}
+{"timestamp": "2026-07-27T14:47:30.078973+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:30.079106+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
+{"timestamp": "2026-07-27T14:47:30.079201+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
+{"timestamp": "2026-07-27T14:47:30.079313+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "LocalHeuristicBackend", "reason": "ValueError: heuristic also broke", "detail": {"original_failure": "RuntimeError: cloud also down"}}
+{"timestamp": "2026-07-27T14:47:33.108885+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "HermesAgentClient", "reason": "final status 503", "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.128284+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.128755+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.129824+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.130184+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.131076+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.131404+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.132348+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.132774+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.133874+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.134215+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.135170+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.135368+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.136629+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.136828+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.137841+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.138000+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.150897+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.151170+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.152442+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.152884+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.154183+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.154394+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.155550+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.155770+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.156623+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.156854+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.157763+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.157969+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.158807+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:33.159013+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:34.432080+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:47:34.630646+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:47:34.840672+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:47:35.202973+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:47:35.559455+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:47:36.346429+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:47:36.568879+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:47:36.596765+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:47:36.966998+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T14:47:42.978485+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:42.979038+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:44.199144+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:44.199625+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:45.393603+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:45.394098+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:46.528197+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:46.528687+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:47.742441+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:47.742989+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:49.491912+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:49.492384+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:51.966459+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:51.966945+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:53.055979+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:53.056524+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:53.083340+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:53.083774+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:54.178134+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:54.178648+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:55.275780+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T14:47:55.276229+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:02:37.048249+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:47.382640+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:02:47.383210+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:02:47.389665+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:02:47.389904+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:02:47.479742+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:02:47.480266+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:02:48.667926+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:48.671191+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:48.698637+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:48.702094+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:48.728951+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:48.732367+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:48.732540+00:00", "category": "capability_adapter", "decision": "success", "backend": "database", "reason": null, "detail": {"target": "orders", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:48.759227+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "automation_anywhere", "reason": "capability check did not pass", "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:48.759425+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:48.785637+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:48.836003+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:55.723125+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:02:55.928120+00:00", "category": "capability_adapter", "decision": "crash_caught", "backend": "fake", "reason": "tool call 'Capability.check' failed: tool execution error: simulated adapter crash", "detail": {"target": ""}}
+{"timestamp": "2026-07-27T20:02:56.600373+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:02:56.600616+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:14.396500+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "CloudLLMBackend", "reason": "succeeded on attempt 2", "detail": {}}
+{"timestamp": "2026-07-27T20:03:15.400794+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "HermesAgentClient", "reason": "succeeded on attempt 2", "detail": {}}
+{"timestamp": "2026-07-27T20:03:28.896397+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "CloudLLMBackend", "reason": "final status 500", "detail": {}}
+{"timestamp": "2026-07-27T20:03:28.931323+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:28.931477+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
+{"timestamp": "2026-07-27T20:03:28.931556+00:00", "category": "planner_backend", "decision": "success", "backend": "CloudLLMBackend", "reason": null, "detail": {"escalated_from": "_AlwaysFailsBackend"}}
+{"timestamp": "2026-07-27T20:03:28.932874+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:28.933030+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_AlwaysFailsBackend", "reason": "RuntimeError: primary backend is down", "detail": {"can_escalate": false}}
+{"timestamp": "2026-07-27T20:03:28.934208+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_FailingCloud", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:28.934341+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_FailingCloud", "reason": "RuntimeError: cloud backend is down", "detail": {"can_escalate": false}}
+{"timestamp": "2026-07-27T20:03:28.935597+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:28.935740+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
+{"timestamp": "2026-07-27T20:03:28.935836+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
+{"timestamp": "2026-07-27T20:03:28.935982+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {"degraded": true, "reason": "every network-capable backend failed"}}
+{"timestamp": "2026-07-27T20:03:28.937771+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:28.937946+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
+{"timestamp": "2026-07-27T20:03:28.938043+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
+{"timestamp": "2026-07-27T20:03:28.938173+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "LocalHeuristicBackend", "reason": "ValueError: heuristic also broke", "detail": {"original_failure": "RuntimeError: cloud also down"}}
+{"timestamp": "2026-07-27T20:03:31.963853+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "HermesAgentClient", "reason": "final status 503", "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.983183+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.983676+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.984697+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.985162+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.986247+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.986611+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.987662+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.988014+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.989000+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.989365+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.990213+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.990378+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.991171+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.991317+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.992242+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:31.992419+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.004608+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.004921+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.005957+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.006337+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.007187+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.007356+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.008193+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.008372+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.009214+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.009429+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.010300+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.010526+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.011386+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:32.011589+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:33.239546+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:03:33.450721+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:03:33.676487+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:03:34.046758+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:03:34.418943+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:03:35.235443+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:03:35.462382+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:03:35.497693+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:03:35.876942+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:03:42.339579+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:42.340055+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:43.505638+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:43.506075+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:44.742964+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:44.743453+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:45.846624+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:45.847108+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:46.963016+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:46.963546+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:48.636277+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:48.636838+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:51.265852+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:51.266413+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:52.403942+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:52.404423+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:52.441422+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:52.441851+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:53.526949+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:53.527460+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:54.606169+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:03:54.606608+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:09:43.461927+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:44.651087+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:09:44.651626+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:09:44.655839+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:09:44.656029+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:09:44.731300+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:09:44.731647+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:09:46.037062+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:46.043375+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:46.074833+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:46.079439+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:46.109168+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:46.114409+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:46.114631+00:00", "category": "capability_adapter", "decision": "success", "backend": "database", "reason": null, "detail": {"target": "orders", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:46.150525+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "automation_anywhere", "reason": "capability check did not pass", "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:46.150795+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:46.184909+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:46.214684+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:53.255147+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:09:53.451486+00:00", "category": "capability_adapter", "decision": "crash_caught", "backend": "fake", "reason": "tool call 'Capability.check' failed: tool execution error: simulated adapter crash", "detail": {"target": ""}}
+{"timestamp": "2026-07-27T20:09:54.129745+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:09:54.130019+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:11.940099+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "CloudLLMBackend", "reason": "succeeded on attempt 2", "detail": {}}
+{"timestamp": "2026-07-27T20:10:12.943287+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "HermesAgentClient", "reason": "succeeded on attempt 2", "detail": {}}
+{"timestamp": "2026-07-27T20:10:27.049376+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "CloudLLMBackend", "reason": "final status 500", "detail": {}}
+{"timestamp": "2026-07-27T20:10:27.084865+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:27.085055+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
+{"timestamp": "2026-07-27T20:10:27.085178+00:00", "category": "planner_backend", "decision": "success", "backend": "CloudLLMBackend", "reason": null, "detail": {"escalated_from": "_AlwaysFailsBackend"}}
+{"timestamp": "2026-07-27T20:10:27.086552+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:27.086722+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_AlwaysFailsBackend", "reason": "RuntimeError: primary backend is down", "detail": {"can_escalate": false}}
+{"timestamp": "2026-07-27T20:10:27.088193+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_FailingCloud", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:27.088352+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_FailingCloud", "reason": "RuntimeError: cloud backend is down", "detail": {"can_escalate": false}}
+{"timestamp": "2026-07-27T20:10:27.089733+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:27.089908+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
+{"timestamp": "2026-07-27T20:10:27.090037+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
+{"timestamp": "2026-07-27T20:10:27.090219+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {"degraded": true, "reason": "every network-capable backend failed"}}
+{"timestamp": "2026-07-27T20:10:27.091925+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:27.092068+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
+{"timestamp": "2026-07-27T20:10:27.092197+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
+{"timestamp": "2026-07-27T20:10:27.092300+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "LocalHeuristicBackend", "reason": "ValueError: heuristic also broke", "detail": {"original_failure": "RuntimeError: cloud also down"}}
+{"timestamp": "2026-07-27T20:10:30.118612+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "HermesAgentClient", "reason": "final status 503", "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.140410+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.141003+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.142541+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.143028+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.144058+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.144443+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.145451+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.145827+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.147022+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.147449+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.148817+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.149056+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.150069+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.150310+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.151295+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.151508+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.165487+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.165909+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.167569+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.168017+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.169333+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.169548+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.170569+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.170782+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.171689+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.171948+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.173104+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.173389+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.174298+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:30.174533+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:31.525350+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:10:31.795675+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:10:32.058925+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:10:32.469585+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:10:32.863191+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:10:33.710269+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:10:33.937577+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:10:33.982781+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:10:34.371565+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T20:10:40.698734+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:40.699257+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:41.860840+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:41.861357+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:43.059365+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:43.059856+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:44.180770+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:44.181303+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:45.306389+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:45.306840+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:47.071851+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:47.072439+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:49.650701+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:49.651419+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:50.751914+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:50.752493+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:50.785976+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:50.786464+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:51.897417+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:51.897885+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:52.977516+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T20:10:52.978002+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:01:37.581544+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:39.519591+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:01:39.520042+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:01:39.524121+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:01:39.524327+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:01:39.605602+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:01:39.605990+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:01:40.902850+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:40.906455+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:40.938826+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:40.944351+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:40.974123+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:40.978068+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "web_validation", "reason": "capability check did not pass", "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:40.978308+00:00", "category": "capability_adapter", "decision": "success", "backend": "database", "reason": null, "detail": {"target": "orders", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:41.009274+00:00", "category": "capability_adapter", "decision": "escalate", "backend": "automation_anywhere", "reason": "capability check did not pass", "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:41.009518+00:00", "category": "capability_adapter", "decision": "success", "backend": "web_validation", "reason": null, "detail": {"target": "https://example.com/order/1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:41.052397+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:41.086261+00:00", "category": "capability_adapter", "decision": "success", "backend": "automation_anywhere", "reason": null, "detail": {"target": "bot-1", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:48.129082+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:01:48.353016+00:00", "category": "capability_adapter", "decision": "crash_caught", "backend": "fake", "reason": "tool call 'Capability.check' failed: tool execution error: simulated adapter crash", "detail": {"target": ""}}
+{"timestamp": "2026-07-27T21:01:49.074582+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:01:49.074840+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:07.340181+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "CloudLLMBackend", "reason": "succeeded on attempt 2", "detail": {}}
+{"timestamp": "2026-07-27T21:02:08.343732+00:00", "category": "network_retry", "decision": "recovered_after_retry", "backend": "HermesAgentClient", "reason": "succeeded on attempt 2", "detail": {}}
+{"timestamp": "2026-07-27T21:02:22.409466+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "CloudLLMBackend", "reason": "final status 500", "detail": {}}
+{"timestamp": "2026-07-27T21:02:22.447747+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:22.447979+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
+{"timestamp": "2026-07-27T21:02:22.448132+00:00", "category": "planner_backend", "decision": "success", "backend": "CloudLLMBackend", "reason": null, "detail": {"escalated_from": "_AlwaysFailsBackend"}}
+{"timestamp": "2026-07-27T21:02:22.449943+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:22.450209+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_AlwaysFailsBackend", "reason": "RuntimeError: primary backend is down", "detail": {"can_escalate": false}}
+{"timestamp": "2026-07-27T21:02:22.451658+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_FailingCloud", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:22.451812+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "_FailingCloud", "reason": "RuntimeError: cloud backend is down", "detail": {"can_escalate": false}}
+{"timestamp": "2026-07-27T21:02:22.453467+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:22.453635+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
+{"timestamp": "2026-07-27T21:02:22.453739+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
+{"timestamp": "2026-07-27T21:02:22.453893+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {"degraded": true, "reason": "every network-capable backend failed"}}
+{"timestamp": "2026-07-27T21:02:22.455506+00:00", "category": "planner_backend", "decision": "attempt", "backend": "_AlwaysFailsBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:22.455664+00:00", "category": "planner_backend", "decision": "escalate", "backend": "CloudLLMBackend", "reason": "_AlwaysFailsBackend failed: RuntimeError: primary backend is down", "detail": {}}
+{"timestamp": "2026-07-27T21:02:22.455758+00:00", "category": "planner_backend", "decision": "fallback", "backend": "LocalHeuristicBackend", "reason": "CloudLLMBackend failed: RuntimeError: cloud also down", "detail": {}}
+{"timestamp": "2026-07-27T21:02:22.455858+00:00", "category": "planner_backend", "decision": "exhausted", "backend": "LocalHeuristicBackend", "reason": "ValueError: heuristic also broke", "detail": {"original_failure": "RuntimeError: cloud also down"}}
+{"timestamp": "2026-07-27T21:02:25.485273+00:00", "category": "network_retry", "decision": "gave_up_after_retries", "backend": "HermesAgentClient", "reason": "final status 503", "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.506222+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.506662+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.507594+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.507951+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.508846+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.509213+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.510249+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.510609+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.511600+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.511940+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.512876+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.513047+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.514139+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.514382+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.515332+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.515506+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.528140+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.528428+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.529468+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.529871+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.531005+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.531262+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.532394+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.532630+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.533584+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.533831+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.534700+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.534942+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.535923+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:25.536217+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:26.817388+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:02:27.034576+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:02:27.256242+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:02:27.657222+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:02:28.049395+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:02:28.853863+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:02:29.061829+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:02:29.095908+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:02:29.469449+00:00", "category": "capability_adapter", "decision": "success", "backend": "fake", "reason": null, "detail": {"target": "smoke", "confidence": 1.0}}
+{"timestamp": "2026-07-27T21:02:35.499370+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:35.499843+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:36.639540+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:36.639997+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:37.824449+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:37.824919+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:38.932025+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:38.932537+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:40.050057+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:40.050587+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:41.769562+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:41.770154+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:44.458261+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:44.458777+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:45.668638+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:45.669364+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:45.694737+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:45.695213+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:46.836459+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:46.836958+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:48.091817+00:00", "category": "planner_backend", "decision": "attempt", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}
+{"timestamp": "2026-07-27T21:02:48.092330+00:00", "category": "planner_backend", "decision": "success", "backend": "LocalHeuristicBackend", "reason": null, "detail": {}}

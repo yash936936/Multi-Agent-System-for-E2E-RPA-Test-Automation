@@ -4900,3 +4900,59 @@ entry's scope covers.
 **Verified:** `tests/test_settings.py`, `tests/test_guardrails.py`, `tests/test_healing_loop.py`, `tests/test_spec_validator.py`, `tests/test_schemas.py` (65 passed) plus the full non-browser-dependent suite (750 passed, up from 749 — one new regression test, `test_capability_check_with_no_capability_type_is_an_error`, added to `tests/test_spec_validator.py`). Confirmed no test relied on `GuardrailSettings`' old unprefixed-env-var behavior (all existing tests construct it via explicit keyword args, not env vars).
 
 **Revisit when:** starting Phase 2 (`runtime/hooks/`) of the same debugging pass — see `docs/STATUS.md`'s matching entry for the full phase breakdown.
+
+---
+
+## D-083 — Phases 2–3 of the phased debug pass: `runtime/` (clean) + `agents/vision/` OCR-degradation conflation fixed
+**Decided:** 2026-07-28
+**Decision:**
+- **Phase 2 (`runtime/` — `browser.py`, `os_fallback.py`, `capture.py`, `errors.py`): no bugs found.** Re-audited `get_click_point_in_page`'s coordinate math (the D-081 hotspot) line by line against its own docstring, `dom_scroll`'s sign convention, `os_fallback`'s `SystemExit`-vs-`Exception` handling, and video-close timing — all correct. Only "failures" hit while checking this were environment gaps in the sandbox (no X server, missing `faker`/`httpx`), not logic errors; resolved by running under Xvfb with those packages installed.
+- **Phase 3 (`agents/vision/`): `assertions.py` and the pixel-hash-vs-MutationObserver change-detection logic (`dom_change_detector.py`) were already fully fixed in prior work (D-057/D-060, D-077) — re-verified, no residual issue.
+- **`page_health.py` — real, still-open bug found and fixed.** `detect_page_issues()` returned `[]` both when OCR ran and found nothing suspicious *and* when OCR itself failed (tesseract missing, etc.) — its own log line already said as much, but nothing downstream could act on it. Both callers (`orchestrator/autoscan.py`, `orchestrator/ui_audit_runner.py`) spliced that empty list straight into their reports, so a scan where OCR silently never ran was indistinguishable from a genuinely clean page.
+
+**Fix:** added `detect_page_issues_detailed()` returning `(issues, ocr_checked)`; `detect_page_issues()` kept as a backward-compatible wrapper. `AutoScanStepResult.ocr_checked` (per-step) + `AutoScanReport.ocr_unavailable` (aggregate property) added to `autoscan.py`; `UIAuditReport.ocr_checked` added to `ui_audit_runner.py`, set False if OCR fails on the baseline or any post-click check.
+
+**Verified:** updated existing monkeypatches in `tests/test_autoscan.py`/`tests/test_ui_audit_runner.py` to the new signature; added `test_run_autoscan_flags_ocr_unavailable_distinct_from_clean` and `test_run_ui_audit_flags_ocr_unavailable_distinct_from_clean`. Full suite (`DISPLAY=:99 pytest tests/`, Xvfb): 758 passed, same pre-existing Chromium-binary/no-display baseline failures as every prior phase, zero regressions.
+
+**Revisit when:** starting Phase 5 (`agents/capability/`) of the same debugging pass.
+
+---
+
+## D-084 — Phase 4 of the phased debug pass: `agents/planner/`, `agents/data_synth/` — stale-cache-missing-fields bug fixed
+**Decided:** 2026-07-28
+**Decision:**
+- **`spec_generator.py`'s Hermes-local → CloudLLM escalation chain: no logic bug.** Re-traced `_default_backend()`'s detection matrix (`config/settings.py::_auto_detect_planner_backend`) and `generate_spec()`'s runtime escalation ladder (local/cloud/hermes → CloudLLM → LocalHeuristicBackend). The original log's "always falls through to cloud" was confirmed to be environment (no bundled `.gguf` under `models/`, `planner_priority` not set to `hermes_first`), exactly as the detection matrix's own docstring says it should behave — not a code defect.
+- **`page_grounding.py`: clean.** Fails soft at every layer (DOM snapshot → OCR fallback → `None`), never raises, no live bug found.
+- **`agents/data_synth/cache.py` + `tool.py` — real, still-open bug found and fixed.** This is the "cached synthetic data missing the `username` key" bug from the original failing-test log. `DataSynth.generate()`'s cache is keyed only on `test_id`; if a spec's `data_requirements` grows between runs on the same `test_id` (e.g. the planner starts asking for `username` on a test_id that was already cached without it), the stale cached dict was returned verbatim, silently dropping the new field for every downstream consumer (form-fill steps, assertions referencing that field, etc.).
+
+**Fix:** `agents/data_synth/tool.py::generate()` now computes `missing = [f for f in payload.fields if f not in cached]`; if non-empty, generates just the missing fields via `generate_data(missing)`, merges them into the cached dict, re-saves the cache, and returns the merged result. Previously-cached values are left untouched (per TRD §2.4's "stable across runs" intent) — only genuinely-missing fields are backfilled.
+
+**Verified:** new `tests/test_data_synth_tool.py` (3 tests: fills a missing field on stale cache while keeping the existing value stable and persisting the fix to disk; returns cache unchanged when nothing's missing; bypasses caching entirely when no `test_id` is given). Full suite (`DISPLAY=:99 pytest tests/`, Xvfb): 761 passed, same pre-existing baseline failures, zero regressions.
+
+**Revisit when:** starting Phase 5 (`agents/capability/`) of the same debugging pass.
+
+---
+
+## D-085 — Phase 5a of the phased debug pass: `agents/capability/` highest-usage adapters — two real bugs found and fixed
+**Decided:** 2026-07-28
+**Decision:**
+- **`link_checker.py` — `scope="nav"` silently did nothing.** `_AnchorExtractor` only ever tracked `_footer_depth`, never a nav equivalent, so `_extract_links()`'s `if scope == "footer" and not a["in_footer"]: continue` had no matching branch for `scope == "nav"` — every link on the page was returned, identical to `scope="all"`, despite the adapter's own docstring listing `"footer" | "nav" | "all"` as the three supported values. Confirmed by direct reproduction (`_extract_links` called with `scope="nav"` returned nav+body+footer links, same as `scope="all"`). Fixed by adding `_nav_depth` tracking (mirroring `_footer_depth`) and an `in_nav` flag per anchor, plus the matching filter branch.
+- **`api_adapter.py` — `response.elapsed` crashed the entire check under `httpx.MockTransport`.** `response.elapsed` is only populated when the transport fires httpx's real network-timing hooks — true for a live connection, but not for `httpx.MockTransport`, the exact pattern this codebase's own tests use elsewhere (`tests/test_link_checker.py`'s `_patch_client`). Accessing it unconditionally raised `RuntimeError` even *inside* the `with httpx.Client(...)` block (confirmed by direct reproduction against a bare `httpx.MockTransport`), turning a real pass/fail into a misleading "HTTP execution error" — and, not coincidentally, this adapter had zero test coverage before this pass, likely because anyone trying to write a MockTransport-based test for it would hit this crash immediately. Fixed by wrapping the `.elapsed` access in `try/except RuntimeError`, degrading `response_time_ms` to `None` (diagnostic telemetry, not a correctness signal) rather than failing the whole check.
+- **`db_adapter.py`, `db_seed_adapter.py`: clean.** Both already carry the hardening from earlier phases (D-017's read-only/mutating-function denylist and `healing_hints["exception"]` fix on `db_adapter.py`; `db_seed_adapter.py`'s structured-input-only/INSERT-only/identifier-allowlist design) — re-verified line by line, no residual issues, both already had solid existing test coverage (25 passed).
+
+**Fix verified:** `tests/test_link_checker.py` gained `test_nav_scope_only_checks_links_inside_nav`. `tests/test_api_adapter.py` created from scratch (9 tests — no prior file existed), including `test_response_timing_unavailable_under_mock_transport_does_not_crash` as the direct regression test. Full suite (`DISPLAY=:99 pytest tests/`, Xvfb): 770 passed, up from 761, same pre-existing Chromium-binary/no-display baseline (16 failed, 5 errors), zero regressions.
+
+**Revisit when:** continuing Phase 5 with 5b (cloud/infra adapters: `azure_adapter.py`, `gcp_adapter.py`, `cloud_adapter.py`, `sharepoint_adapter.py`) and 5c (the remaining ~14 adapters).
+
+---
+
+## D-086 — Phase 5b of the phased debug pass: `agents/capability/` cloud/infra adapters — two real egress-allowlist gaps found and fixed
+**Decided:** 2026-07-28
+**Decision:**
+- **`CapabilityType.CLOUD` (S3, `cloud_adapter.py`) had no egress-host resolution at all in `orchestrator/capability_router.py::_extract_egress_host`.** GCP_STORAGE got a fixed-default-host fix in D-050 (`storage.googleapis.com` regardless of credential path); Azure Blob's connection-string parsing was fixed in the same pass. S3 never got the analogous treatment — none of `cloud_adapter.py`'s own params (`bucket`/`key`/`region_name`/credentials) match any of `_extract_egress_host`'s existing param-key lists, and `CapabilityType.CLOUD` wasn't special-cased anywhere, so `settings.allowed_capability_hosts` silently never restricted S3 traffic at all (fail-open by omission, not by documented design). Fixed by resolving to boto3's deterministic region-based endpoint, `s3.<region_name>.amazonaws.com` (defaulting to `"us-east-1"`, matching the adapter's own default), the same way GCS's fixed host is resolved.
+- **`sharepoint_adapter.py`'s host was mislabeled as unresolvable — it isn't.** `_extract_egress_host`'s own docstring described `sharepoint_adapter` as "SDK-managed, tenant-specific, no fixed host" and left it as a documented, intentional fail-open case — but `sharepoint_adapter.py::_GRAPH_BASE` is a hardcoded `"https://graph.microsoft.com/v1.0"` constant, not a tenant-resolved endpoint at all; every tenant/site/drive talks to the exact same Microsoft Graph host. The claim in the docstring was simply incorrect, and it left a fixable gap looking like an unfixable one. Fixed the same way as S3: resolves to `graph.microsoft.com` unconditionally for `CapabilityType.SHAREPOINT`; docstring corrected to stop claiming this is unresolvable.
+- **`azure_adapter.py`, `gcp_adapter.py`: re-verified clean.** Both already resolve correctly via existing `_URL_PARAM_KEYS`/`_CONN_STRING_PARAM_KEYS`/Azure-env-var handling (D-050); no residual issues on this pass. Noted as a real coverage gap (not a bug): neither has a dedicated test file — only `cloud_adapter.py` and `workflow_adapter.py` are covered, in `tests/test_cloud_workflow_adapters.py` (7 tests, all passing). Matches the doc's own prediction that 5b would be "likely least-tested since they need real cloud credentials to exercise fully."
+
+**Verified:** `tests/test_capability_egress_controls.py` gained 5 new tests (S3 region resolution + default-region fallback + allowlist enforcement; SharePoint fixed-host resolution + allowlist enforcement) — 29 passed, up from 24. Full suite (`DISPLAY=:99 pytest tests/`, Xvfb): 775 passed, up from 770, same pre-existing Chromium-binary/no-display baseline (16 failed, 5 errors), zero regressions.
+
+**Revisit when:** starting 5c (the remaining ~14 adapters: `email_adapter.py`, `excel_adapter.py`, `pdf_adapter.py`, `chatops_adapter.py`, `defect_tracker_adapter.py`, `automation_anywhere_adapter.py`, `composio_adapter.py`, `performance_adapter.py`, `security_headers_adapter.py`, `accessibility_adapter.py`, `workflow_adapter.py`, `playwright_validator.py`, `fake_adapter.py`, `file_adapter.py`). Also worth a future pass: dedicated test files for `azure_adapter.py`/`gcp_adapter.py`/`sharepoint_adapter.py`, none of which currently have one.

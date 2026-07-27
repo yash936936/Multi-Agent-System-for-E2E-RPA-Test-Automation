@@ -9,6 +9,76 @@ project: AURA
 
 ---
 
+## 2026-07-28 — Phase 5b of the phased debug pass: `agents/capability/` cloud/infra adapters (D-086)
+
+Two real egress-allowlist gaps found and fixed in
+`orchestrator/capability_router.py::_extract_egress_host`. S3
+(`CapabilityType.CLOUD`) never had its host resolved at all -- unlike
+GCP_STORAGE/Azure Blob (D-050), so `settings.allowed_capability_hosts`
+silently never restricted S3 traffic; fixed by resolving to boto3's
+deterministic `s3.<region>.amazonaws.com` endpoint. SharePoint's
+Microsoft Graph host was mislabeled in the router's own docstring as
+"SDK-managed, tenant-specific, no fixed host" and left as an
+intentional fail-open case -- but `sharepoint_adapter.py` talks to a
+hardcoded `graph.microsoft.com` regardless of tenant, so that claim was
+just wrong; fixed the same way as S3, docstring corrected.
+`azure_adapter.py`/`gcp_adapter.py` re-verified clean. Noted (not a bug):
+neither of those, nor `sharepoint_adapter.py`, has a dedicated test
+file. `tests/test_capability_egress_controls.py` gained 5 tests (29
+passed, up from 24). 775 passed on the full suite, zero regressions.
+`docs/decisions.md` D-086 has the full writeup.
+
+## 2026-07-28 — Phase 5a of the phased debug pass: `agents/capability/` highest-usage adapters (D-085)
+
+Two real bugs found and fixed. `link_checker.py`'s `scope="nav"` silently
+did nothing -- `_AnchorExtractor` never tracked nav depth, so it returned
+every link on the page identical to `scope="all"`; fixed by adding
+`_nav_depth`/`in_nav` tracking to match the existing footer handling.
+`api_adapter.py`'s `response.elapsed` crashed the whole check under
+`httpx.MockTransport` (this codebase's own standard test pattern) with a
+misleading "HTTP execution error" -- confirmed by direct reproduction,
+and likely why this adapter had zero test coverage before now. Fixed by
+degrading to `response_time_ms=None` on `RuntimeError` instead of
+failing the check; `tests/test_api_adapter.py` created from scratch (9
+tests). `db_adapter.py`/`db_seed_adapter.py` re-verified clean (D-017
+hardening still solid, 25 existing tests passing). 770 passed on the
+full suite, zero regressions. `docs/decisions.md` D-085 has the full
+writeup.
+
+## 2026-07-28 — Phase 4 of the phased debug pass: `agents/planner/`, `agents/data_synth/` (D-084)
+
+Confirmed `spec_generator.py`'s Hermes→Cloud escalation chain and
+`page_grounding.py` are both clean (the "always falls through to cloud"
+behavior seen earlier is environment — no bundled `.gguf`, hermes not
+opted into the priority order — not a logic bug). Found and fixed the
+`data_synth/cache.py` bug from the original failing-test log: the cache
+is keyed only on `test_id`, so a spec's `data_requirements` growing
+between runs (e.g. `username` added on a `test_id` already cached
+without it) silently returned the stale dict missing the new field.
+`tool.py::generate()` now backfills only the missing fields into the
+cached dict and re-saves, leaving previously-cached values untouched.
+New `tests/test_data_synth_tool.py` (3 tests). 761 passed on the full
+suite, zero regressions. `docs/decisions.md` D-084 has the full writeup.
+
+## 2026-07-28 — Phases 2–3 of the phased debug pass: `runtime/`, `agents/vision/` (D-083)
+
+Phase 2 (`runtime/`) came back clean on re-audit — coordinate math,
+scroll sign convention, `SystemExit` handling, video-close timing all
+correct; the only "failures" were sandbox environment gaps (no X
+server, missing `faker`/`httpx`), fixed by running under Xvfb.
+Phase 3 (`agents/vision/`) confirmed `assertions.py` and the
+pixel-hash-vs-MutationObserver change detection were already fixed in
+earlier work. Found and fixed a real bug in `page_health.py`:
+`detect_page_issues()` couldn't distinguish "OCR ran, found nothing" from
+"OCR itself failed" — both returned `[]`, so `autoscan.py` and
+`ui_audit_runner.py` silently reported a clean scan even when OCR never
+ran. Added `detect_page_issues_detailed()` returning `(issues,
+ocr_checked)`, plus `ocr_checked`/`ocr_unavailable` fields on
+`AutoScanStepResult`/`AutoScanReport`/`UIAuditReport`. 758 passed, zero
+regressions. `docs/decisions.md` D-083 has the full writeup.
+
+---
+
 ## 2026-07-27 — Phase 1 of the phased debug pass: `config/` + `orchestrator/schemas.py`/`spec_validator.py` (D-082)
 
 First phase of a bottom-up debugging pass (foundation layer first). Two

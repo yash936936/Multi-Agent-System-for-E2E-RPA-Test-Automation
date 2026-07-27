@@ -27,9 +27,27 @@ class ApiAdapter:
                 response = client.request(method, url, headers=headers, json=json_data)
                 
             passed = response.status_code == expected_status
+            # response.elapsed is only populated when the transport fires
+            # httpx's real network timing hooks -- true for a real
+            # connection, but NOT true for httpx.MockTransport (the exact
+            # pattern this codebase's own tests use, e.g.
+            # tests/test_link_checker.py's _patch_client). Accessing it
+            # unconditionally raised RuntimeError there, which crashed the
+            # *entire* API check over a nice-to-have timing metric --
+            # turning a real pass/fail into a misleading "HTTP execution
+            # error" and making this adapter untestable with the
+            # codebase's standard MockTransport pattern in the first
+            # place (there was no prior test file for this adapter at
+            # all). Response timing is diagnostic telemetry, not a
+            # correctness signal, so its absence should degrade to
+            # `None`, never fail the check.
+            try:
+                response_time_ms = response.elapsed.total_seconds() * 1000
+            except RuntimeError:
+                response_time_ms = None
             evidence = {
                 "status_code": response.status_code,
-                "response_time_ms": response.elapsed.total_seconds() * 1000,
+                "response_time_ms": response_time_ms,
             }
             
             if expected_json and passed:

@@ -13,7 +13,7 @@ This adapter closes that gap the honest way: it makes a real HTTP request
 to fetch the page HTML (no browser/JS rendering -- same "no DOM automation"
 posture as the rest of AURA, just enough network I/O to read anchor tags),
 extracts every <a href> target, optionally scoped to content inside a
-<footer>...</footer> region, and issues a real HEAD (falling back to GET
+<footer>...</footer> or <nav>...</nav> region, and issues a real HEAD (falling back to GET
 if HEAD is rejected) request against each one. Anything that doesn't come
 back 2xx/3xx is reported as broken with its actual status code or error.
 
@@ -49,12 +49,15 @@ class _AnchorExtractor(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.anchors: list[dict] = []
         self._footer_depth = 0
+        self._nav_depth = 0
         self._depth = 0
 
     def handle_starttag(self, tag, attrs):
         self._depth += 1
         if tag == "footer":
             self._footer_depth += 1
+        if tag == "nav":
+            self._nav_depth += 1
         if tag == "a":
             attrs_dict = dict(attrs)
             href = attrs_dict.get("href")
@@ -64,6 +67,7 @@ class _AnchorExtractor(HTMLParser):
                         "href": href.strip(),
                         "text": "",
                         "in_footer": self._footer_depth > 0,
+                        "in_nav": self._nav_depth > 0,
                         "_idx": len(self.anchors),
                     }
                 )
@@ -71,6 +75,8 @@ class _AnchorExtractor(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "footer" and self._footer_depth > 0:
             self._footer_depth -= 1
+        if tag == "nav" and self._nav_depth > 0:
+            self._nav_depth -= 1
         self._depth = max(0, self._depth - 1)
 
     def handle_data(self, data):
@@ -87,6 +93,8 @@ def _extract_links(html: str, base_url: str, scope: str) -> list[dict]:
     for a in parser.anchors:
         href = a["href"]
         if scope == "footer" and not a["in_footer"]:
+            continue
+        if scope == "nav" and not a["in_nav"]:
             continue
         if any(href.lower().startswith(s) for s in _SKIP_SCHEMES):
             continue
