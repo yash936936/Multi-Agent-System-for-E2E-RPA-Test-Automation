@@ -11,18 +11,25 @@ this file and `decisions.md` are expected: `decisions.md` is history
 A multi-agent RPA/QA test automation platform: given a URL or a
 plain-English requirement, it drives a real browser, verifies pages
 render and interact correctly, and reports what's broken. Two autonomy
-modes: `explore` (zero instructions, click everything, report back) and
-`execute` (spec-driven or prompt-driven, scripted or human-in-the-loop).
+modes: `execute --prompt`/`--yes`/`--autonomous` (fully unattended,
+spec-driven or prompt-driven) and `execute --interactive`
+(human-in-the-loop — AURA waits for you to act, then verifies). The
+CLI's earlier third mode, `aura explore <url>` (zero instructions,
+click everything, report back), was removed 2026-07-27 — its
+click-and-diff engine lives on as `execute --ui-audit`.
 
 ## Core coordination layer
 
 - `orchestrator/brain/` (Phase B1, 2026-07-25) — the single entrypoint
   every CLI command routes through. `Intent` (what's being asked),
   `Policy` (cross-cutting decisions: DOM-vs-OCR, retry thresholds,
-  confidence thresholds — currently Python literals, see B2), `Router`
-  (Intent -> which existing subsystem, in what order). Only the
-  `explore` intent is migrated as of B1; everything else still runs
-  through its own CLI command's hand-assembled pipeline until migrated.
+  confidence thresholds — loaded from `brain_knowledge/rules/*.yaml` as
+  of B2/D-079, not hardcoded literals), `Router`
+  (Intent -> which existing subsystem, in what order). All 5 current
+  intents (`execute_spec`, `execute_prompt`, `execute_interactive`,
+  `ui_audit`, `capability_check`) are migrated as of Phase B3/D-079 —
+  `explore` was B1's pilot case and has since been removed entirely
+  (2026-07-27), not just migrated.
   See `docs/AURA_BRAIN_ARCHITECTURE.md` for full design.
 
 ## Discovery & interaction (the "hands")
@@ -36,11 +43,15 @@ modes: `explore` (zero instructions, click everything, report back) and
   as of this writing it's still a co-equal/cross-checked path, not a
   pure fallback — see `docs/AURA_REARCHITECTURE_PLAN.md` Phase 2).
 - `orchestrator/ui_audit_runner.py` — the click-and-diff engine behind
-  both `aura explore` and `aura execute --ui-audit`: clicks every
+  `aura execute --ui-audit` (and `aura ui-audit`, a standalone command
+  reusing the same engine): clicks every
   candidate element, checks whether the page changed
   (`agents/vision/assertions.py`'s pixel-hash-diff today; Phase 4
   replaces this with a MutationObserver-based check wherever a live
-  page exists).
+  page exists). As of 2026-07-27, DOM-sourced discovery
+  (`agents/vision/dom_extractor.py::to_ui_elements_full_page`) scrolls
+  the whole document to find below-the-fold elements rather than only
+  whatever's in the current viewport.
 - `runtime/hooks/interact.py` — click/scroll/type dispatch.
   `dom_click`/`dom_smart_back` (Playwright-native, viewport-space) are
   primary; `click`/`type_text`/`scroll` (pyautogui, OS-absolute-pixel
@@ -71,7 +82,12 @@ modes: `explore` (zero instructions, click everything, report back) and
 - `orchestrator/assertion_audit_log.py` — assertion verdicts,
   `find_anomalies()`.
 - `aura audit-report <run_id>` — CLI on top of the assertion audit log.
-- `aura explore --debug` — per-element `resolution_strategy` (D-067).
+- **Gap, disclosed:** the removed `aura explore --debug` flag printed
+  each element's `resolution_strategy` (dom/dom_extractor_direct/ocr,
+  D-067) to the console. `aura execute --ui-audit`/`aura ui-audit` have
+  no equivalent flag today — `resolution_strategy` is still recorded on
+  every `ClickCheckResult` in the underlying report data
+  (`orchestrator/ui_audit_runner.py`), just not surfaced by a CLI flag.
 - **Not yet unified**: no single merged timeline across the above, and
   no `aura explain <run_id>` command yet. See
   `docs/AURA_REARCHITECTURE_PLAN.md` Phase 1.

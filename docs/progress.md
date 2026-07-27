@@ -9,6 +9,42 @@ project: AURA
 
 ---
 
+## 2026-07-27 — `aura explore` removed; three real bugs found and fixed (D-081)
+
+Removed the CLI's zero-instruction `aura explore <url>` command entirely
+(`aura/cli/explore_cmd.py`, the `"explore"` `IntentKind`,
+`Router._handle_explore()`, `orchestrator/ui_audit_runner.py::run_exploration()`,
+the API's `"full_exploration": true` opt-in) — `execute --prompt`/`--yes`
+already covers unattended zero-spec runs, `--ui-audit` already covers the
+click-everything sweep, and `run_ui_audit()` (used by both) is untouched.
+
+Three real bugs found and fixed while auditing the surrounding code:
+(1) `has_hero`/`has_footer` misclassification in
+`agents/vision/dom_extractor.py::to_ui_elements` — a viewport-relative
+`cy` was divided by the full document `scrollHeight`, collapsing every
+visible element's band fraction toward 0 on tall pages; fixed with a new
+document-relative `docY` field used for classification while `cx`/`cy`
+stay viewport-relative for click dispatch. (2) Below-the-fold elements
+(a footer on a tall page) were never discovered at all, since DOM
+discovery only ever inspected the current viewport with no scrolling;
+new `to_ui_elements_full_page()` scrolls the document in increments,
+dedupes by `(text, band)`, and records each element's `scroll_y` so a
+later click can scroll back to the position it's valid at. (3) OCR
+-dispatched clicks landing off-target: `runtime/hooks/browser.py::get_click_point_in_page()`
+added the vertical scrollbar's width into the *left*-offset calculation,
+contradicting its own "no left/right chrome" assumption and silently
+shifting every OCR click's x-coordinate — fixed by dropping that term;
+this function had zero prior test coverage, now has a regression test.
+
+Also fixed in the same pass (found during a full `execute` flag audit,
+unrelated to explore): `--record-video` unconditionally reset
+`settings.record_video` to `False` on every invocation that didn't pass
+it, silently overriding an `AURA_RECORD_VIDEO=true` `.env` default —
+fixed with the same `None`-sentinel pattern `--continuous-audit` already
+used. 749 passed on the full non-browser-dependent suite, zero
+regressions. `docs/decisions.md` D-081 has the full writeup; `README.md`'s
+`execute` flag reference and Autonomy Modes sections rewritten to match.
+
 ## 2026-07-25 — Re-architecture Phase 2: DOM-first dispatch rewrite (D-073)
 
 `orchestrator/ui_audit_runner.py::_run_click_audit` discovery rewritten:

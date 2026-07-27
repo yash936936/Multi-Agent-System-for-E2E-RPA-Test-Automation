@@ -276,10 +276,10 @@ documented gap (no plan offered, no fabricated fix).
   as one phase.
 - **Phase I — Browser coverage.** ✅ **DONE, 2026-07-15** — see
   `decisions.md` D-030. I1: cross-browser support — `settings.playwright_browser`
-  (`chromium`/`firefox`/`webkit`), `--browser` flag on `aura execute`/`aura
-  explore`, `runtime/hooks/browser.py` launches the configured engine
+  (`chromium`/`firefox`/`webkit`), `--browser` flag on `aura execute`,
+  `runtime/hooks/browser.py` launches the configured engine
   instead of hardcoded Chromium. I2: video recording — `settings.record_video`
-  (off by default) + `--record-video` flag; the DOM/Playwright path records
+  (off by default) + `--record-video`/`--no-record-video` flag; the DOM/Playwright path records
   a real video natively via `record_video_dir`; the OS/pixel fallback path
   produces an honestly-labeled step-boundary **slideshow**
   (`runtime/hooks/video_recorder.py`), never claimed as continuous

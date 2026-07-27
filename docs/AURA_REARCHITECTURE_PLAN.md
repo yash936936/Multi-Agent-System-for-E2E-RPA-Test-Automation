@@ -42,14 +42,21 @@ wrong." Everything else in this plan gets graded against this tier.
 - `tests/fixtures/answer_keys.py` — machine-readable expected results per
   fixture (`has_nav=True`, `footer_heading_is_not_clickable=True`,
   `dead_button_id="..."`, `working_link_id="..."`, etc.).
-- `tests/integration/test_explore_against_fixtures.py` — runs real
+- `tests/integration/test_click_audit_against_fixtures.py` — runs real
   Playwright (headed off, real Chromium — this tier is the one place
   allowed to require the browser binary; CI must install it) against
   `file://` URLs of the fixtures above, asserts the *actual* audit
   report matches the answer key: footer heading not in `checked` as
   clickable, dead button reports `state_changed=False`, working link
   reports either a same-page mutation or `new_tab_opened=True`, nav/hero/
-  footer all detected.
+  footer all detected. **Note (2026-07-27):** the original version of
+  this file (then named `test_explore_against_fixtures.py`, calling
+  `orchestrator.ui_audit_runner.run_exploration`) was deleted when
+  `aura explore`/`run_exploration()` were removed — the fixtures and
+  answer keys above are still equally valid against
+  `orchestrator.ui_audit_runner.run_ui_audit()` (the engine behind
+  `aura execute --ui-audit`); this file just needs recreating against
+  that entry point if this integration-test tier is picked up.
 - Mark this tier explicitly (`@pytest.mark.integration` or a separate
   `tests/integration/` dir excluded from the fast unit run) so
   `pytest -q` stays fast, and add `pytest -q -m integration` (or
@@ -109,7 +116,7 @@ rewrite with print statements and then unifying logs afterward.
   order, human-readable.
 - `--json` flag for the raw merged timeline (machine-readable, e.g. for
   CI to diff against fixture answer keys).
-- `--screenshot` flag: for `explore`/`ui_audit` runs, generate one
+- `--screenshot` flag: for `ui_audit`/`execute --ui-audit` runs, generate one
   annotated PNG per checked step from the saved baseline screenshot —
   bounding boxes color-coded: green = DOM-confirmed interactive and
   clicked, yellow = clicked but no state change detected, red = OCR
@@ -124,7 +131,7 @@ rewrite with print statements and then unifying logs afterward.
   merge implementation, not two.
 
 **Exit criteria:** `aura explain <run_id>` works end-to-end against a
-real `aura explore` run from Phase 0's fixtures, screenshot overlay
+real `aura execute --ui-audit` run from Phase 0's fixtures, screenshot overlay
 visibly shows the footer heading as red/rejected.
 
 ---
@@ -194,8 +201,9 @@ assumed):**
 - Callers: `orchestrator/autoscan.py`, `orchestrator/ui_audit_runner.py`,
   `agents/vision/executor.py`, plus screenshot callers in
   `agents/planner/page_grounding.py`, `api/routers/runs.py`,
-  `aura/cli/execute_cmd.py`, `aura/cli/preflight.py`,
-  `aura/cli/explore_cmd.py`.
+  `aura/cli/execute_cmd.py`, `aura/cli/preflight.py`.
+  (`aura/cli/explore_cmd.py` was also a caller at the time this plan was
+  written; it was removed 2026-07-27 along with `aura explore`.)
 
 **Replacement design:**
 - **Click/type/scroll:** Phase 2 already makes DOM-first the only
@@ -322,8 +330,9 @@ this session's mocked verification.
   (or `rich.progress` for steps with a known count, e.g. "clicking
   element 4/12") — no new dependency, `rich` is already in use.
 - Applied at every currently-silent wait: browser launch
-  (`browser.open_url`), the initial page-load sleep in `explore_cmd.py`,
-  each autoscan scroll step, each click-audit element (replace the
+  (`browser.open_url`), the initial page-load sleep (now in
+  `orchestrator/brain/router.py`'s handlers rather than a since-removed
+  `explore_cmd.py`), each autoscan scroll step, each click-audit element (replace the
   current plain `console.print` announcing "Clicking every detected
   element..." with a live-updating status line that ticks per element:
   `Clicking element 4/12: "Sign Up" (nav)...`), the planner LLM call

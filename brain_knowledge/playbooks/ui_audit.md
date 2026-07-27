@@ -12,8 +12,9 @@ follow-on work, not yet built.
 2. Generate a `run_id` (`ui_audit_<8 hex chars>`).
 3. Open the URL in a real Playwright browser
    (`runtime/hooks/browser.py::open_url`). If this fails, don't abort —
-   record the error and proceed (same non-fatal-open pattern as the
-   `explore` playbook's step 3).
+   record the error and proceed (same non-fatal-open pattern used
+   throughout the Brain's handlers, so a dead/unreachable target still
+   produces a report explaining why, instead of a bare crash).
 4. Wait `settings.human_action_poll_interval_seconds` for the page to
    settle before the first screenshot.
 5. Run the landmark audit
@@ -26,12 +27,18 @@ follow-on work, not yet built.
    rather than a hardcoded Python literal), then click through the
    interactive-looking elements found and check whether the page
    changed for each one.
+   - The DOM-first path (`agents/vision/dom_extractor.py::to_ui_elements_full_page`,
+     fixed 2026-07-27) scrolls the whole document in viewport-height
+     increments to discover below-the-fold elements (a footer on a page
+     taller than one screen, for instance) rather than only whatever
+     happened to already be in the viewport — each discovered element
+     records the scroll position it was found at (`UIElement.scroll_y`)
+     so a later direct-coordinate click can scroll back to the exact
+     position it's valid at before dispatching.
    - Because this handler always passes the normalized URL as
      `page_url`, the real HTTP-level link check
      (`agents/capability/link_checker.py`) always runs too, scoped by
-     `link_scope` (default `"all"`) — unlike `explore`'s playbook,
-     where the link check is opt-in via a separate `check_links` flag.
-     Best-effort: if the check itself fails, it degrades silently to
+     `link_scope` (default `"all"`). Best-effort: if the check itself fails, it degrades silently to
      the OCR-only click-audit result (`link_check_result` stays
      `None`), per `run_ui_audit()`'s own docstring.
 6. Return the collected data (normalized URL, any open error, the

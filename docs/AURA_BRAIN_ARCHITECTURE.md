@@ -1,5 +1,20 @@
 # AURA Brain — Unified Core Architecture
 
+> **Note (2026-07-27):** `aura/cli/explore_cmd.py` and the `"explore"`
+> intent used throughout this document as the running example for "how
+> a single entrypoint gets migrated onto the Brain" have since been
+> removed entirely (the CLI's zero-instruction explore mode was
+> retired — see `docs/STATUS.md`'s 2026-07-27 entry). The architectural
+> narrative below is kept as-is because it's still the accurate history
+> of *why* the Router/Policy pattern looks the way it does — `"explore"`
+> was Phase B1's pilot migration case, and every subsequent phase
+> (B2/B3, closing out at D-079/D-080) built on that same pattern to
+> migrate the remaining intents, which are the ones that actually exist
+> today: `execute_spec`, `execute_prompt`, `execute_interactive`,
+> `ui_audit`, `capability_check`. Read every `"explore"` reference below
+> as "the intent that piloted this pattern, since removed," not as
+> current, runnable code.
+
 Companion to `AURA_REARCHITECTURE_PLAN.md`. That plan fixes specific
 subsystems (dispatch, change-detection, logging). This document answers
 a different question underneath all of them: **why did each of those
@@ -68,7 +83,10 @@ orchestrator/brain/
 # orchestrator/brain/intent.py
 @dataclass
 class Intent:
-    kind: Literal["explore", "execute_spec", "execute_prompt",
+    # Originally "explore" was listed first here as Phase B1's pilot
+    # case (see the note at the top of this document) -- it's since
+    # been removed, along with the CLI command it backed.
+    kind: Literal["execute_spec", "execute_prompt",
                    "execute_interactive", "ui_audit", "capability_check"]
     params: dict[str, Any]          # url, prompt, spec_path, timeout, etc.
     caller: Literal["cli", "api", "slack_tag"]   # who's asking, for audit only
@@ -198,8 +216,7 @@ brain_knowledge/
         confidence.yaml        # per-check-kind confidence thresholds
         bands.yaml              # nav/hero/footer boundary fractions (currently _NAV_BAND_END etc.)
     playbooks/
-        explore.md            # step-by-step decision tree the Brain follows for "explore" intent
-        execute.md
+        execute.md            # step-by-step decision tree the Brain follows for "execute_spec"/"execute_prompt" intents
         execute_interactive.md
         ui_audit.md
     prompts/

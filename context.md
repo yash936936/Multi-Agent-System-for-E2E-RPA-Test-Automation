@@ -64,7 +64,7 @@ Two things are true at once and must not be conflated:
   external_repos.md      ← extracted logic/snippets from external reference repos (see §5) — all 6 batches / 18 repos complete
 /agents/                 ← the actual sub-agents: planner, vision, capability, data_synth, auditor
 /orchestrator/           ← Hermes-Agent-API-style kernel: run_engine, healing_loop, memory, skill_store, guardrails, capability_router
-/orchestrator/brain/     ← Intent/Policy/Router -- one place cross-cutting decisions (DOM-vs-OCR, retry policy, etc.) get made, see docs/AURA_BRAIN_ARCHITECTURE.md. Partial migration -- only the "explore" intent routes through this today (Phase B1); see that doc's §5.1 for why the rest isn't a quick follow-on.
+/orchestrator/brain/     ← Intent/Policy/Router -- one place cross-cutting decisions (DOM-vs-OCR, retry policy, etc.) get made, see docs/AURA_BRAIN_ARCHITECTURE.md. All 5 current IntentKind values (execute_spec, execute_prompt, execute_interactive, ui_audit, capability_check) route through this as of Phase B3 -- the "explore" intent that was Phase B1's initial single migrated case has since been removed entirely (the CLI's zero-instruction `aura explore` command was retired; use `aura execute --prompt` for unattended zero-spec runs instead).
 /brain_knowledge/        ← the Brain's externalized policy source (context, guidelines, YAML rules, playbooks) -- distinct from orchestrator/memory.py's per-run RunMemoryStore and from this file/decisions.md
 /api/                    ← FastAPI service layer (Phase 17) — check docs/STATUS.md for what's actually wired
 /aura/                   ← CLI entry point and commands (aura/main.py, aura/cli/*)

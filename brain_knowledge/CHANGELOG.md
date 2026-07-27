@@ -3,6 +3,21 @@
 This folder is reviewed like code (docs/AURA_BRAIN_ARCHITECTURE.md §3).
 Every edit here gets a dated entry.
 
+## 2026-07-27 — `playbooks/explore.md` removed
+- The `"explore"` intent it documented (`Router._handle_explore()`) was
+  removed along with the CLI command it backed (`aura/cli/explore_cmd.py`,
+  `aura explore <url>`) — see `docs/STATUS.md`'s 2026-07-27 entry for
+  the full list of changes and the three real bugs found and fixed in
+  the same pass. Every reference to `explore.md`/`"explore"` in the
+  entries below this one is left as-is: it's accurate history of what
+  existed at the time it was written (B1's pilot migration case, per
+  `docs/AURA_BRAIN_ARCHITECTURE.md`'s top-of-file note), not a
+  description of current code.
+- `playbooks/ui_audit.md` (which cross-referenced `explore.md` in two
+  places, since both playbooks originally described sibling handlers
+  with a shared non-fatal-open pattern) updated to describe that
+  pattern inline instead of pointing at a file that no longer exists.
+
 ## 2026-07-25 — Phase B1 initial skeleton
 - `context.md`, `guidelines.md` (G-000 through G-006) written.
 - `rules/*.yaml` created as placeholders — documented planned shape,
