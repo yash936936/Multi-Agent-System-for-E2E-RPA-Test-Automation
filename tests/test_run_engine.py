@@ -1,26 +1,30 @@
-"""
-End-to-end dry run of RunEngine against requirements_input/example_login_flow.md,
-using target_app/demo_login_app.py's headless-safe screen renderer instead of
-a live Tkinter window (no display in CI/sandbox environments -- see that
-module's docstring).
-
-This is the test that proves Phases 2-5 actually work together as one
-pipeline, not just as isolated unit-tested pieces.
+"""Merged test file: test_run_engine.py
+Consolidated from: test_run_engine.py, test_run_engine_trace.py, test_run_engine_video.py, test_run_engine_keep_browser_open.py
+All original test functions preserved 1:1. Colliding fixture/helper names
+renamed with a source-file suffix to avoid silent shadowing across sections.
 """
 from __future__ import annotations
-
 import json
 import tempfile
 from pathlib import Path
-
 import pytest
-
 from orchestrator.memory import RunMemoryStore
 from orchestrator.run_engine import RunEngine
 from orchestrator.schemas import RunStatus
 from orchestrator.skill_store import SkillStore
 from target_app.demo_login_app import render_login_screen
+import os
+import zipfile
+from PIL import Image
+from config.settings import settings
+from orchestrator.schemas import ActionType, TestSpec, TestStep
+from tests.conftest_local_server import make_server, server_url
+from unittest.mock import MagicMock
 
+
+# ============================================================================
+# ---- from test_run_engine.py ----
+# ============================================================================
 REQUIREMENT_PATH = Path(__file__).resolve().parent.parent / "requirements_input" / "example_login_flow.md"
 
 
@@ -259,3 +263,281 @@ def test_run_engine_escalates_cleanly_on_no_display(tmp_dir: Path):
 
     assert result.report.escalated_steps > 0
     assert result.report.status.value in ("escalated", "failed")
+
+# ============================================================================
+# ---- from test_run_engine_trace.py ----
+# ============================================================================
+PAGE = b"""
+<html><body>
+  <button onclick="document.title='clicked'">Login Button</button>
+</body></html>
+"""
+
+
+@pytest.fixture()
+def tmp_dir__run_engine_trace():
+    with tempfile.TemporaryDirectory() as d:
+        yield Path(d)
+
+
+@pytest.fixture(autouse=True)
+def _reset_browser_and_settings():
+    from runtime.hooks import browser
+
+    browser.close()
+    original_video = settings.record_video
+    original_trace = settings.record_trace
+    yield
+    browser.close()
+    settings.record_video = original_video
+    settings.record_trace = original_trace
+
+
+@pytest.fixture
+def server():
+    srv = make_server(PAGE)
+    yield srv
+    srv.shutdown()
+
+
+def _synthetic_screenshot_provider(run_id: str, step_id: int, tmp_dir__run_engine_trace: Path) -> str:
+    path = tmp_dir__run_engine_trace / f"{run_id}_{step_id}.png"
+    Image.new("RGB", (100, 100), color="white").save(path)
+    return str(path)
+
+
+def test_completed_run_with_record_trace_on_attaches_a_real_trace_file(tmp_dir__run_engine_trace, server):
+    from runtime.hooks import browser
+
+    settings.record_trace = True
+    browser.open_url(server_url(server), wait_seconds=0.1)  # DOM path session active before the run starts
+
+    engine = RunEngine(
+        screenshot_provider=lambda run_id, step_id: _synthetic_screenshot_provider(run_id, step_id, tmp_dir__run_engine_trace),
+        skill_store=SkillStore(db_path=tmp_dir__run_engine_trace / "skills.db"),
+        memory=RunMemoryStore(db_path=tmp_dir__run_engine_trace / "memory.db"),
+    )
+    spec = TestSpec(
+        test_id="TC-TRACE-001",
+        requirement_ref="REQ-TRACE",
+        steps=[TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Login Button")],
+    )
+
+    result = engine.run_spec(spec, run_id="trace_run_001")
+
+    assert "trace" in result.report.report_paths
+    trace_path = result.report.report_paths["trace"]
+    assert os.path.exists(trace_path)
+    assert os.path.getsize(trace_path) > 0
+    # A real Playwright trace is a valid, non-empty zip archive -- not
+    # just a same-named placeholder file.
+    assert zipfile.is_zipfile(trace_path)
+
+
+def test_completed_run_without_record_trace_has_no_trace_key(tmp_dir__run_engine_trace, server):
+    from runtime.hooks import browser
+
+    assert settings.record_trace is False
+    browser.open_url(server_url(server), wait_seconds=0.1)
+
+    engine = RunEngine(
+        screenshot_provider=lambda run_id, step_id: _synthetic_screenshot_provider(run_id, step_id, tmp_dir__run_engine_trace),
+        skill_store=SkillStore(db_path=tmp_dir__run_engine_trace / "skills.db"),
+        memory=RunMemoryStore(db_path=tmp_dir__run_engine_trace / "memory.db"),
+    )
+    spec = TestSpec(
+        test_id="TC-TRACE-002",
+        requirement_ref="REQ-TRACE",
+        steps=[TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Login Button")],
+    )
+
+    result = engine.run_spec(spec, run_id="trace_run_002")
+
+    assert "trace" not in result.report.report_paths
+
+
+def test_record_video_and_record_trace_together_attach_both(tmp_dir__run_engine_trace, server):
+    """The two features are independently toggleable -- confirms one
+    doesn't clobber or suppress the other when both are on at once."""
+    from runtime.hooks import browser
+
+    settings.record_video = True
+    settings.record_trace = True
+    browser.open_url(server_url(server), wait_seconds=0.1)
+
+    engine = RunEngine(
+        screenshot_provider=lambda run_id, step_id: _synthetic_screenshot_provider(run_id, step_id, tmp_dir__run_engine_trace),
+        skill_store=SkillStore(db_path=tmp_dir__run_engine_trace / "skills.db"),
+        memory=RunMemoryStore(db_path=tmp_dir__run_engine_trace / "memory.db"),
+    )
+    spec = TestSpec(
+        test_id="TC-TRACE-003",
+        requirement_ref="REQ-TRACE",
+        steps=[TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Login Button")],
+    )
+
+    result = engine.run_spec(spec, run_id="trace_run_003")
+
+    assert "video" in result.report.report_paths
+    assert "trace" in result.report.report_paths
+    assert os.path.exists(result.report.report_paths["video"])
+    assert os.path.exists(result.report.report_paths["trace"])
+
+# ============================================================================
+# ---- from test_run_engine_video.py ----
+# ============================================================================
+PAGE = b"""
+<html><body>
+  <button onclick="document.title='clicked'">Login Button</button>
+</body></html>
+"""
+
+
+@pytest.fixture()
+def tmp_dir__run_engine_video():
+    with tempfile.TemporaryDirectory() as d:
+        yield Path(d)
+
+
+@pytest.fixture(autouse=True)
+def _reset_browser_and_settings__run_engine_video():
+    from runtime.hooks import browser
+
+    browser.close()
+    original_video = settings.record_video
+    yield
+    browser.close()
+    settings.record_video = original_video
+
+
+@pytest.fixture
+def server__run_engine_video():
+    srv = make_server(PAGE)
+    yield srv
+    srv.shutdown()
+
+
+def _synthetic_screenshot_provider__run_engine_video(run_id: str, step_id: int, tmp_dir__run_engine_video: Path) -> str:
+    """A trivial, real PNG on disk -- RunEngine's screenshot path just needs
+    a real file, since the DOM-path click itself doesn't use pixels at all."""
+    path = tmp_dir__run_engine_video / f"{run_id}_{step_id}.png"
+    Image.new("RGB", (100, 100), color="white").save(path)
+    return str(path)
+
+
+def test_completed_run_with_record_video_on_attaches_a_real_video_file(tmp_dir__run_engine_video, server__run_engine_video):
+    from runtime.hooks import browser
+
+    settings.record_video = True
+    browser.open_url(server_url(server__run_engine_video), wait_seconds=0.1)  # DOM path session active before the run starts
+
+    engine = RunEngine(
+        screenshot_provider=lambda run_id, step_id: _synthetic_screenshot_provider__run_engine_video(run_id, step_id, tmp_dir__run_engine_video),
+        skill_store=SkillStore(db_path=tmp_dir__run_engine_video / "skills.db"),
+        memory=RunMemoryStore(db_path=tmp_dir__run_engine_video / "memory.db"),
+    )
+    spec = TestSpec(
+        test_id="TC-VIDEO-001",
+        requirement_ref="REQ-VIDEO",
+        steps=[TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Login Button")],
+    )
+
+    result = engine.run_spec(spec, run_id="video_run_001")
+
+    assert "video" in result.report.report_paths
+    video_path = result.report.report_paths["video"]
+    assert os.path.exists(video_path)
+    assert os.path.getsize(video_path) > 0
+    assert "video_slideshow" not in result.report.report_paths  # real video takes priority
+
+
+def test_completed_run_without_record_video_has_no_video_keys(tmp_dir__run_engine_video, server__run_engine_video):
+    from runtime.hooks import browser
+
+    assert settings.record_video is False
+    browser.open_url(server_url(server__run_engine_video), wait_seconds=0.1)
+
+    engine = RunEngine(
+        screenshot_provider=lambda run_id, step_id: _synthetic_screenshot_provider__run_engine_video(run_id, step_id, tmp_dir__run_engine_video),
+        skill_store=SkillStore(db_path=tmp_dir__run_engine_video / "skills.db"),
+        memory=RunMemoryStore(db_path=tmp_dir__run_engine_video / "memory.db"),
+    )
+    spec = TestSpec(
+        test_id="TC-VIDEO-002",
+        requirement_ref="REQ-VIDEO",
+        steps=[TestStep(step_id=1, action=ActionType.VISUAL_CLICK, target_description="Login Button")],
+    )
+
+    result = engine.run_spec(spec, run_id="video_run_002")
+
+    assert "video" not in result.report.report_paths
+    assert "video_slideshow" not in result.report.report_paths
+
+# ============================================================================
+# ---- from test_run_engine_keep_browser_open.py ----
+# ============================================================================
+REQUIREMENT_PATH = Path(__file__).resolve().parent.parent / "requirements_input" / "example_login_flow.md"
+
+
+@pytest.fixture()
+def tmp_dir__run_engine_keep_browser_open():
+    with tempfile.TemporaryDirectory() as d:
+        yield Path(d)
+
+
+def make_provider__run_engine_keep_browser_open(tmp_dir__run_engine_keep_browser_open: Path):
+    screens = {1: "initial", 2: "login_form", 3: "login_form", 4: "login_form"}
+
+    def provider(run_id: str, step_id: int) -> str:
+        state = screens.get(step_id, "dashboard")
+        path = tmp_dir__run_engine_keep_browser_open / f"{run_id}_{step_id}_{state}.png"
+        if not path.exists():
+            render_login_screen(state, path)
+        return str(path)
+
+    return provider
+
+
+def _make_engine(tmp_dir__run_engine_keep_browser_open: Path) -> RunEngine:
+    skill_store = SkillStore(db_path=tmp_dir__run_engine_keep_browser_open / "skills.db")
+    memory = RunMemoryStore(db_path=tmp_dir__run_engine_keep_browser_open / "memory.db")
+    return RunEngine(screenshot_provider=make_provider__run_engine_keep_browser_open(tmp_dir__run_engine_keep_browser_open), skill_store=skill_store, memory=memory)
+
+
+def test_default_run_closes_browser_at_end(tmp_dir__run_engine_keep_browser_open: Path, monkeypatch):
+    """Baseline behavior: keep_browser_open defaults to False, so a plain
+    `aura execute` (no --scroll-test/--ui-audit) still tears the browser
+    down at the end of the run, same as before this fix."""
+    mock_close = MagicMock()
+    monkeypatch.setattr("runtime.hooks.browser.close", mock_close)
+
+    engine = _make_engine(tmp_dir__run_engine_keep_browser_open)
+    engine.run(REQUIREMENT_PATH.read_text(), run_id="default_close_run")
+
+    mock_close.assert_called_once()
+
+
+def test_keep_browser_open_true_skips_close_at_end_of_run(tmp_dir__run_engine_keep_browser_open: Path, monkeypatch):
+    """The core regression case: with keep_browser_open=True, RunEngine
+    must NOT close the browser itself -- the caller (execute_cmd.py) owns
+    closing it once --scroll-test/--ui-audit are done."""
+    mock_close = MagicMock()
+    monkeypatch.setattr("runtime.hooks.browser.close", mock_close)
+
+    engine = _make_engine(tmp_dir__run_engine_keep_browser_open)
+    engine.run(REQUIREMENT_PATH.read_text(), run_id="keep_open_run", keep_browser_open=True)
+
+    mock_close.assert_not_called()
+
+
+def test_keep_browser_open_propagates_through_run_spec(tmp_dir__run_engine_keep_browser_open: Path, monkeypatch):
+    """run() delegates to run_spec() -- confirm the flag actually reaches
+    the real close-guard in run_spec() and isn't dropped along the way."""
+    mock_close = MagicMock()
+    monkeypatch.setattr("runtime.hooks.browser.close", mock_close)
+
+    engine = _make_engine(tmp_dir__run_engine_keep_browser_open)
+    result = engine.run(REQUIREMENT_PATH.read_text(), run_id="propagation_run", keep_browser_open=True)
+
+    assert result.report is not None
+    mock_close.assert_not_called()

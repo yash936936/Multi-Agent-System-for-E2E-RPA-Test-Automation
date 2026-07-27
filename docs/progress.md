@@ -9,40 +9,6 @@ project: AURA
 
 ---
 
-## 2026-07-28 — Phase 4 of the phased debug pass: `agents/planner/`, `agents/data_synth/` (D-084)
-
-Confirmed `spec_generator.py`'s Hermes→Cloud escalation chain and
-`page_grounding.py` are both clean (the "always falls through to cloud"
-behavior seen earlier is environment — no bundled `.gguf`, hermes not
-opted into the priority order — not a logic bug). Found and fixed the
-`data_synth/cache.py` bug from the original failing-test log: the cache
-is keyed only on `test_id`, so a spec's `data_requirements` growing
-between runs (e.g. `username` added on a `test_id` already cached
-without it) silently returned the stale dict missing the new field.
-`tool.py::generate()` now backfills only the missing fields into the
-cached dict and re-saves, leaving previously-cached values untouched.
-New `tests/test_data_synth_tool.py` (3 tests). 761 passed on the full
-suite, zero regressions. `docs/decisions.md` D-084 has the full writeup.
-
-## 2026-07-28 — Phases 2–3 of the phased debug pass: `runtime/`, `agents/vision/` (D-083)
-
-Phase 2 (`runtime/`) came back clean on re-audit — coordinate math,
-scroll sign convention, `SystemExit` handling, video-close timing all
-correct; the only "failures" were sandbox environment gaps (no X
-server, missing `faker`/`httpx`), fixed by running under Xvfb.
-Phase 3 (`agents/vision/`) confirmed `assertions.py` and the
-pixel-hash-vs-MutationObserver change detection were already fixed in
-earlier work. Found and fixed a real bug in `page_health.py`:
-`detect_page_issues()` couldn't distinguish "OCR ran, found nothing" from
-"OCR itself failed" — both returned `[]`, so `autoscan.py` and
-`ui_audit_runner.py` silently reported a clean scan even when OCR never
-ran. Added `detect_page_issues_detailed()` returning `(issues,
-ocr_checked)`, plus `ocr_checked`/`ocr_unavailable` fields on
-`AutoScanStepResult`/`AutoScanReport`/`UIAuditReport`. 758 passed, zero
-regressions. `docs/decisions.md` D-083 has the full writeup.
-
----
-
 ## 2026-07-27 — Phase 1 of the phased debug pass: `config/` + `orchestrator/schemas.py`/`spec_validator.py` (D-082)
 
 First phase of a bottom-up debugging pass (foundation layer first). Two

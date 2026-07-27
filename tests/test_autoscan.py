@@ -35,7 +35,7 @@ def test_run_autoscan_stops_when_screenshot_stops_changing(tmp_path, monkeypatch
     import runtime.hooks.os_fallback as real_interact
 
     monkeypatch.setattr(real_interact, "scroll", FakeInteract.scroll)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
 
     report = run_autoscan(fake_provider, run_id="test-run", max_scrolls=25)
 
@@ -51,7 +51,7 @@ def test_run_autoscan_respects_max_scrolls_cap(tmp_path, monkeypatch):
     import runtime.hooks.os_fallback as real_interact
 
     monkeypatch.setattr(real_interact, "scroll", lambda amount: None)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
 
     report = run_autoscan(always_different_provider, run_id="test-run", max_scrolls=5)
 
@@ -71,9 +71,9 @@ def test_run_autoscan_collects_issues(tmp_path, monkeypatch):
 
     def fake_detect(path):
         calls["i"] += 1
-        return (["404"] if calls["i"] == 2 else [], True)
+        return ["404"] if calls["i"] == 2 else []
 
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", fake_detect)
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", fake_detect)
 
     report = run_autoscan(provider, run_id="test-run", max_scrolls=3)
 
@@ -146,27 +146,6 @@ def test_detect_page_issues_never_raises_on_ocr_failure(monkeypatch):
     assert detect_page_issues("fake.png") == []
 
 
-def test_run_autoscan_flags_ocr_unavailable_distinct_from_clean(tmp_path, monkeypatch):
-    """Regression: an OCR failure (e.g. tesseract missing) must not be
-    silently reported the same as 'checked, found no issues'. See
-    agents/vision/page_health.py::detect_page_issues_detailed."""
-    def provider(run_id: str, index: int) -> str:
-        return _make_screenshot(tmp_path, f"shot_{index}.png", f"frame-{index}".encode())
-
-    import runtime.hooks.os_fallback as real_interact
-
-    monkeypatch.setattr(real_interact, "scroll", lambda amount: None)
-    monkeypatch.setattr(
-        "agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], False)
-    )
-
-    report = run_autoscan(provider, run_id="test-run", max_scrolls=3)
-
-    assert report.all_issues == []
-    assert report.ocr_unavailable is True
-    assert all(not step.ocr_checked for step in report.steps)
-
-
 def test_run_autoscan_handles_no_display_on_first_screenshot():
     """Regression test: the screenshot_provider call inside run_autoscan's
     loop used to be unguarded, so a NoDisplayError on the very first
@@ -206,7 +185,7 @@ def test_run_autoscan_handles_no_display_mid_scan(tmp_path, monkeypatch):
     import runtime.hooks.os_fallback as real_interact
 
     monkeypatch.setattr(real_interact, "scroll", lambda amount: None)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
 
     report = run_autoscan(flaky_provider, run_id="r2")
 
@@ -240,7 +219,7 @@ def test_run_autoscan_prefers_dom_scroll_over_os_scroll_when_page_is_live(tmp_pa
 
     monkeypatch.setattr(real_interact, "scroll", lambda amount: os_scroll_calls.__setitem__("count", os_scroll_calls["count"] + 1))
     monkeypatch.setattr(real_browser, "dom_scroll", lambda delta_y: dom_scroll_calls.__setitem__("count", dom_scroll_calls["count"] + 1) or True)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
 
     report = run_autoscan(fake_provider, run_id="dom-scroll-run", max_scrolls=25)
 
@@ -271,7 +250,7 @@ def test_run_autoscan_falls_back_to_os_scroll_when_no_live_page(tmp_path, monkey
 
     monkeypatch.setattr(real_interact, "scroll", lambda amount: os_scroll_calls.__setitem__("count", os_scroll_calls["count"] + 1))
     monkeypatch.setattr(real_browser, "dom_scroll", lambda delta_y: False)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
 
     report = run_autoscan(fake_provider, run_id="os-fallback-run", max_scrolls=25)
 
