@@ -150,6 +150,23 @@ def _validate_step_completeness(step: TestStep) -> List[SpecValidationIssue]:
             ))
 
     elif step.action == ActionType.CAPABILITY_CHECK:
+        if step.capability_type is None:
+            issues.append(SpecValidationIssue(
+                step_id=step.step_id, severity="error", code="missing_capability_type",
+                message=(
+                    "CAPABILITY_CHECK step has no 'capability_type' set -- "
+                    "there's no adapter to route this check to. This is caught "
+                    "here rather than left to fail at run time: "
+                    "orchestrator/run_engine.py constructs "
+                    "CapabilityCheckInput(capability=step.capability_type, ...) "
+                    "unconditionally, and CapabilityCheckInput.capability is a "
+                    "required CapabilityType field with no default -- a None "
+                    "here raises a raw pydantic ValidationError that crashes "
+                    "the entire run (it happens before the try/except guard "
+                    "around the adapter call itself), instead of a clean "
+                    "spec-validation error before the run even starts."
+                ),
+            ))
         if not step.target and not step.capability_params:
             issues.append(SpecValidationIssue(
                 step_id=step.step_id, severity="error", code="missing_capability_target",

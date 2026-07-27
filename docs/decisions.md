@@ -4885,3 +4885,18 @@ entry's scope covers.
 **Docs updated in the same pass:** `docs/README.md` (Autonomy modes + full `execute` flag reference table rewritten), `docs/STATUS.md` (new top entry, this decision's summary), `docs/AURA_BRAIN_ARCHITECTURE.md` (top-of-file note + corrected `IntentKind` code sample + playbooks tree), `docs/Roadmap.md`, `context.md`, `docs/external_repos.md`, `brain_knowledge/context.md`, `brain_knowledge/CHANGELOG.md` (new entry, old entries left as accurate history), `brain_knowledge/playbooks/ui_audit.md` (cross-references to the deleted `explore.md` playbook rewritten inline); `brain_knowledge/playbooks/explore.md` deleted outright (pure documentation of the removed handler, no historical-narrative value lost).
 
 **Revisit when:** deciding whether to close the API parity gap above by adding `scroll_test`/`ui_audit` fields to the `guided`/`autonomous` request schemas.
+
+---
+
+## D-082 — Phase 1 of the phased debug pass: `config/` + `orchestrator/schemas.py`/`spec_validator.py`
+**Decided:** 2026-07-27
+**Decision:** First phase of a bottom-up, dependency-ordered debugging pass (foundation layer first, since it has the widest blast radius) turned up two real bugs and one doc-drift issue, all fixed:
+1. **`GuardrailSettings` read unprefixed environment variables.** As a nested `BaseSettings` subclass with no `model_config`/`env_prefix`, it fell back to pydantic-settings' default of matching bare field names — `WARNINGS_ENABLED`, `HARD_STOP_ENABLED`, etc. — with zero `AURA_` namespacing, unlike every other Settings class in the file. Confirmed by reproduction: a bare `WARNINGS_ENABLED=false` in the shell silently disabled AURA's safety guardrails. Fixed with `env_prefix="AURA_GUARDRAILS_"`.
+2. **A `CAPABILITY_CHECK` step missing `capability_type` crashed the entire run** instead of failing spec validation cleanly. `orchestrator/spec_validator.py` checked `target`/`capability_params` but never `capability_type` itself; `orchestrator/run_engine.py` constructs `CapabilityCheckInput(capability=step.capability_type, ...)` unconditionally, and `CapabilityCheckInput.capability` is a required `CapabilityType` field — passing `None` raises a raw pydantic `ValidationError` *before* the `try/except RuntimeError` guard around the adapter call, so nothing catches it. Fixed by adding the missing check.
+3. **Doc drift, not a functional bug:** `enable_dom_extractor`'s docstring described the pre-Phase-2 "OCR-first, DOM supplements it" model; Phase 2/D-073 rewrote this to DOM-first/OCR-fallback (one path per run) but the docstring was never updated to match.
+
+**Why:** Requested as a systematic, phased debugging pass rather than ad-hoc spot checks — foundation-layer code (`config/`, `orchestrator/schemas.py`) has the widest blast radius of anything in the codebase, and (per the pattern already established by D-081's three bugs) is exactly the kind of low-level, rarely-directly-tested code where subtle bugs like these hide.
+
+**Verified:** `tests/test_settings.py`, `tests/test_guardrails.py`, `tests/test_healing_loop.py`, `tests/test_spec_validator.py`, `tests/test_schemas.py` (65 passed) plus the full non-browser-dependent suite (750 passed, up from 749 — one new regression test, `test_capability_check_with_no_capability_type_is_an_error`, added to `tests/test_spec_validator.py`). Confirmed no test relied on `GuardrailSettings`' old unprefixed-env-var behavior (all existing tests construct it via explicit keyword args, not env vars).
+
+**Revisit when:** starting Phase 2 (`runtime/hooks/`) of the same debugging pass — see `docs/STATUS.md`'s matching entry for the full phase breakdown.

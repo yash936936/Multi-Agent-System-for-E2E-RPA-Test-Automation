@@ -9,6 +9,25 @@ project: AURA
 
 ---
 
+## 2026-07-27 — Phase 1 of the phased debug pass: `config/` + `orchestrator/schemas.py`/`spec_validator.py` (D-082)
+
+First phase of a bottom-up debugging pass (foundation layer first). Two
+real bugs found and fixed: (1) `GuardrailSettings` was a nested
+`BaseSettings` with no `env_prefix`, so it read bare, unprefixed
+environment variables (`WARNINGS_ENABLED`, `HARD_STOP_ENABLED`, etc.) —
+confirmed by reproduction that an unrelated `WARNINGS_ENABLED=false` in
+the shell silently disabled AURA's safety guardrails; fixed with
+`env_prefix="AURA_GUARDRAILS_"`. (2) `orchestrator/spec_validator.py`
+never checked that `capability_type` was set on a `CAPABILITY_CHECK`
+step (only `target`/`capability_params`), so a spec missing it crashed
+`RunEngine.run_spec()` with a raw pydantic `ValidationError` instead of
+failing validation cleanly before the run started — fixed, regression
+test added. Also fixed a stale docstring (`enable_dom_extractor`
+described the pre-Phase-2 OCR-supplement model; Phase 2/D-073 rewrote
+this to DOM-first/OCR-fallback months ago). 750 passed on the full
+non-browser-dependent suite. `docs/decisions.md` D-082 has the full
+writeup.
+
 ## 2026-07-27 — `aura explore` removed; three real bugs found and fixed (D-081)
 
 Removed the CLI's zero-instruction `aura explore <url>` command entirely

@@ -57,6 +57,24 @@ def test_capability_check_with_neither_target_nor_params_is_an_error():
     assert issues[0].code == "missing_capability_target"
 
 
+def test_capability_check_with_no_capability_type_is_an_error():
+    """
+    Regression test (2026-07-27 Phase 1 audit): capability_type itself was
+    never checked here, only target/capability_params. A spec with target
+    set but capability_type missing passed validate_spec() cleanly, then
+    crashed RunEngine.run_spec() with a raw pydantic ValidationError from
+    CapabilityCheckInput(capability=None, ...) -- constructed before the
+    try/except RuntimeError guard around the adapter call, so nothing
+    caught it. This must be flagged here, before the run ever starts.
+    """
+    spec = _spec([
+        TestStep(step_id=1, action=ActionType.CAPABILITY_CHECK, target="https://api.example.com")
+    ])
+    issues = validate_spec(spec)
+    assert len(issues) == 1
+    assert issues[0].code == "missing_capability_type"
+
+
 def test_capability_check_with_target_only_has_no_issues():
     spec = _spec([
         TestStep(step_id=1, action=ActionType.CAPABILITY_CHECK, capability_type=CapabilityType.API, target="https://api.example.com")

@@ -35,6 +35,26 @@ def _default_project_root() -> Path:
 class GuardrailSettings(BaseSettings):
     """Mirrors TRD.md §5.4 `tool_loop_guardrails` YAML block exactly."""
 
+    # Bug found and fixed 2026-07-27 (Phase 1 config audit): this class had
+    # no model_config at all, so as a BaseSettings subclass it fell back to
+    # pydantic-settings' default of reading *unprefixed* environment
+    # variables matching its field names -- WARNINGS_ENABLED,
+    # HARD_STOP_ENABLED, WARN_AFTER_EXACT_FAILURE, etc., with zero AURA_
+    # namespacing. Confirmed by reproduction: a bare `WARNINGS_ENABLED=false`
+    # in the shell (nothing AURA-specific at all -- plausible in any CI
+    # system, unrelated tool, or shared dev environment that happens to set
+    # a same-named var) silently disabled AURA's own safety guardrails,
+    # with no warning and no AURA_ variable ever having been set by the
+    # user. Every other Settings class in this file uses
+    # env_prefix="AURA_"; this nested one was the one exception. Prefixed
+    # AURA_GUARDRAILS_ (not bare AURA_, to avoid colliding with the parent
+    # Settings class's own field names) so individual thresholds remain
+    # overridable, just only intentionally.
+    model_config = SettingsConfigDict(
+        env_prefix="AURA_GUARDRAILS_",
+        extra="ignore",
+    )
+
     warnings_enabled: bool = True
     hard_stop_enabled: bool = True
 
@@ -326,26 +346,33 @@ class Settings(BaseSettings):
     # neither on at once.
     record_trace: bool = False
 
-    # --- DOM-extractor exploration supplement (agents/vision/dom_extractor.py) ---
+    # --- DOM-extractor discovery path (agents/vision/dom_extractor.py) ---
     # Off by default. When True and a live Playwright session is already
-    # open (runtime.hooks.browser.has_active_page()), orchestrator/
-    # ui_audit_runner.py's click-audit/explore loop supplements its
-    # OCR-band candidate list with a live-DOM scan (icon-only controls,
+    # open, orchestrator/ui_audit_runner.py's click-audit loop uses the
+    # DOM as its *primary* discovery source (icon-only controls,
     # custom div/span controls with no OCR-visible label text -- see
     # agents/vision/dom_extractor.py's module docstring for the full
-    # rationale). Defaults off rather than on, unlike most detection
-    # improvements in this codebase, for one specific reason: this is the
-    # first source in the click-audit loop that can produce a *real*
-    # on-screen click for an element whose only detectable signal is a
-    # CSS cursor style (`cursor: pointer` on a div/span/li) -- broader
-    # detection surface than either OCR text-matching or ARIA-role
-    # matching, which both require some form of semantic labeling.
-    # Enabling it trades a real chance of AURA finding genuinely missed
-    # click targets against a real chance of it clicking a decorative
-    # element that merely happens to be styled with a pointer cursor.
-    # Turn on deliberately (AURA_ENABLE_DOM_EXTRACTOR=true) once you've
-    # seen it behave correctly against your own site(s), not by default
-    # for every user's first run.
+    # rationale). As of the Phase 2/D-073 rewrite this is DOM-first, not
+    # a supplement merged into OCR's candidate list and cross-checked
+    # afterward -- OCR's own vocab-based classification
+    # (`agents/vision/ui_audit.py`'s `_NAV_VOCAB`/`_CTA_VOCAB`/
+    # `_FOOTER_VOCAB`) only runs at all as the fallback, when no live
+    # page exists or the DOM walk itself raises (see
+    # `orchestrator/ui_audit_runner.py::_run_click_audit`'s discovery
+    # block for the exact condition). Defaults off rather than on,
+    # unlike most detection improvements in this codebase, for one
+    # specific reason: this is the first source in the click-audit loop
+    # that can produce a *real* on-screen click for an element whose
+    # only detectable signal is a CSS cursor style (`cursor: pointer` on
+    # a div/span/li) -- broader detection surface than either OCR
+    # text-matching or ARIA-role matching, which both require some form
+    # of semantic labeling. Enabling it trades a real chance of AURA
+    # finding genuinely missed click targets against a real chance of it
+    # clicking a decorative element that merely happens to be styled
+    # with a pointer cursor. Turn on deliberately
+    # (AURA_ENABLE_DOM_EXTRACTOR=true) once you've seen it behave
+    # correctly against your own site(s), not by default for every
+    # user's first run.
     enable_dom_extractor: bool = False
 
     # --- Optional external integration: Composio (proposed D-046) ---
