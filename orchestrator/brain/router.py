@@ -32,8 +32,7 @@ pattern (full rationale in `docs/AURA_BRAIN_ARCHITECTURE.md` §5.1/§5.2):
    param (skips `planner_generate_spec` and calls
    `RunEngine.run_spec()` directly when the caller -- api/routers/runs.py's
    "guided" mode -- already has a hand-assembled `TestSpec`, since there
-   is no free-text requirement to re-plan from). Both
-   `_handle_execute_requirement` and `_handle_explore` also accept an
+   is no free-text requirement to re-plan from). It also accepts an
    optional `run_id` param, since API callers pre-create a `run_store`
    record under their own generated UUID before the background task
    runs and cannot let the Brain derive a different one.
@@ -76,91 +75,12 @@ class Router:
         if handler is None:
             raise NotImplementedError(
                 f"AuraBrain: intent kind {intent.kind!r} has no handler in orchestrator/brain/router.py. "
-                "All 6 documented IntentKind values (explore, execute_spec, execute_prompt, "
+                "All 5 documented IntentKind values (execute_spec, execute_prompt, "
                 "execute_interactive, ui_audit, capability_check) are migrated as of Phase B3 "
                 "(docs/decisions.md D-075) -- this means either a typo, or a genuinely new intent "
                 "kind that needs its own _handle_<kind>() method added here first."
             )
         return handler(intent)
-
-    # ------------------------------------------------------------------
-    # explore
-    # ------------------------------------------------------------------
-    def _handle_explore(self, intent: Intent) -> BrainResult:
-        """
-        Moved verbatim (same call sequence, same defaults) from
-        `aura/cli/explore_cmd.py::explore()` as it existed before this
-        migration -- this is a coordination move, not a behavior change.
-        Rendering (console output, JSON report writing) stays in
-        `explore_cmd.py`; this returns the data that rendering needs.
-        """
-        from config.settings import settings
-        from runtime.hooks import browser
-        from runtime.hooks.browser import normalize_url
-        from runtime.hooks.capture import capture_screenshot
-
-        url = intent.get("url")
-        max_elements = intent.get("max_elements", 25)
-        prompt = intent.get("prompt")
-        scroll_scan = intent.get("scroll_scan", True)
-        check_links = intent.get("check_links", False)
-        link_scope = intent.get("link_scope", "all")
-
-        # `run_id` override (API callers, e.g. api/routers/runs.py, pre-create
-        # a run_store record under their own generated UUID before the
-        # background task runs -- the Brain can't be allowed to derive a
-        # different run_id here, or the report would be written under an id
-        # the caller never learns about). CLI callers omit this and keep the
-        # original explore_<hex8> scheme.
-        run_id = intent.get("run_id") or f"explore_{uuid.uuid4().hex[:8]}"
-        normalized = normalize_url(url)
-
-        open_error: str | None = None
-        try:
-            browser.open_url(normalized)
-        except Exception as e:  # noqa: BLE001 - surfaced to the caller either way
-            open_error = str(e)
-
-        time.sleep(settings.human_action_poll_interval_seconds)
-
-        def provider(rid: str, index: int) -> str:
-            # Deliberately does NOT catch NoDisplayError here -- see
-            # explore_cmd.py's original note, preserved: run_autoscan and
-            # run_exploration each wrap their own calls to this provider in
-            # runtime.errors.display_guard(), which only works if the error
-            # propagates out of the provider uncaught.
-            return str(capture_screenshot(rid, index))
-
-        autoscan_report = None
-        if scroll_scan:
-            from orchestrator.autoscan import run_autoscan
-
-            autoscan_report = run_autoscan(provider, run_id=run_id)
-
-        from orchestrator.ui_audit_runner import run_exploration
-
-        report = run_exploration(
-            provider,
-            run_id=run_id,
-            max_elements=max_elements,
-            requirement_prompt=prompt,
-            page_url=normalized if check_links else None,
-            link_check_scope=link_scope,
-        )
-
-        return BrainResult(
-            run_id=run_id,
-            kind="explore",
-            data={
-                "normalized_url": normalized,
-                "open_error": open_error,
-                "autoscan_report": autoscan_report,
-                "report": report,
-                "prompt": prompt,
-                "check_links": check_links,
-                "link_scope": link_scope,
-            },
-        )
 
     # ------------------------------------------------------------------
     # execute_spec / execute_prompt -- both share the exact same
@@ -211,7 +131,9 @@ class Router:
         # entirely and run the spec as given.
         built_spec = intent.get("built_spec")
 
-        # `run_id` override -- see the matching note in _handle_explore.
+        # `run_id` override (API callers pre-create a run_store record
+        # under their own generated UUID before the background task
+        # runs and cannot let the Brain derive a different one).
         run_id_override = intent.get("run_id")
 
         # CLI-supplied closures -- each defaults to a no-op so this

@@ -312,9 +312,14 @@ class _BrowserSession:
             cdp = self._context.new_cdp_session(self._page)
             bounds = cdp.send("Browser.getWindowForTarget")["bounds"]
             dpr = self._page.evaluate("window.devicePixelRatio") or 1
-            chrome_w_css = self._page.evaluate("window.outerWidth - window.innerWidth") or 0
             chrome_h_css = self._page.evaluate("window.outerHeight - window.innerHeight") or 0
-            content_left_screen = bounds["left"] + chrome_w_css * dpr
+            # No left/right chrome is assumed (see docstring above), so
+            # the content area's left edge is simply the window's left
+            # edge -- unlike height, outerWidth - innerWidth is normally
+            # the vertical scrollbar's width (on the content's *right*
+            # edge), not left-side chrome, and must not be folded into
+            # this offset.
+            content_left_screen = bounds["left"]
             content_top_screen = bounds["top"] + chrome_h_css * dpr
             viewport_x = (screen_x - content_left_screen) / dpr
             viewport_y = (screen_y - content_top_screen) / dpr

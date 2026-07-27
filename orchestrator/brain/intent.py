@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 IntentKind = Literal[
-    "explore",
     "execute_spec",
     "execute_prompt",
     "execute_interactive",

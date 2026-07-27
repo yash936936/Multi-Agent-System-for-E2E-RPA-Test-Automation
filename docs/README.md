@@ -133,31 +133,19 @@ AURA has two genuinely different modes now, not just "pauses more or less."
 
 ### Mode A — fully autonomous, zero human input
 
-**`aura explore <url>`** is the purest form: point it at a URL with no spec and no instructions at all, and it behaves like a QA tester who's never seen the page before — navigates, scrolls the whole thing checking for broken/error content, finds every clickable-looking element via OCR (nav, hero, footer, *and* body — not just nav/footer like `--ui-audit`), clicks each one, checks whether anything visibly changed, comes back, and moves to the next one. No approval checkpoints, ever.
+`aura execute --yes` / `--autonomous` (the two flags do the same thing) runs a **written spec or `--prompt`-described flow** fully unattended: no spec-approval prompt, no low-confidence pause, no heal accept/reject.
 
 ```powershell
-# Zero instructions -- just explore and report back
-aura explore https://example.com
+# Written spec, fully unattended
+aura execute requirements_input\login_flow.md --yes
 
-# Same, but also flag whether a specific thing looks covered
-aura explore https://example.com --prompt "check the submit button works"
+# Plain-English instruction instead of a spec file -- always unattended,
+# since there's no step list to review ahead of time
+aura execute --prompt "Check the pricing page and verify the Sign Up button works"
 
-# Cap how many elements it test-clicks (default 25)
-aura explore https://example.com --max-elements 40
-
-# Skip the full-page scroll/error scan, just do the click sweep
-aura explore https://example.com --no-scroll-scan
-
-# Also run a real HTTP-level link check (off by default -- opt in explicitly)
-aura explore https://example.com --check-links
-
-# Same, but restrict the link check to just the footer
-aura explore https://example.com --check-links --link-scope footer
+# Add --ui-audit for a broader nav/hero/footer sweep + click-and-diff check
+aura execute --url https://example.com --prompt "check the pricing page" --ui-audit
 ```
-
-The `--prompt` check is a **keyword heuristic, not language understanding** — it looks for on-screen text overlapping words from your prompt among everything it saw while exploring, and says so explicitly in the output either way. Treat it as "here's what I noticed that might be relevant," not a verdict.
-
-`aura execute --yes` / `--autonomous` (the two flags do the same thing) is the other flavor of Mode A: fully unattended execution of a **written spec or `--prompt`-described flow**, as before — no spec-approval prompt, no low-confidence pause, no heal accept/reject. Use `explore` when you have no spec at all; use `execute --autonomous` when you do.
 
 ### Mode B — human-in-the-loop, `aura execute --interactive`
 
@@ -190,7 +178,7 @@ fallback path is meant to grow into.
 
 ### The gap this closes (and what's still `--yes`-shaped elsewhere)
 
-Previously, `execute_prompt()` hardcoded `auto_approve=True` and `--yes` set it for every other path too — tracing the flow, `confirm_spec_approval`, `low_confidence_prompt`, and `confirm_heal_accept` were only ever called `if not auto_approve`, so a `--prompt` or `--yes` run genuinely never paused, start to finish. That's still true and is the *correct* behavior for Mode A — the actual gap wasn't "it doesn't wait for a human," it was that **AURA had no way to act like a professional QA tester with no explicit instructions at all** (give it one step, it does one step) and no way to **deliberately hand control to a human mid-run and wait for them**, rather than just skip a confirmation prompt. `aura explore` and `aura execute --interactive` are exactly those two missing pieces. A plain `aura execute <spec>` (no `--yes`/`--autonomous`/`--interactive`) still uses the original spec-approval / low-confidence / heal-accept checkpoints exactly as before — nothing about that path changed.
+Previously, `execute_prompt()` hardcoded `auto_approve=True` and `--yes` set it for every other path too — tracing the flow, `confirm_spec_approval`, `low_confidence_prompt`, and `confirm_heal_accept` were only ever called `if not auto_approve`, so a `--prompt` or `--yes` run genuinely never paused, start to finish. That's still true and is the *correct* behavior for Mode A. The actual remaining gap was **deliberately handing control to a human mid-run and waiting for them**, rather than just skipping a confirmation prompt — `aura execute --interactive` is that missing piece. A plain `aura execute <spec>` (no `--yes`/`--autonomous`/`--interactive`) still uses the original spec-approval / low-confidence / heal-accept checkpoints exactly as before — nothing about that path changed.
 
 ---
 
@@ -207,7 +195,7 @@ aura init --yes       # skip prompts, write defaults
 
 ### `aura execute`
 
-Runs a test: spec generation → approval checkpoint → live vision-execution loop → report.
+Runs a test: spec generation → approval checkpoint → live vision-execution loop → report. This is the **only** run command now — the old zero-instruction `aura explore` mode has been removed; use `--prompt` (Mode A) for unattended zero-spec runs instead (see "Autonomy modes" above).
 
 ```powershell
 aura execute <test_id_or_path>              # run one requirement doc
@@ -219,6 +207,7 @@ aura execute --url https://example.com/login                     # no spec neede
 aura execute <test_id_or_path> --url https://example.com/login   # navigate there first, then run the spec's steps
 aura execute --prompt "Check the pricing page and verify the Sign Up button works"   # plain-English test, fully unattended
 aura execute --url https://example.com --scroll-test             # after the main run, scroll the full page checking for broken/error content
+aura execute --url https://example.com --ui-audit                # nav/hero/footer landmark + click-and-diff sweep, plus an automatic real link check if the target is a URL
 aura execute <test_id_or_path> --autonomous                      # same as --yes -- explicit name for "no human input at all"
 aura execute --interactive --url https://example.com --prompt "click the submit button"              # human-in-the-loop: waits for you, no timeout
 aura execute --interactive --url https://example.com --prompt "click the submit button" --timeout 120 # same, but gives up after 2 minutes
@@ -226,10 +215,33 @@ aura execute --all --junit-out results.xml                       # CI mode: JUni
 aura execute --all --include-quarantined                         # also run specs quarantined via `aura skills quarantine` (skipped by default)
 aura execute <test_id_or_path> --browser firefox                 # Phase I1: run against Firefox instead of the default Chromium
 aura execute <test_id_or_path> --record-video                    # Phase I2: record a real video (DOM path) or a step-boundary slideshow (OS/pixel path)
+aura execute <test_id_or_path> --no-record-video                 # explicitly force video recording off, even if AURA_RECORD_VIDEO=true is set in .env
 aura execute --all --parallel 4 --yes                            # Phase J: run up to 4 requirement docs concurrently (ThreadPoolExecutor). Default is 1 (sequential, unchanged behavior).
+aura execute <test_id_or_path> --continuous-audit                 # extra LLM second-opinion pass on every step's self-reported outcome (adds latency)
 ```
 
-**`--parallel N` (Phase J)** only applies with `--all`. It's intended for unattended batch runs (`--yes`/`--autonomous`) against independent, non-conflicting targets — each worker thread gets its own `RunEngine`/`SkillStore`/`RunMemoryStore` instance, so there's no shared-state correctness risk, but per-spec console output from different threads can interleave, and two workers both driving a real browser on the same physical machine/display will contend for that one screen the same way any two manually-run instances would. `--parallel 1` (the default) preserves the exact original sequential behavior and ordering.
+**Full flag reference:**
+
+| Flag | Applies with | Default | Notes |
+|---|---|---|---|
+| `test_id_or_path` (positional) | — | none | A requirement doc's test ID/filename fragment (fuzzy-matched against `requirements_input\*.md`'s filename *and full contents* — the first match wins if more than one doc matches, so keep test IDs unique) or a direct path. Omit it and pass `--all`, `--url`, or `--prompt` instead. |
+| `--all` | — | off | Run every `.md` file in `requirements_input\`. Exits 1 if the directory has none. |
+| `--yes` / `-y` | — | off | Auto-approve spec, low-confidence actions, and healed steps. Same as `--autonomous`. |
+| `--autonomous` | — | off | Identical to `--yes` — an explicit, self-documenting alias. |
+| `--refresh-data` | spec/`--all` runs | off | Force-regenerate synthetic data instead of reusing the on-disk cache. |
+| `--pdf` | any run | off | Also export the HTML report as PDF. Requires the `report` extra (`pip install -e ".[report]"`); prints a yellow warning instead of failing the run if it isn't installed. |
+| `--url <url>` | any mode | none | Live URL to test. With no `test_id`/`--prompt`, this alone triggers an auto-generated navigate-and-settle smoke test. Combined with a spec/`--prompt`, it's prepended as a navigate precondition. Bare domains (no `http(s)://`) are normalized automatically. |
+| `--prompt "<text>"` | — | none | Plain-English instruction instead of a spec file. Always unattended (no spec to review line-by-line). Combine with `--interactive` for Mode B instead. |
+| `--scroll-test` | any run | off | After the main steps, scroll the full page top-to-bottom checking for broken/error content. Keeps the browser open after the main run to do this. |
+| `--ui-audit` | any run | off | Checks nav/hero/footer landmarks are present and test-clicks nav/footer links, flagging any that produce no visible change. When the target is a URL, this **also automatically runs a real HTTP-level link check** (`agents/capability/link_checker.py`) against every navigable `<a href>` on the page — not just the click-and-diff heuristic — with no separate opt-in flag needed. See "Real link check" below for exactly what that covers and its known limits. |
+| `--interactive` | requires `--prompt` | off | Mode B — see "Autonomy modes" above. Exits 1 immediately if `--prompt` wasn't also given. Any other flag (`--yes`, `--pdf`, `--junit-out`, etc.) passed alongside `--interactive` is silently ignored — interactive mode short-circuits before reaching them. |
+| `--timeout <seconds>` | `--interactive` only | `0` (wait forever) | Give up after this many seconds if nothing changes. Ignored (has no effect) outside `--interactive`. |
+| `--junit-out <path>` | any run | none | Write JUnit XML for CI. With `--all`, every spec's outcome becomes one `<testsuite>` in a single combined file. |
+| `--include-quarantined` | `--all` only | off | Also run specs quarantined via `aura skills quarantine <test_id>` (skipped by default). No effect without `--all`. |
+| `--browser chromium\|firefox\|webkit` | any run | `chromium` | Which Playwright engine to launch for DOM-path targets. Invalid values exit 1 with a clear message. Firefox/WebKit need their own binaries installed (`playwright install firefox webkit`) first. |
+| `--record-video` / `--no-record-video` | any run | falls back to `settings.record_video` (`AURA_RECORD_VIDEO` in `.env`) | Record a real Playwright video (DOM path) or a step-boundary slideshow (OS/pixel path). **Fixed:** this used to unconditionally reset `settings.record_video` to `False` on every invocation that didn't pass the flag, silently overriding an `AURA_RECORD_VIDEO=true` default in `.env`. Omitting the flag now leaves whatever `.env`/default value is already set untouched; pass `--record-video` or `--no-record-video` explicitly to force it either way for one run. |
+| `--parallel <N>` | `--all` only | `1` (sequential) | Run up to `N` requirement docs concurrently via `ThreadPoolExecutor` (this is I/O-bound work, so threads, not processes). Each worker gets its own `RunEngine`/`SkillStore`/`RunMemoryStore` — no shared-state correctness risk — but per-spec console output from different threads can interleave, and multiple workers driving a real browser on one physical display will contend for that one screen. Exits 1 if `< 1`. |
+| `--continuous-audit` | any run | falls back to `settings.enable_continuous_audit` (`AURA_ENABLE_CONTINUOUS_AUDIT`) | Runs an independent LLM second opinion on every vision step's self-reported outcome, re-healing on disagreement instead of just trusting the step's own confidence. One extra LLM call per step — real latency cost. Uses the same "only override when explicitly passed" pattern as `--record-video` above, so an env-configured default isn't silently forced off. |
 
 `<test_id_or_path>` can be:
 - A direct file path: `aura execute requirements_input\login_flow.md`
@@ -247,27 +259,11 @@ aura execute --all --parallel 4 --yes                            # Phase J: run 
 
 **Cross-browser (`--browser chromium|firefox|webkit`, Phase I1):** which Playwright engine `runtime/hooks/browser.py` launches for DOM-path targets. Defaults to `chromium` (unchanged behavior if you never pass this). An invalid value exits 1 with a clear message rather than a stack trace. Note: Firefox/WebKit require their own Playwright browser binaries to be installed (`playwright install firefox webkit`) — if the one you pick isn't installed, you'll get a clear `NoDisplayError`-style message, not a crash.
 
-**Video recording (`--record-video`, Phase I2):** off by default (video files are meaningfully larger than screenshots). When on: if the run uses the DOM/Playwright path, you get a real, native video file (`runtime\videos\<hash>.webm`) referenced in the report under `report_paths["video"]`. If the run uses the OS/pixel fallback path instead (native desktop targets with no live accessibility tree), you get an honestly-labeled step-boundary **slideshow** manifest (`runtime\videos\slideshow_<run_id>\manifest.json`, `report_paths["video_slideshow"]`) — a JSON list of each step's already-captured screenshot in order, explicitly *not* claimed to be continuous video.
+**Video recording (`--record-video` / `--no-record-video`, Phase I2):** off by default (video files are meaningfully larger than screenshots). When on: if the run uses the DOM/Playwright path, you get a real, native video file (`runtime\videos\<hash>.webm`) referenced in the report under `report_paths["video"]`. If the run uses the OS/pixel fallback path instead (native desktop targets with no live accessibility tree), you get an honestly-labeled step-boundary **slideshow** manifest (`runtime\videos\slideshow_<run_id>\manifest.json`, `report_paths["video_slideshow"]`) — a JSON list of each step's already-captured screenshot in order, explicitly *not* claimed to be continuous video.
 
-### `aura explore` (new)
-
-Fully autonomous, zero-instruction exploration — the other half of "Autonomy modes" above. No spec, no `--prompt` required:
-
-```powershell
-aura explore https://example.com                                        # navigate, scroll-scan, click everything, report
-aura explore https://example.com --prompt "check the submit button works"  # same, plus a best-effort check for something specific
-aura explore https://example.com --max-elements 40                      # raise the click cap (default 25)
-aura explore https://example.com --no-scroll-scan                       # skip the full-page error scan, just click things
-aura explore https://example.com --check-links                          # also run a real HTTP-level link check (off by default)
-aura explore https://example.com --check-links --link-scope footer      # restrict that link check to just <footer> links
-aura explore https://example.com --check-links --link-scope nav         # restrict it to just <nav> links
-```
-
-Generalizes the same click-and-diff engine `--ui-audit` uses (`orchestrator/ui_audit_runner.py`) from "nav + footer only" to every interactive-looking element on the page (nav, hero, footer, body). Output is a terminal summary plus a JSON report under `reports\explore_<run_id>\report.json` — this mode doesn't (yet) produce an HTML report, since `render_html()` expects a full spec-driven run on disk and `explore` deliberately has neither a spec nor a `RunEngine` pass.
-
-**Real HTTP link check (`agents/capability/link_checker.py`) — opt-in via `--check-links`:** by default `explore` only does the OCR click-and-diff sweep above; pass `--check-links` to *additionally* fetch the page's raw HTML and issue a real HTTP status check against every navigable `<a href>` link. `--link-scope` (`all` by default, or `footer`/`nav`) only has any effect when `--check-links` is also passed — it's not a separate way to trigger the check. This is opt-in rather than automatic because a live HTTP request against every link on the page is a meaningfully different (and heavier/network-dependent) check than the OCR sweep, and shouldn't run silently on a plain `aura explore` call. Two things worth knowing about how this works:
+**Real link check, automatic under `--ui-audit` (`agents/capability/link_checker.py`):** whenever `--ui-audit` runs against a URL target, AURA fetches the page's raw HTML and issues a real HTTP status check against every navigable `<a href>` link, in addition to the OCR/DOM click-and-diff sweep — this needs no separate flag, it's automatic. Two things worth knowing about how this works:
 - **Redirects are shown, not hidden.** A link that 301/302-redirects somewhere else still counts as "working" (its final destination is what matters), but the redirect chain — every hop's status code and target — is reported explicitly rather than silently landing on the final URL and looking identical to a direct hit.
-- **Client-rendered (React/Next.js/Angular) pages have a real, disclosed coverage limit.** AURA's link check reads the raw HTML returned by a plain HTTP request — the same "no DOM automation" posture as the rest of the vision pipeline — so if a page's links are injected by JavaScript after load rather than present in the server-delivered HTML, they genuinely won't be found. When this happens, the report says so explicitly (`client_rendered_suspected: true` in the JSON output, plus a plain-English explanation in the terminal) instead of looking like a clean pass with nothing to check. Actually checking JS-injected links would require a headless-browser render step (e.g. Playwright), which AURA does not currently do — this is flagged as a known limitation, not silently worked around.
+- **Client-rendered (React/Next.js/Angular) pages have a real, disclosed coverage limit.** AURA's link check reads the raw HTML returned by a plain HTTP request — the same "no DOM automation" posture as the rest of the vision pipeline — so if a page's links are injected by JavaScript after load rather than present in the server-delivered HTML, they genuinely won't be found. When this happens, the report says so explicitly (`client_rendered_suspected: true` in the JSON output, plus a plain-English explanation in the terminal) instead of looking like a clean pass with nothing to check. Actually checking JS-injected links would require a headless-browser render step (e.g. Playwright), which this specific check does not currently do — this is flagged as a known limitation, not silently worked around.
 
 ### Testing a live website
 
@@ -593,18 +589,7 @@ This surface is fully unit-tested (`tests/test_capabilities.py`, `tests/test_16_
 `api/main.py` is a FastAPI service (`AURA Universal QA Platform`) with a small web dashboard (`webui/`) and REST endpoints for triggering and inspecting runs, separate from the CLI.
 
 - **Login exists.** `POST /api/v1/auth/login` (username/password) and `POST /api/v1/auth/signup` both issue a real JWT (`api/user_store.py`, PBKDF2-hashed passwords); Google/GitHub OAuth is also available under `/api/v1/auth/oauth/{provider}/login` when the corresponding client ID/secret env vars are set. Every other endpoint requires that JWT (role-gated: `admin`/`executor`/`viewer`).
-- **`POST /api/v1/test-runs` actually executes.** A `mode: "guided"` spec runs through the real `RunEngine.run_spec()`; `mode: "autonomous"` runs through the Planner (`RunEngine.run()`). Setting `"full_exploration": true` on an autonomous request instead routes to the same zero-instruction engine `aura explore` uses (`orchestrator/ui_audit_runner.run_exploration`) — same opt-in link-check fields as the CLI's `--check-links`/`--link-scope`:
-  ```json
-  {
-    "mode": "autonomous",
-    "target": "https://example.com",
-    "full_exploration": true,
-    "max_elements": 25,
-    "check_links": true,
-    "link_scope": "footer"
-  }
-  ```
-  `check_links` defaults to `false` (the real HTTP link check does not run unless explicitly requested) and `link_scope` (`"all"` | `"footer"` | `"nav"`) only has any effect when `check_links` is `true`.
+- **`POST /api/v1/test-runs` actually executes.** A `mode: "guided"` spec runs through the real `RunEngine.run_spec()`; `mode: "autonomous"` runs through the Planner (`RunEngine.run()`). The old `"full_exploration": true` opt-in (a zero-instruction click-everything mode mirroring the CLI's now-removed `aura explore`) has been removed along with the CLI command it mirrored. Neither `guided` nor `autonomous` requests currently expose the `--scroll-test`/`--ui-audit` landmark-and-link-check sweep at all over the API (`api/routers/runs.py`'s `execute_run`/`execute_autonomous_run` don't forward those params to `Router._handle_execute_requirement`) — this is a real, disclosed gap, not something to route around client-side. For that sweep today, use the CLI's `aura execute --url <url> --ui-audit`.
 - **Trend analytics & flaky-test detection (Phase H1/H2).** `GET /api/v1/test-runs/analytics/tests/{test_key}` returns per-run history plus a cumulative pass-rate series for one test (`test_key` is whatever `test_id`/`test_name` the run was submitted with — untracked one-off runs with neither field are excluded). `GET /api/v1/test-runs/analytics/tests` lists every tracked `test_key` for the caller's tenant; `GET /api/v1/test-runs/analytics/flaky?min_runs=3&min_transitions=2` surfaces tests whose pass/fail outcome has flip-flopped at least `min_transitions` times across at least `min_runs` completed runs — a candidate list only, never an automatic action. The web dashboard's **Analytics** view renders both. Pair a flaky candidate with `aura skills quarantine <test_id>` (see `aura skills` above) to actually skip it in future `--all` runs.
 - **Fine-grained access within a tenant, opt-in (Phase K).** By default, any spec is accessible to any authenticated member of its tenant (role permitting) — nothing about this changes unless you use it. To restrict a user to specific projects: (1) tag a spec by setting `"project_tag": "finance"` in its submitted JSON; (2) as an admin, call `PUT /api/v1/users/{username}/project-tags` with `{"allowed_project_tags": ["finance", "hr"]}` — that user can then only create/view runs for specs tagged with one of those values (plus any untagged spec, always). Send `{"allowed_project_tags": []}` (or omit the key) to clear a restriction back to unrestricted. Admins always bypass this regardless of tags. A user's restriction takes effect on their *next* login — there is no live token revocation in this system (a pre-existing limitation, not specific to this feature), so a token already issued keeps whatever access it had at issuance.
 - **No `aura serve` command yet.** Start it manually:

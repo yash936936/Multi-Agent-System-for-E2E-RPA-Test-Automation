@@ -10,14 +10,10 @@ failure (vision-only, no DOM access, so AURA can't be certain something is
 truly broken vs. just slow/animated), but exactly the kind of thing a
 human tester would flag for a second look.
 
-Two entry points, sharing one engine (`_run_click_audit`):
+One entry point (`_run_click_audit` is the shared engine):
   - run_ui_audit(): the existing `aura execute --ui-audit` behavior --
     nav + footer bands only, folded into a regular spec-driven run's
     HTML report.
-  - run_exploration(): `aura explore <url>` -- every interactive-looking
-    element on the page (nav + hero + footer + body), zero spec required.
-    This is the literal "give it a URL and it behaves like a QA tester
-    with no instructions" mode.
 
 Same guardrail philosophy as orchestrator/autoscan.py and
 orchestrator/guardrails.py: a hard cap on how many elements get clicked,
@@ -63,16 +59,15 @@ class UIAuditReport:
     has_footer: bool
     checked: list[ClickCheckResult] = field(default_factory=list)
     page_issues: list[str] = field(default_factory=list)
-    # Populated only by run_exploration() when a --prompt requirement was
-    # given -- a best-effort, disclosed-as-heuristic note on whether any
-    # checked element/page text appears to satisfy it. This is a keyword
-    # match, not real language understanding; see run_exploration()'s
-    # docstring for exactly what it can and can't tell you.
+    # Populated only when a --prompt requirement was given -- a
+    # best-effort, disclosed-as-heuristic note on whether any checked
+    # element/page text appears to satisfy it. This is a keyword
+    # match, not real language understanding.
     requirement_prompt: str | None = None
     requirement_match: bool | None = None
     requirement_notes: list[str] = field(default_factory=list)
     # Real, HTTP-level link verification (agents/capability/link_checker.py),
-    # populated only when run_exploration() is given a `link_check_scope`.
+    # populated only when run_ui_audit() is given a page_url.
     # Deliberately separate from `checked` (the OCR click-and-diff list):
     # a click-and-diff check on a broken link that still renders SOME page
     # (e.g. a custom 404 template) looks identical to a working navigation,
@@ -218,10 +213,9 @@ def _run_click_audit(
     discovery_source = "ocr"
     if settings.enable_dom_extractor and dom_page is not None:
         try:
-            from agents.vision.dom_extractor import to_ui_elements
+            from agents.vision.dom_extractor import to_ui_elements_full_page
 
-            page_height = dom_page.evaluate("document.documentElement.scrollHeight") or 8000
-            all_elements = to_ui_elements(dom_page, page_height)
+            all_elements = to_ui_elements_full_page(dom_page)
             discovery_source = "dom"
         except Exception:
             # A live page existed but the DOM walk itself failed
@@ -315,6 +309,12 @@ def _run_click_audit(
                 click_x, click_y = el_cx, el_cy
                 dispatch_via_playwright = True
                 resolution_strategy = "dom_extractor_direct"
+                element_scroll_y = getattr(element, "scroll_y", 0)
+                if element_scroll_y:
+                    try:
+                        dom_page.evaluate(f"window.scrollTo(0, {element_scroll_y})")
+                    except Exception:
+                        pass  # best-effort -- if this fails the click below may simply miss, same as before this fix existed
             elif el_cx and el_cy:
                 # Same direct-coordinate fallback, but in OS/screenshot-
                 # pixel space (os_fallback.click's expected space) -- for an
@@ -517,10 +517,8 @@ def run_ui_audit(
     page_url: when given, this now ALSO runs a real HTTP-level link check
     (agents/capability/link_checker.py -- fetches the actual page HTML and
     checks every in-scope <a href>'s real status code) alongside the OCR
-    pass, merging into the same UIAuditReport.link_check_result field
-    run_exploration() already populates. Previously this capability only
-    existed on run_exploration() (`aura explore --check-links`) -- this
-    function (what `aura execute --ui-audit` actually calls) had no path
+    pass, populating UIAuditReport.link_check_result. This function (what
+    `aura execute --ui-audit` actually calls) previously had no path
     to it at all, so a normal execute run's --ui-audit never got a real
     link check, only the OCR click-and-diff heuristic, which can't
     reliably tell "the link resolves" from "clicking it produced no
@@ -545,7 +543,7 @@ def run_ui_audit(
             from agents.capability.link_checker import LinkCheckAdapter
             from orchestrator.schemas import CapabilityCheckInput
 
-            # Same fix as run_exploration() below: if this run already has
+            # If this run already has
             # a live, hydrated browser page open (the same session driving
             # the OCR screenshots above), hand its HTML straight to the
             # link checker instead of letting it fall back to launching
@@ -585,54 +583,4 @@ def run_ui_audit(
     return report
 
 
-def run_exploration(
-    screenshot_provider: ScreenshotProvider,
-    run_id: str,
-    max_elements: int = 25,
-    requirement_prompt: str | None = None,
-    page_url: str | None = None,
-    link_check_scope: str | None = None,
-) -> UIAuditReport:
-    """
-    `aura explore <url>` -- the zero-instruction mode. Every
-    interactive-looking element on the page (nav, hero, footer, and body)
-    is a candidate, up to `max_elements`, instead of just nav/footer.
-    This is the same click-and-diff engine as run_ui_audit(), generalized
-    per the "explore" feature request: no spec, no target description,
-    just a URL and (optionally) a plain-English requirement to keep an
-    eye out for while exploring.
 
-    page_url / link_check_scope: when page_url is provided, this also runs
-    a real HTTP-level link check (agents/capability/link_checker.py) --
-    not just the OCR click-and-diff heuristic above -- scoped to
-    link_check_scope ("footer" | "nav" | "all", default "all" whenever
-    page_url is given, so every navigable link on the page gets a real
-    status check, not just the footer). This is the decisive, real-status
-    -code answer to "are the links actually working," which click-and-diff
-    alone can't reliably give (see UIAuditReport.link_check_result's
-    docstring).
-    """
-    report = _run_click_audit(
-        screenshot_provider,
-        run_id,
-        max_elements,
-        band_filter=lambda e: True,
-        requirement_prompt=requirement_prompt,
-    )
-
-    if page_url:
-        from agents.capability.link_checker import LinkCheckAdapter
-        from orchestrator.schemas import CapabilityCheckInput
-
-        adapter = LinkCheckAdapter()
-        result = adapter.run(
-            CapabilityCheckInput(
-                capability=adapter.capability_type,
-                target=page_url,
-                params={"scope": link_check_scope or "all"},
-                expected={},
-            )
-        )
-        report.link_check_result = result.evidence
-
-    return report

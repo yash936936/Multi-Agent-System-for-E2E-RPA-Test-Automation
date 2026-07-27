@@ -62,6 +62,16 @@ class UIElement:
     cy: int
     band: str  # "nav" | "hero" | "body" | "footer"
     looks_interactive: bool
+    # Scroll position (window.scrollY) the page was at when cx/cy were
+    # captured -- 0 for OCR-sourced elements (always captured at whatever
+    # scroll position the baseline screenshot was taken at, which callers
+    # already handle) and for DOM-sourced elements captured without
+    # scrolling. DOM-sourced elements captured below the fold (see
+    # agents/vision/dom_extractor.py's to_ui_elements_full_page) need the
+    # page scrolled back to this exact position before dispatching a
+    # click at (cx, cy), since cx/cy are viewport-relative and only valid
+    # at the scroll position they were measured at.
+    scroll_y: int = 0
 
 
 @dataclass

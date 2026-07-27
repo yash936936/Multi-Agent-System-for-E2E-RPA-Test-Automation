@@ -62,25 +62,6 @@ async def create_run(
             {"spec_name": spec.get("test_name", run_id), "mode": "autonomous"},
         )
 
-        # `full_exploration` opts an autonomous run into the same
-        # click-every-nav/hero/footer/body-element engine as `aura explore`
-        # (orchestrator/ui_audit_runner.run_exploration), instead of the
-        # default heuristic Planner path. Previously this engine was only
-        # reachable from the CLI -- the web API's autonomous mode always
-        # went through Planner.generate_spec, which (by design, per
-        # decisions.md) only recognizes literal click/type/navigate/link-
-        # check phrasing and has no notion of "click-test everything."
-        # This flag closes that gap without changing default behavior for
-        # existing prompt-driven autonomous runs.
-        if bool(spec.get("full_exploration")):
-            max_elements = int(spec.get("max_elements", 25))
-            check_links = bool(spec.get("check_links"))
-            link_scope = (spec.get("link_scope") or "all").strip()
-            background_tasks.add_task(
-                execute_full_exploration_run, user.tenant_id, run_id, target, prompt, max_elements, check_links, link_scope
-            )
-            return {"run_id": run_id, "status": "queued"}
-
         requirement_text = f"Target: {target}\n\n{prompt}" if prompt else f"Target: {target}"
         background_tasks.add_task(execute_autonomous_run, user.tenant_id, run_id, requirement_text)
         return {"run_id": run_id, "status": "queued"}
@@ -158,95 +139,6 @@ def execute_autonomous_run(tenant_id: str, run_id: str, requirement_text: str) -
         run_store.update(run_id, status=report.status.value, report=report.model_dump(mode="json"))
     except SpecValidationError as e:
         run_store.update(run_id, status="failed", error=str(e))
-    except Exception as e:
-        run_store.update(run_id, status="failed", error=str(e))
-
-
-def execute_full_exploration_run(
-    tenant_id: str,
-    run_id: str,
-    target: str,
-    prompt: str,
-    max_elements: int,
-    check_links: bool = False,
-    link_scope: str = "all",
-) -> None:
-    """
-    API-surface entry point for the same click-every-nav/hero/footer/body
-    -element engine `aura explore <url>` already uses
-    (orchestrator/ui_audit_runner.run_exploration). This was previously
-    only reachable via the CLI; `create_run` routes here when an
-    autonomous request sets `"full_exploration": true`.
-
-    check_links / link_scope: the real HTTP-level link check only runs
-    when check_links is True (spec: {"check_links": true, "link_scope":
-    "footer"|"nav"|"all"}). Previously this ran unconditionally on every
-    full_exploration request with scope hardcoded to "footer" -- it's
-    opt-in now, mirroring the CLI's --check-links flag.
-
-    Produces a report dict (stored as-is via run_store, which accepts any
-    JSON-serializable report) rather than a spec-driven RunReport --
-    there's no TestSpec/step list here by definition, just "navigate and
-    click-test everything," so the report shape mirrors what
-    `aura/cli/explore_cmd.py` already writes to reports/explore_<id>/report.json.
-    """
-    started = time.time()
-    try:
-        run_store.update(run_id, status="running")
-
-        # Gap #1 (docs/decisions.md D-079): routed through
-        # AuraBrain's "explore" intent instead of calling
-        # orchestrator/ui_audit_runner.run_exploration directly.
-        # _handle_explore's own try/except around browser.open_url() is a
-        # broader catch than the old NoDisplayError-only guard here, but
-        # produces the same net effect: run_exploration still runs and
-        # reports each element as clicked=False rather than faking success
-        # when there's no live display/browser in this environment.
-        # scroll_scan=False keeps parity with this endpoint's prior
-        # behavior, which never ran the autoscan step.
-        brain_result = AuraBrain().handle(
-            Intent(
-                kind="explore",
-                caller="api",
-                params={
-                    "url": target,
-                    "run_id": run_id,
-                    "max_elements": max_elements,
-                    "prompt": prompt or None,
-                    "scroll_scan": False,
-                    "check_links": check_links,
-                    "link_scope": link_scope,
-                },
-            )
-        )
-        audit = brain_result.data["report"]
-
-        broken = [c.__dict__ for c in audit.possibly_broken]
-        unreachable = [c.__dict__ for c in audit.unreachable]
-        link_check_broken = bool(audit.link_check_result and audit.link_check_result.get("broken_links"))
-        status = "failed" if (broken or audit.page_issues or link_check_broken) else "passed"
-
-        report = {
-            "run_id": run_id,
-            "mode": "full_exploration",
-            "target": target,
-            "status": status,
-            "total_elements_checked": len(audit.checked),
-            "possibly_broken": broken,
-            "unreachable": unreachable,
-            "page_issues": audit.page_issues,
-            "has_nav": audit.has_nav,
-            "has_hero": audit.has_hero,
-            "has_footer": audit.has_footer,
-            "requirement_prompt": audit.requirement_prompt,
-            "requirement_match": audit.requirement_match,
-            "requirement_notes": audit.requirement_notes,
-            "link_check_requested": check_links,
-            "link_check_scope": link_scope if check_links else None,
-            "link_check_result": audit.link_check_result,
-            "duration_seconds": round(time.time() - started, 2),
-        }
-        run_store.update(run_id, status=status, report=report)
     except Exception as e:
         run_store.update(run_id, status="failed", error=str(e))
 

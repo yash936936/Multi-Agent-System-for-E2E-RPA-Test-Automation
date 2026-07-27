@@ -22,7 +22,7 @@ import typer
 from rich.console import Console
 
 from agents.planner.spec_generator import infer_test_id
-from aura.cli import audit_report_cmd, baselines_cmd, capability_check_cmd, debug_cmd, execute_cmd, explain_cmd, explore_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd, ui_audit_cmd
+from aura.cli import audit_report_cmd, baselines_cmd, capability_check_cmd, debug_cmd, execute_cmd, explain_cmd, init_cmd, preflight, schedule_cmd, skills_cmd, trigger_cmd, ui_audit_cmd
 from config.settings import PLAYWRIGHT_BROWSER_CHOICES, settings
 from orchestrator import quarantine_store
 from orchestrator.schemas import RunReport, RunStatus
@@ -119,7 +119,7 @@ def execute(
     junit_out: str = typer.Option(None, "--junit-out", help="Write results as JUnit XML to this path (for CI test-report consumption). With --all, every spec's outcome becomes one <testsuite> in a single combined file."),
     include_quarantined: bool = typer.Option(False, "--include-quarantined", help="Phase H2: with --all, also run specs quarantined via `aura skills quarantine <test_id>` (skipped by default)."),
     browser: str = typer.Option("chromium", "--browser", help=f"Phase I1: Playwright browser engine for DOM-path targets. One of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)}."),
-    record_video: bool = typer.Option(False, "--record-video", help="Phase I2: record a video of the run (DOM path: real Playwright video; OS/pixel path: an honestly-labeled step-boundary slideshow, not continuous video). Off by default."),
+    record_video: bool = typer.Option(None, "--record-video/--no-record-video", help="Phase I2: record a video of the run (DOM path: real Playwright video; OS/pixel path: an honestly-labeled step-boundary slideshow, not continuous video). Off by default. If omitted, falls back to settings.record_video (AURA_RECORD_VIDEO) rather than forcing it off, so an env-configured default isn't silently overridden by not passing this flag."),
     parallel: int = typer.Option(1, "--parallel", help="Phase J: with --all, run up to N requirement docs concurrently (ThreadPoolExecutor -- this is I/O-bound work, not CPU-bound, so threads are correct here). 1 (default) preserves the original sequential behavior."),
     continuous_audit: bool = typer.Option(False, "--continuous-audit", help="Phase 1 (next-phase plan): run an independent LLM second opinion on every vision step's self-reported outcome, re-healing on disagreement instead of just trusting the step's own confidence. Off by default -- one extra LLM call per step has a real latency cost. If omitted, falls back to settings.enable_continuous_audit (AURA_ENABLE_CONTINUOUS_AUDIT) rather than forcing it off, so an env-configured default isn't silently overridden by not passing this flag."),
 ) -> None:
@@ -138,7 +138,8 @@ def execute(
         console.print(f"[red]--browser must be one of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)} (got '{browser}').[/red]")
         raise typer.Exit(code=1)
     settings.playwright_browser = browser
-    settings.record_video = record_video
+    if record_video is not None:
+        settings.record_video = record_video
 
     preflight.run_preflight_or_exit()
     auto_approve = yes or autonomous
@@ -266,32 +267,6 @@ def execute(
 
     report = execute_cmd.execute_test(test_id, auto_approve=auto_approve, refresh_data=refresh_data, export_pdf=pdf, url=url, scroll_test=scroll_test, ui_audit=ui_audit, junit_out=junit_out, continuous_audit=continuous_audit_override)
     _exit_nonzero_if_failed([report])
-
-
-@app.command()
-def explore(
-    url: str = typer.Argument(..., help="URL to explore with zero instructions -- Mode A's purest form: no spec, no --prompt required."),
-    max_elements: int = typer.Option(25, "--max-elements", help="Cap on how many detected clickable elements to test-click."),
-    prompt: str = typer.Option(None, "--prompt", help='Optional plain-English thing to keep an eye out for while exploring, e.g. --prompt "check the submit button works". Best-effort keyword match, not a guarantee -- see README.'),
-    no_scroll_scan: bool = typer.Option(False, "--no-scroll-scan", help="Skip the full-page scroll/error scan before clicking elements."),
-    check_links: bool = typer.Option(False, "--check-links", help="Also run a real HTTP-level link check (actual status codes, not just click-and-diff). Off by default -- opt in explicitly."),
-    link_scope: str = typer.Option("all", "--link-scope", help='Only used with --check-links. Which links get checked: "all" (default -- every navigable link on the page), "footer", or "nav".'),
-    browser: str = typer.Option("chromium", "--browser", help=f"Phase I1: Playwright browser engine. One of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)}."),
-    debug: bool = typer.Option(False, "--debug", help="Print which resolution strategy (dom/dom_extractor_direct/ocr) actually clicked each element, plus new-tab handling detail."),
-) -> None:
-    """
-    Fully autonomous exploration: give it a URL, nothing else. AURA
-    navigates, scrolls the whole page, finds every clickable-looking
-    element via OCR, clicks each one, checks nothing broke, and reports
-    back -- no spec file, no --prompt required, zero human input.
-    """
-    if browser not in PLAYWRIGHT_BROWSER_CHOICES:
-        console.print(f"[red]--browser must be one of: {', '.join(PLAYWRIGHT_BROWSER_CHOICES)} (got '{browser}').[/red]")
-        raise typer.Exit(code=1)
-    settings.playwright_browser = browser
-
-    preflight.run_preflight_or_exit()
-    explore_cmd.explore(url, max_elements=max_elements, prompt=prompt, scroll_scan=not no_scroll_scan, check_links=check_links, link_scope=link_scope, debug=debug)
 
 
 @app.command(name="ui-audit")

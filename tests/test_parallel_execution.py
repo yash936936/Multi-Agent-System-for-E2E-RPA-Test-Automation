@@ -125,7 +125,7 @@ def test_brain_hands_out_independent_run_engine_instances():
     out the same RunEngine instance twice. `_new_engine()` was removed
     when api/routers/runs.py migrated onto AuraBrain -- the equivalent
     guarantee now lives in orchestrator/brain/router.py, which builds a
-    fresh RunEngine inside `_handle_execute_requirement`/`_handle_explore`
+    fresh RunEngine inside `_handle_execute_requirement`
     on every call rather than reusing one across runs.
     """
     from unittest.mock import patch

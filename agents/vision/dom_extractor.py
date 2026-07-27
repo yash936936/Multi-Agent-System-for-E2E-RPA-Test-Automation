@@ -112,6 +112,20 @@ _EXTRACT_JS = r"""
       name: name,
       cx: Math.round(rect.left + rect.width / 2),
       cy: Math.round(rect.top + rect.height / 2),
+      // Document-relative y (adds the current scroll offset) -- used
+      // for landmark band classification against the *page's* total
+      // height. `cy` above is deliberately left viewport-relative
+      // (Playwright's page.mouse.click() operates in viewport/CSS
+      // space, not document space), since callers dispatch clicks
+      // straight at (cx, cy) via Playwright's mouse -- see
+      // orchestrator/ui_audit_runner.py's "dom_extractor_direct"
+      // dispatch path. Using this same viewport-relative cy for
+      // band classification (dividing it by the full document
+      // scrollHeight) was a real bug: on any page taller than one
+      // viewport, this made every currently-visible element's
+      // fraction-of-page-height collapse toward 0, misclassifying
+      // hero/body elements as "nav".
+      docY: Math.round(rect.top + window.scrollY + rect.height / 2),
       width: Math.round(rect.width),
       height: Math.round(rect.height),
     });
@@ -136,6 +150,7 @@ class DomElement:
     cy: int
     width: int
     height: int
+    doc_y: int = 0
 
 
 def extract_interactive_elements(page) -> list[DomElement]:
@@ -168,6 +183,7 @@ def extract_interactive_elements(page) -> list[DomElement]:
             cy=item.get("cy", 0),
             width=item.get("width", 0),
             height=item.get("height", 0),
+            doc_y=item.get("docY", item.get("cy", 0)),
         )
         for i, item in enumerate(raw)
     ]
@@ -182,13 +198,26 @@ def to_ui_elements(page, page_height: int):
     its existing all_elements list with no schema changes. Import is
     local to avoid a hard import-time dependency from dom_extractor.py
     (a low-level module) back up to ui_audit.py.
+
+    `page_height` is expected to be the full document height
+    (document.documentElement.scrollHeight), matching `doc_y`'s
+    coordinate space. Band classification uses `doc_y` (document-
+    relative), NOT `cy` (viewport-relative) -- an earlier version of
+    this function divided the viewport-relative `cy` by the full
+    document height, which on any page taller than one viewport
+    silently collapsed every visible element's fraction toward 0 and
+    misclassified hero/body elements (anything below the very top of
+    the viewport) as "nav". `cx`/`cy` themselves are still returned
+    viewport-relative in the resulting UIElement, because callers
+    dispatch clicks straight at (cx, cy) via Playwright's mouse, which
+    operates in viewport space, not document space.
     """
     from agents.vision.ui_audit import UIElement, _NAV_BAND_END, _HERO_BAND_END, _FOOTER_BAND_START
 
     elements = extract_interactive_elements(page)
     out = []
     for el in elements:
-        frac = (el.cy / page_height) if page_height else 0.0
+        frac = (el.doc_y / page_height) if page_height else 0.0
         if frac < _NAV_BAND_END:
             band = "nav"
         elif frac >= _FOOTER_BAND_START:
@@ -198,4 +227,96 @@ def to_ui_elements(page, page_height: int):
         else:
             band = "body"
         out.append(UIElement(text=el.name, cx=el.cx, cy=el.cy, band=band, looks_interactive=True))
+    return out
+
+
+def to_ui_elements_full_page(page, max_steps: int = 20):
+    """
+    Like to_ui_elements(), but not limited to whatever's currently in the
+    viewport. extract_interactive_elements()'s JS walk deliberately only
+    ever sees on-screen elements (see its module docstring) -- fine for a
+    single snapshot, but on any page taller than one viewport this meant
+    below-the-fold content (a footer's links, for instance) was simply
+    never discovered by the DOM path at all, with no error or signal that
+    anything had been skipped.
+
+    This scrolls window.scrollTo(0, y) in viewport-height increments from
+    the top of the document to the bottom (capped at max_steps, matching
+    the same "an unattended loop needs a stop condition" philosophy as
+    orchestrator/autoscan.py and orchestrator/ui_audit_runner.py's own
+    max_elements cap), calling to_ui_elements() at each stop and merging
+    results. Duplicates (the same element visible across two overlapping
+    scroll positions, or a sticky/fixed-position element visible at every
+    scroll position by construction) are removed by (text, band) -- the
+    same key granularity orchestrator/ui_audit_runner.py's own click-
+    resolution loop already uses to recognize a DOM-sourced element, so
+    this doesn't introduce a second, finer-grained notion of "the same
+    element" the rest of the pipeline doesn't share.
+
+    Each returned UIElement's `scroll_y` records the exact window.scrollY
+    the page was at when its cx/cy were measured -- callers MUST scroll
+    back to that position before dispatching a click at (cx, cy), since
+    those coordinates are viewport-relative and only valid at the scroll
+    position they were captured at (see UIElement.scroll_y's docstring).
+
+    Restores the page's original scroll position before returning,
+    win or lose (even if evaluate() fails partway through), so this is
+    transparent to callers that don't expect their page to end up
+    scrolled somewhere unexpected as a side effect of discovery.
+    """
+    original_scroll_y = 0
+    try:
+        original_scroll_y = int(page.evaluate("window.scrollY") or 0)
+    except Exception:
+        original_scroll_y = 0
+
+    try:
+        viewport_height = int(page.evaluate("window.innerHeight") or 720)
+    except Exception:
+        viewport_height = 720
+    try:
+        doc_height = int(page.evaluate("document.documentElement.scrollHeight") or viewport_height)
+    except Exception:
+        doc_height = viewport_height
+
+    seen: set[tuple] = set()
+    out = []
+    step = max(int(viewport_height), 1)
+    scroll_positions = list(range(0, max(int(doc_height) - step, 0) + 1, step)) or [0]
+    scroll_positions = scroll_positions[:max_steps]
+    # Always include the very bottom of the page, even if it doesn't
+    # land on an exact step boundary -- otherwise a footer just past the
+    # last full increment could be missed entirely.
+    bottom = max(int(doc_height) - step, 0)
+    if bottom not in scroll_positions:
+        scroll_positions.append(bottom)
+
+    try:
+        for scroll_y in scroll_positions:
+            try:
+                page.evaluate(f"window.scrollTo(0, {scroll_y})")
+                try:
+                    actual_scroll_y = int(page.evaluate("window.scrollY") or scroll_y)
+                except Exception:
+                    actual_scroll_y = scroll_y
+                elements = to_ui_elements(page, doc_height)
+                for el in elements:
+                    key = (el.text.strip().lower(), el.band)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    el.scroll_y = actual_scroll_y
+                    out.append(el)
+            except Exception:
+                # This one scroll position failed for any reason (mock
+                # page with a simplified evaluate(), detached page mid-
+                # scroll, etc.) -- skip it rather than losing every
+                # position's results collected so far.
+                continue
+    finally:
+        try:
+            page.evaluate(f"window.scrollTo(0, {original_scroll_y})")
+        except Exception:
+            pass
+
     return out

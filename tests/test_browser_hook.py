@@ -163,3 +163,59 @@ def test_dom_scroll_moves_page_downward_on_a_lenis_driven_page():
     finally:
         browser.close()
         srv.shutdown()
+
+
+def test_get_click_point_in_page_does_not_shift_x_by_scrollbar_width():
+    """
+    Regression test: get_click_point_in_page() previously added
+    `outerWidth - innerWidth` (normally the vertical scrollbar's width,
+    on the content area's *right* edge) into the *left*-offset
+    calculation, contradicting its own documented "no left/right chrome"
+    assumption. This silently shifted every OCR-dispatched click's x
+    coordinate to the right by roughly a scrollbar's width (amplified by
+    devicePixelRatio) -- easily enough to miss a real button while
+    `_dispatch_ocr` still reported success, since no exception was ever
+    raised. A real browser + CDP session isn't available in this
+    environment, so this exercises the pure coordinate math via a
+    directly-constructed `_BrowserSession` with mocked page/context/CDP
+    internals instead.
+    """
+    from runtime.hooks.browser import _BrowserSession
+
+    class FakeCdpSession:
+        def send(self, method):
+            assert method == "Browser.getWindowForTarget"
+            return {"bounds": {"left": 100, "top": 50}}
+
+    class FakeContext:
+        def new_cdp_session(self, page):
+            return FakeCdpSession()
+
+    class FakePage:
+        def evaluate(self, script):
+            if "devicePixelRatio" in script:
+                return 1
+            if "outerWidth - window.innerWidth" in script:
+                # Simulates a vertical scrollbar: outer is 17px wider
+                # than inner, entirely on the content's right edge.
+                return 17
+            if "outerHeight - window.innerHeight" in script:
+                # Simulates a title bar + toolbar, all on top.
+                return 80
+            raise AssertionError(f"unexpected evaluate() call: {script!r}")
+
+    session = _BrowserSession()
+    session._page = FakePage()
+    session._context = FakeContext()
+
+    from config.settings import settings
+
+    assert settings.playwright_browser == "chromium"
+
+    # Click at the screen point that should land at content-relative
+    # (10, 20): window left=100 (no left chrome to add) + 10 -> 110,
+    # window top=50 + chrome 80 (top-only) + 20 -> 150.
+    result = session.get_click_point_in_page(110, 150)
+    assert result == (10, 20), (
+        f"expected (10, 20) with no x-shift from the scrollbar-width chrome value, got {result}"
+    )

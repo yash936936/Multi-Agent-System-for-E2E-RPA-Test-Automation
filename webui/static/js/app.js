@@ -340,17 +340,6 @@ const CLI_COMMANDS = [
     ],
   },
   {
-    name: 'aura explore <url>',
-    desc: 'Fully autonomous exploration: give it a URL, nothing else. Navigates, scrolls, finds every clickable element via OCR, clicks each one, checks nothing broke, and reports back.',
-    flags: [
-      '--max-elements <n>  Cap on detected clickable elements to test-click (default 25)',
-      '--prompt <text>  Optional thing to keep an eye out for while exploring',
-      '--no-scroll-scan  Skip the full-page scroll/error scan before clicking elements',
-      '--check-links  Also run a real HTTP-level link check (actual status codes, not just click-and-diff) — off by default, opt in explicitly',
-      '--link-scope <all|footer|nav>  Only used with --check-links — which links get checked (default "all")',
-    ],
-  },
-  {
     name: 'aura debug <path>',
     desc: 'Scan Python file(s) for common bug patterns and report them — detection only, never modifies code.',
     flags: [
