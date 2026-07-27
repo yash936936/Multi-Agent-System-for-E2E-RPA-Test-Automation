@@ -1,14 +1,21 @@
 ---
 type: status
 project: AURA
-last_updated: 2026-07-23
+last_updated: 2026-07-28
 ---
 
 # STATUS
 
 > This file should always reflect the *current* state — overwrite freely, don't accumulate history here (that belongs in `progress.md`).
 
-## Where things stand (2026-07-27 update — Phase 1 of the phased debug pass: `config/`, `orchestrator/schemas.py`/`spec_validator.py`)
+## Where things stand (2026-07-28 update — Phases 2–4 of the phased debug pass complete)
+- **Phase 2 (`runtime/`): clean.** No bugs found on re-audit of coordinate math, scroll sign convention, `SystemExit` handling, video-close timing. Sandbox environment gaps (no X server, missing `faker`/`httpx`) resolved by running under Xvfb with those packages installed — not code issues.
+- **Phase 3 (`agents/vision/`): one bug found and fixed.** `assertions.py` and the pixel-hash-vs-MutationObserver change detection were already fixed in earlier work. `page_health.py`'s `detect_page_issues()` couldn't distinguish "OCR ran, found nothing" from "OCR itself failed" — both returned `[]`, so a scan where OCR silently never ran (tesseract missing, etc.) was reported identically to a genuinely clean page. Fixed with `detect_page_issues_detailed()` returning `(issues, ocr_checked)`, plus `ocr_checked`/`ocr_unavailable` fields threaded through `AutoScanStepResult`/`AutoScanReport`/`UIAuditReport`.
+- **Phase 4 (`agents/planner/`, `agents/data_synth/`): one bug found and fixed.** `spec_generator.py`'s Hermes→Cloud escalation and `page_grounding.py` are both clean — the "always falls through to cloud" behavior is environment (no bundled `.gguf`, hermes not opted into priority), not logic. `agents/data_synth/tool.py::generate()` had the "cached data missing `username`" bug: the cache is keyed only on `test_id`, so a spec's `data_requirements` growing between runs returned the stale dict verbatim, silently dropping new fields. Fixed by backfilling only the missing fields into the cached dict on each call, leaving previously-cached values stable.
+- **761 passed** on the full suite under Xvfb (up from 750 at the end of Phase 1 — new regression tests added each phase). Same pre-existing Chromium-binary/no-display sandbox baseline failures as every prior phase (16 failed, 5 errors — headed-browser tests needing a real display/GPU, not this environment's Xvfb+no-sandbox) — zero new regressions.
+- **Next action:** Phase 5 (`agents/capability/`) of the same debugging pass — largest single subpackage (3440 lines, 20+ adapter files), suggested sub-sliced as 5a (link_checker/api/db adapters), 5b (cloud/infra adapters), 5c (the rest).
+
+## Prior update (2026-07-27 — Phase 1 of the phased debug pass: `config/`, `orchestrator/schemas.py`/`spec_validator.py`)
 - **Bug found and fixed — `GuardrailSettings` reading unprefixed env vars:** it's a nested `BaseSettings` subclass with no `model_config`/`env_prefix` at all, unlike every other Settings class in `config/settings.py`. Confirmed by reproduction: a bare `WARNINGS_ENABLED=false` in the shell (no `AURA_` prefix, plausible in any CI system or shared dev environment) silently disabled AURA's own safety guardrails. Fixed by adding `env_prefix="AURA_GUARDRAILS_"`.
 - **Bug found and fixed — `CAPABILITY_CHECK` steps with no `capability_type` crashed the whole run:** `orchestrator/spec_validator.py` checked that `target`/`capability_params` were set on a `CAPABILITY_CHECK` step, but never checked `capability_type` itself. A spec missing it passed validation cleanly, then crashed `RunEngine.run_spec()` with a raw pydantic `ValidationError` from `CapabilityCheckInput(capability=None, ...)` — constructed *before* the `try/except RuntimeError` guard around the adapter call, so nothing caught it, despite that guard's own comment describing exactly this class of bug ("escalate this one step, keep going," not crash the run). Fixed by adding the missing check to `spec_validator.py`; regression test added (`test_capability_check_with_no_capability_type_is_an_error`).
 - **Doc-drift fixed (not a functional bug):** `enable_dom_extractor`'s docstring in `config/settings.py` still described the pre-Phase-2 "OCR-first, DOM as a supplement merged in" model — Phase 2/D-073 rewrote this to DOM-first/OCR-fallback (one path per run) months ago, but the docstring was never updated to match, and would have misled anyone deciding whether to enable the flag.

@@ -59,6 +59,12 @@ class UIAuditReport:
     has_footer: bool
     checked: list[ClickCheckResult] = field(default_factory=list)
     page_issues: list[str] = field(default_factory=list)
+    # False if any page_health OCR check during this audit itself failed
+    # (e.g. tesseract not installed) -- distinguishes "checked, found no
+    # page_issues" from "couldn't check", which an empty page_issues list
+    # alone can't express. See
+    # agents/vision/page_health.py::detect_page_issues_detailed.
+    ocr_checked: bool = True
     # Populated only when a --prompt requirement was given -- a
     # best-effort, disclosed-as-heuristic note on whether any checked
     # element/page text appears to satisfy it. This is a keyword
@@ -128,7 +134,7 @@ def _run_click_audit(
     requirement_prompt: str | None = None,
 ) -> UIAuditReport:
     from agents.vision.locator import locate_text
-    from agents.vision.page_health import detect_page_issues
+    from agents.vision.page_health import detect_page_issues_detailed
     from agents.vision.ui_audit import audit_screenshot
     from runtime.errors import NoDisplayError, display_guard
 
@@ -231,11 +237,13 @@ def _run_click_audit(
     nav_elems = [e for e in all_elements if e.band == "nav"]
     hero_elems = [e for e in all_elements if e.band == "hero"]
     footer_elems = [e for e in all_elements if e.band == "footer"]
+    baseline_issues, baseline_ocr_checked = detect_page_issues_detailed(baseline_path)
     report = UIAuditReport(
         has_nav=len(nav_elems) > 0,
         has_hero=any(e.looks_interactive for e in hero_elems) or len(hero_elems) >= 2,
         has_footer=len(footer_elems) > 0,
-        page_issues=detect_page_issues(baseline_path),
+        page_issues=baseline_issues,
+        ocr_checked=baseline_ocr_checked,
         requirement_prompt=requirement_prompt,
     )
 
@@ -440,7 +448,10 @@ def _run_click_audit(
             resolution_strategy, clicked=True, state_changed=state_changed, new_tab_opened=new_tab_opened,
             change_detection_method=used_change_detection_method,
         )
-        report.page_issues.extend(issue for issue in detect_page_issues(after_path) if issue not in report.page_issues)
+        after_issues, after_ocr_checked = detect_page_issues_detailed(after_path)
+        report.page_issues.extend(issue for issue in after_issues if issue not in report.page_issues)
+        if not after_ocr_checked:
+            report.ocr_checked = False
 
         after_landmarks = audit_screenshot(after_path)
         all_seen_text.extend(

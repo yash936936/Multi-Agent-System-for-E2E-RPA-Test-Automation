@@ -4900,3 +4900,33 @@ entry's scope covers.
 **Verified:** `tests/test_settings.py`, `tests/test_guardrails.py`, `tests/test_healing_loop.py`, `tests/test_spec_validator.py`, `tests/test_schemas.py` (65 passed) plus the full non-browser-dependent suite (750 passed, up from 749 — one new regression test, `test_capability_check_with_no_capability_type_is_an_error`, added to `tests/test_spec_validator.py`). Confirmed no test relied on `GuardrailSettings`' old unprefixed-env-var behavior (all existing tests construct it via explicit keyword args, not env vars).
 
 **Revisit when:** starting Phase 2 (`runtime/hooks/`) of the same debugging pass — see `docs/STATUS.md`'s matching entry for the full phase breakdown.
+
+---
+
+## D-083 — Phases 2–3 of the phased debug pass: `runtime/` (clean) + `agents/vision/` OCR-degradation conflation fixed
+**Decided:** 2026-07-28
+**Decision:**
+- **Phase 2 (`runtime/` — `browser.py`, `os_fallback.py`, `capture.py`, `errors.py`): no bugs found.** Re-audited `get_click_point_in_page`'s coordinate math (the D-081 hotspot) line by line against its own docstring, `dom_scroll`'s sign convention, `os_fallback`'s `SystemExit`-vs-`Exception` handling, and video-close timing — all correct. Only "failures" hit while checking this were environment gaps in the sandbox (no X server, missing `faker`/`httpx`), not logic errors; resolved by running under Xvfb with those packages installed.
+- **Phase 3 (`agents/vision/`): `assertions.py` and the pixel-hash-vs-MutationObserver change-detection logic (`dom_change_detector.py`) were already fully fixed in prior work (D-057/D-060, D-077) — re-verified, no residual issue.
+- **`page_health.py` — real, still-open bug found and fixed.** `detect_page_issues()` returned `[]` both when OCR ran and found nothing suspicious *and* when OCR itself failed (tesseract missing, etc.) — its own log line already said as much, but nothing downstream could act on it. Both callers (`orchestrator/autoscan.py`, `orchestrator/ui_audit_runner.py`) spliced that empty list straight into their reports, so a scan where OCR silently never ran was indistinguishable from a genuinely clean page.
+
+**Fix:** added `detect_page_issues_detailed()` returning `(issues, ocr_checked)`; `detect_page_issues()` kept as a backward-compatible wrapper. `AutoScanStepResult.ocr_checked` (per-step) + `AutoScanReport.ocr_unavailable` (aggregate property) added to `autoscan.py`; `UIAuditReport.ocr_checked` added to `ui_audit_runner.py`, set False if OCR fails on the baseline or any post-click check.
+
+**Verified:** updated existing monkeypatches in `tests/test_autoscan.py`/`tests/test_ui_audit_runner.py` to the new signature; added `test_run_autoscan_flags_ocr_unavailable_distinct_from_clean` and `test_run_ui_audit_flags_ocr_unavailable_distinct_from_clean`. Full suite (`DISPLAY=:99 pytest tests/`, Xvfb): 758 passed, same pre-existing Chromium-binary/no-display baseline failures as every prior phase, zero regressions.
+
+**Revisit when:** starting Phase 5 (`agents/capability/`) of the same debugging pass.
+
+---
+
+## D-084 — Phase 4 of the phased debug pass: `agents/planner/`, `agents/data_synth/` — stale-cache-missing-fields bug fixed
+**Decided:** 2026-07-28
+**Decision:**
+- **`spec_generator.py`'s Hermes-local → CloudLLM escalation chain: no logic bug.** Re-traced `_default_backend()`'s detection matrix (`config/settings.py::_auto_detect_planner_backend`) and `generate_spec()`'s runtime escalation ladder (local/cloud/hermes → CloudLLM → LocalHeuristicBackend). The original log's "always falls through to cloud" was confirmed to be environment (no bundled `.gguf` under `models/`, `planner_priority` not set to `hermes_first`), exactly as the detection matrix's own docstring says it should behave — not a code defect.
+- **`page_grounding.py`: clean.** Fails soft at every layer (DOM snapshot → OCR fallback → `None`), never raises, no live bug found.
+- **`agents/data_synth/cache.py` + `tool.py` — real, still-open bug found and fixed.** This is the "cached synthetic data missing the `username` key" bug from the original failing-test log. `DataSynth.generate()`'s cache is keyed only on `test_id`; if a spec's `data_requirements` grows between runs on the same `test_id` (e.g. the planner starts asking for `username` on a test_id that was already cached without it), the stale cached dict was returned verbatim, silently dropping the new field for every downstream consumer (form-fill steps, assertions referencing that field, etc.).
+
+**Fix:** `agents/data_synth/tool.py::generate()` now computes `missing = [f for f in payload.fields if f not in cached]`; if non-empty, generates just the missing fields via `generate_data(missing)`, merges them into the cached dict, re-saves the cache, and returns the merged result. Previously-cached values are left untouched (per TRD §2.4's "stable across runs" intent) — only genuinely-missing fields are backfilled.
+
+**Verified:** new `tests/test_data_synth_tool.py` (3 tests: fills a missing field on stale cache while keeping the existing value stable and persisting the fix to disk; returns cache unchanged when nothing's missing; bypasses caching entirely when no `test_id` is given). Full suite (`DISPLAY=:99 pytest tests/`, Xvfb): 761 passed, same pre-existing baseline failures, zero regressions.
+
+**Revisit when:** starting Phase 5 (`agents/capability/`) of the same debugging pass.
