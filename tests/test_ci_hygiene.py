@@ -11,7 +11,7 @@ import tempfile
 import pytest
 from agents.vision.executor import execute_step
 from orchestrator.schemas import ActionType, TestStep, VisionStepInput
-from tests.test_vision_dom import make_synthetic_screenshot
+from tests.test_vision import make_synthetic_screenshot
 from unittest.mock import patch, MagicMock
 from orchestrator.schemas import (
     ActionType, CapabilityType, TestStep, CapabilityCheckInput, CapabilityCheckResult
