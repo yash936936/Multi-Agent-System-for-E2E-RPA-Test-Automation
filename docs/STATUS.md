@@ -569,3 +569,35 @@ Phase 6 — `orchestrator/` top-level orchestration core: `run_engine.py`,
 `backend_router.py`/`hermes_client.py`/`http_retry.py`,
 `report_aggregator.py`, `scheduler.py`, `webhook_listener.py` (4842
 lines) — per the existing 0-9 phase plan.
+
+## Update — 2026-07-28 — Phase 6 (orchestrator core) done (D-088)
+
+**Phase 6 is done.** Reviewed the orchestration core (`run_engine.py`,
+`healing_loop.py`, `autoscan.py`, `guardrails.py`, `memory.py`,
+`skill_store.py`, `quarantine_store.py`, `spec_validator.py`,
+`backend_router.py`, `hermes_client.py`, `http_retry.py`,
+`report_aggregator.py`, `scheduler.py`, `webhook_listener.py`).
+
+**One real, reachable crash bug found and fixed**, in `run_engine.py`'s
+Phase 18 cross-modal capability-healing branch: it constructed a
+`SkillRecord` with fields that don't exist on that schema at all
+(`trigger`/`fix`/`context` instead of the real
+`skill_id`/`failure_signature`/`root_cause`/`proposed_fix`/...) and
+called a `skill_store.add()` method that has never existed (`save()` is
+the real one) -- both would raise the moment `CrossModalDiagnoser`
+actually healed a step, which is a genuinely reachable path via
+`api_adapter.py`'s snake_case/camelCase drift detection, not a
+theoretical one. Fixed, and covered by a new
+`tests/test_run_engine_cross_modal_healing.py` that drives the full
+`run_spec()` path through a fail-then-heal-then-pass sequence. Full
+detail: `docs/decisions.md` D-088.
+
+Everything else in Phase 6 reviewed clean. Full suite: 764 passed / 1
+xfailed / 30 failed / 5 errors -- identical pre-existing
+Chromium-binary/no-display sandbox baseline, zero regressions.
+
+## Next action
+Phase 7 -- `orchestrator/brain/` coordination layer (`router.py`,
+`policy.py`, `intent.py`, `context.py`, 737 lines). Small, but every
+surviving intent funnels through it, so worth a focused single-session
+pass per the original phase plan.

@@ -4732,6 +4732,7 @@ tests called them — editing `brain_knowledge/rules/discovery.yaml` or
   param and, when none is given, constructs its own `Policy()` and
   sources vocab/band values from it — this is the load-bearing change:
   editing `brain_knowledge/rules/discovery.yaml`/`bands.yaml` now
+  
   actually changes OCR classification behavior for the first time since
   Phase B2 shipped those files.
 - **Deliberately not done:** passing a shared `Policy` instance down
@@ -5018,3 +5019,69 @@ core (`run_engine.py`, `healing_loop.py`, `autoscan.py`, `guardrails.py`,
 `backend_router.py`/`hermes_client.py`/`http_retry.py`,
 `report_aggregator.py`, `scheduler.py`, `webhook_listener.py`), per the
 existing 0-9 phase plan.
+
+## D-088 — Phase 6: orchestrator/ top-level core (2026-07-28)
+
+Debug/review pass over the orchestration core: `run_engine.py`,
+`healing_loop.py`, `autoscan.py`, `guardrails.py`, `memory.py`,
+`skill_store.py`, `quarantine_store.py`, `spec_validator.py`,
+`backend_router.py`, `hermes_client.py`, `http_retry.py`,
+`report_aggregator.py`, `scheduler.py`, `webhook_listener.py` (2877 lines
+total).
+
+**One real, reachable crash bug found and fixed, in `run_engine.py`'s
+Phase 18 cross-modal capability-healing branch (`run_spec`'s
+`ActionType.CAPABILITY_CHECK` loop).** When `CrossModalDiagnoser.diagnose()`
+returns a healed step (a genuinely reachable path -- `agents/capability/
+api_adapter.py` already populates `evidence["healing_hints"]` with
+snake_case/camelCase drift data whenever a JSON assertion mismatches, and
+`_heal_api_drift()` returns a patched step whenever that drift matches),
+the code that was supposed to persist the heal did two things that would
+always raise:
+
+1. Constructed `SkillRecord(trigger=..., fix=..., context=...)` --
+   none of those three fields exist on `orchestrator/schemas.py::SkillRecord`
+   (which requires `skill_id`, `failure_signature`, `root_cause`,
+   `proposed_fix`, `confidence`, among others) -- a guaranteed
+   `pydantic.ValidationError`.
+2. Called `self.skill_store.add(skill_record)` -- `SkillStore`
+   (`orchestrator/skill_store.py`) has never had an `add()` method, only
+   `save()` -- a guaranteed `AttributeError`, had the first bug not
+   already fired.
+
+Net effect: any capability-check step whose adapter surfaced a
+healable schema-drift hint would crash the entire run instead of being
+healed, the exact opposite of what Phase 18 was built to do. This had
+never been exercised end-to-end before -- `tests/test_cross_modal_healing.py`
+only unit-tests `CrossModalDiagnoser` in isolation, never through
+`RunEngine.run_spec()`.
+
+Fix: construct a schema-correct `SkillRecord` (`skill_id` generated via
+uuid4, `failure_signature`/`root_cause`/`proposed_fix` populated from the
+same information the old broken call was trying to carry, `fix_type=
+FixType.RETRY_STRATEGY`, `confidence` taken from the capability result),
+and call `self.skill_store.save(...)` instead of the nonexistent `.add()`.
+Added `tests/test_run_engine_cross_modal_healing.py`, which drives
+`run_spec()` through a fake `Capability.check` call_tool (fails with a
+healable hint, then passes on retry) and asserts the run completes
+without crashing, the SkillRecord is persisted correctly, and the report
+comes back PASSED with zero escalations.
+
+**Everything else in this batch reviewed clean:** `healing_loop.py`,
+`autoscan.py`, `guardrails.py` (including the documented, verified-safe
+step_id-only keying noted in its own docstring), `memory.py`,
+`skill_store.py`, `quarantine_store.py`, `spec_validator.py`,
+`backend_router.py`, `hermes_client.py`, `http_retry.py`,
+`report_aggregator.py`, `scheduler.py`, `webhook_listener.py`, and the
+rest of `run_engine.py` (bot-validation cross-check, WAIT_FOR_HUMAN_ACTION
+branch, vision execution branch, video/trace teardown wiring) all read
+cleanly on a full line-by-line pass.
+
+**Verified:** new test passes; full suite: 764 passed / 1 xfailed / 30
+failed / 5 errors -- identical pre-existing Chromium-binary/no-display
+sandbox baseline, zero regressions, plus the 1 new test.
+
+**Next real action:** Phase 7 -- `orchestrator/brain/` coordination layer
+(`router.py`, `policy.py`, `intent.py`, `context.py`, 737 lines) -- small,
+but every surviving intent funnels through it, so a bug here would affect
+every entrypoint simultaneously; good candidate for a single focused pass.

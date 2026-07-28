@@ -42,6 +42,7 @@ from orchestrator.schemas import (
     CapabilityCheckInput,
     CapabilityCheckResult,  # Phase 14/18: Updated from CapabilityResult
     CapabilityType,
+    FixType,
     RequirementInput,
     RunReport,
     SkillRecord,
@@ -457,17 +458,29 @@ class RunEngine:
                     # Attempt cross-modal heal
                     healed_step = cross_modal_diagnoser.diagnose(current_step, cap_result)
                     if healed_step:
-                        # Persist the heal to SkillStore for future runs
+                        # Persist the heal to SkillStore for future runs.
+                        # Fixed during Phase 6 review: this used to construct
+                        # SkillRecord(trigger=..., fix=..., context=...) --
+                        # fields that don't exist on the schema at all (see
+                        # orchestrator/schemas.py::SkillRecord: skill_id/
+                        # failure_signature/root_cause/proposed_fix/...),
+                        # and called self.skill_store.add(...), a method
+                        # SkillStore (orchestrator/skill_store.py) has never
+                        # had -- it's save(). Both would raise
+                        # (ValidationError, then AttributeError) the instant
+                        # a real API/DB adapter's healing_hints let
+                        # CrossModalDiagnoser return a non-None healed_step,
+                        # crashing the whole run instead of healing the step.
                         skill_record = SkillRecord(
-                            trigger=f"capability_{current_step.capability_type.value}_{current_step.target}",
-                            fix=f"cross_modal_heal_{heal_attempts + 1}",
-                            context={
-                                "original_expected": current_step.expected,
-                                "healed_expected": healed_step.expected,
-                                "diagnosis": "cross_modal_schema_drift"
-                            }
+                            skill_id=f"cross_modal_{current_step.step_id}_{uuid.uuid4().hex[:8]}",
+                            failure_signature=f"capability_{current_step.capability_type.value}_{current_step.target}",
+                            root_cause="cross_modal_schema_drift",
+                            proposed_fix=f"cross_modal_heal_{heal_attempts + 1}",
+                            fix_type=FixType.RETRY_STRATEGY,
+                            confidence=cap_result.confidence if cap_result else 0.5,
+                            created_by="cross_modal_diagnoser",
                         )
-                        self.skill_store.add(skill_record)
+                        self.skill_store.save(skill_record)
                         if self.on_skill_learned:
                             self.on_skill_learned(step.step_id, skill_record)
                             
