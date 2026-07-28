@@ -61,13 +61,30 @@ def test_run_ui_audit_reports_landmark_presence(tmp_path, monkeypatch):
         hero_elements=[],
     )
     monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
 
     report = run_ui_audit(provider, run_id="test-run")
 
     assert report.has_nav is True
     assert report.has_hero is False
     assert report.has_footer is True
+
+
+def test_run_ui_audit_flags_ocr_unavailable_distinct_from_clean(tmp_path, monkeypatch):
+    """Regression: an OCR failure (e.g. tesseract missing) must not be
+    silently reported the same as 'checked, found no page_issues'. See
+    agents/vision/page_health.py::detect_page_issues_detailed."""
+    def provider(run_id, index):
+        return _make_screenshot(tmp_path, f"shot_{index}.png", b"baseline")
+
+    fake_landmarks = FakeLandmarks(nav_elements=[], footer_elements=[], hero_elements=[])
+    monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], False))
+
+    report = run_ui_audit(provider, run_id="test-run")
+
+    assert report.page_issues == []
+    assert report.ocr_checked is False
 
 
 def test_run_ui_audit_flags_element_with_no_visible_change_as_possibly_broken(tmp_path, monkeypatch):
@@ -82,7 +99,7 @@ def test_run_ui_audit_flags_element_with_no_visible_change_as_possibly_broken(tm
     nav_el = FakeLandmarkElement(text="Broken Link", band="nav", looks_interactive=True)
     fake_landmarks = FakeLandmarks(nav_elements=[nav_el], footer_elements=[])
     monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
     monkeypatch.setattr("agents.vision.locator.locate_text", lambda path, text, **kw: FakeLocateResult(found=True))
 
     import runtime.hooks.os_fallback as real_os_fallback
@@ -105,7 +122,7 @@ def test_run_ui_audit_does_not_flag_element_when_page_visibly_changes(tmp_path, 
     nav_el = FakeLandmarkElement(text="Working Link", band="nav", looks_interactive=True)
     fake_landmarks = FakeLandmarks(nav_elements=[nav_el], footer_elements=[])
     monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
     monkeypatch.setattr("agents.vision.locator.locate_text", lambda path, text, **kw: FakeLocateResult(found=True))
 
     import runtime.hooks.os_fallback as real_os_fallback
@@ -126,7 +143,7 @@ def test_run_ui_audit_records_unreachable_when_element_not_located(tmp_path, mon
     nav_el = FakeLandmarkElement(text="Ghost Link", band="nav", looks_interactive=True)
     fake_landmarks = FakeLandmarks(nav_elements=[nav_el], footer_elements=[])
     monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
     monkeypatch.setattr("agents.vision.locator.locate_text", lambda path, text, **kw: FakeLocateResult(found=False))
 
     report = run_ui_audit(provider, run_id="test-run")
@@ -142,7 +159,7 @@ def test_run_ui_audit_respects_max_elements_cap(tmp_path, monkeypatch):
     nav_elements = [FakeLandmarkElement(text=f"Link {i}", band="nav", looks_interactive=True) for i in range(20)]
     fake_landmarks = FakeLandmarks(nav_elements=nav_elements, footer_elements=[])
     monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
     monkeypatch.setattr("agents.vision.locator.locate_text", lambda path, text, **kw: FakeLocateResult(found=True))
 
     import runtime.hooks.os_fallback as real_os_fallback
@@ -165,7 +182,7 @@ def test_run_ui_audit_includes_baseline_page_issues(tmp_path, monkeypatch):
 
     fake_landmarks = FakeLandmarks(nav_elements=[], footer_elements=[])
     monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: ["404"])
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: (["404"], True))
 
     report = run_ui_audit(provider, run_id="test-run")
 
@@ -215,7 +232,7 @@ def test_discovery_uses_dom_path_and_never_calls_ocr_when_dom_page_available(tmp
         raise AssertionError("OCR path (audit_screenshot) must not be called when a DOM page is available")
 
     monkeypatch.setattr(ui_audit_module, "audit_screenshot", _spy_audit_screenshot)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
     monkeypatch.setattr(settings, "enable_dom_extractor", True)
 
     class FakePage:
@@ -249,7 +266,7 @@ def test_discovery_falls_back_to_ocr_when_no_dom_page(tmp_path, monkeypatch):
         hero_elements=[],
     )
     monkeypatch.setattr("agents.vision.ui_audit.audit_screenshot", lambda path: fake_landmarks)
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
     monkeypatch.setattr(settings, "enable_dom_extractor", True)
     monkeypatch.setattr("runtime.hooks.browser.has_active_page", lambda: False)
 
@@ -277,7 +294,7 @@ def test_click_audit_uses_mutation_observer_as_primary_change_detection_when_dom
         return _make_screenshot(tmp_path, f"shot_{index}.png", same_bytes)
 
     monkeypatch.setattr(ui_audit_module, "audit_screenshot", lambda path: FakeLandmarks(nav_elements=[], footer_elements=[]))
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
     monkeypatch.setattr(settings, "enable_dom_extractor", True)
 
     class FakePage:
@@ -335,7 +352,7 @@ def test_click_audit_reports_no_change_when_mutation_observer_sees_nothing_even_
         return _make_screenshot(tmp_path, f"shot_{index}.png", f"different-bytes-{call_count['n']}".encode())
 
     monkeypatch.setattr(ui_audit_module, "audit_screenshot", lambda path: FakeLandmarks(nav_elements=[], footer_elements=[]))
-    monkeypatch.setattr("agents.vision.page_health.detect_page_issues", lambda path: [])
+    monkeypatch.setattr("agents.vision.page_health.detect_page_issues_detailed", lambda path: ([], True))
     monkeypatch.setattr(settings, "enable_dom_extractor", True)
 
     class FakePage:

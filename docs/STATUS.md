@@ -543,3 +543,29 @@ remain, neither blocking anything else:
    this pass and this session's B3 pass respectively, not migrated —
    not urgent, since none of them duplicate cross-cutting policy
    decisions the way the original five did.
+
+## Update — 2026-07-28 — Phase 5c (remaining capability adapters) done (D-087)
+
+**Phase 5c is done, and Phase 5 overall (5a/5b/5c) is now complete.**
+Reviewed the last 14 capability adapters. Found and fixed one real bug:
+`email_adapter.py`'s `_poll_email` had an unreachable "limit to 20
+messages" check placed after an unconditional `break`, so the search
+cap never actually applied. Fixed and covered by a new
+`tests/test_email_adapter.py` (2 tests, both passing). Everything else
+in the batch (`excel_adapter.py`, `pdf_adapter.py`,
+`chatops_adapter.py`, `defect_tracker_adapter.py`,
+`automation_anywhere_adapter.py`, `composio_adapter.py`,
+`performance_adapter.py`, `security_headers_adapter.py`,
+`accessibility_adapter.py`, `workflow_adapter.py`,
+`playwright_validator.py`, `fake_adapter.py`, `file_adapter.py`)
+reviewed clean. Full detail: `docs/decisions.md` D-087. Full suite:
+763 passed / 1 xfailed / 30 failed / 5 errors — identical pre-existing
+Chromium-binary/no-display sandbox baseline, zero regressions.
+
+## Next action
+Phase 6 — `orchestrator/` top-level orchestration core: `run_engine.py`,
+`healing_loop.py`, `autoscan.py`, `guardrails.py`, `memory.py`,
+`skill_store.py`, `quarantine_store.py`, `spec_validator.py`,
+`backend_router.py`/`hermes_client.py`/`http_retry.py`,
+`report_aggregator.py`, `scheduler.py`, `webhook_listener.py` (4842
+lines) — per the existing 0-9 phase plan.

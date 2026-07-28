@@ -91,7 +91,14 @@ class EmailAdapter:
             email_ids = messages[0].split()
             
             for num in reversed(email_ids):
+                # Limit search for performance -- checked before any
+                # continue/break below so it actually takes effect (it was
+                # previously placed after an unconditional `break`, making
+                # it unreachable dead code).
+                if evidence["checked_emails"] >= 20:
+                    break
                 evidence["checked_emails"] += 1
+
                 status, msg_data = mail.fetch(num, "(RFC822)")
                 if status != "OK": continue
                     
@@ -115,8 +122,6 @@ class EmailAdapter:
                     
                 passed = True
                 break
-                        
-                if evidence["checked_emails"] >= 20: break # Limit search for performance
                     
             mail.close()
             mail.logout()

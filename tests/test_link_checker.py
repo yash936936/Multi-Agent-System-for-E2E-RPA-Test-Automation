@@ -115,7 +115,31 @@ def test_nonexistent_footer_reports_no_links_found_not_a_silent_pass(monkeypatch
     assert result.evidence["checked"] == 0
 
 
-def test_missing_url_fails_with_clear_error():
+def test_nav_scope_only_checks_links_inside_nav(monkeypatch):
+    """
+    Regression test: scope="nav" previously had no effect at all --
+    _AnchorExtractor never tracked nav depth, so the filter in
+    _extract_links() silently fell through and returned every link on
+    the page, identical to scope="all". This confirms nav scope now
+    actually restricts to the <nav> element's own links.
+    """
+    _make_client_factory(monkeypatch)
+
+    adapter = LinkCheckAdapter()
+    result = adapter.run(
+        CapabilityCheckInput(
+            capability=CapabilityType.LINK_CHECK,
+            target="",
+            params={"url": "https://example.com/", "scope": "nav"},
+        )
+    )
+
+    checked_urls = {r["url"] for r in result.evidence["all_results"]}
+    assert checked_urls == {"https://example.com/about", "https://example.com/pricing"}
+    assert result.passed is True
+
+
+
     adapter = LinkCheckAdapter()
     result = adapter.run(
         CapabilityCheckInput(capability=CapabilityType.LINK_CHECK, target="", params={})

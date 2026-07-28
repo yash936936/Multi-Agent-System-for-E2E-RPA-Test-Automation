@@ -4956,3 +4956,65 @@ entry's scope covers.
 **Verified:** `tests/test_capability_egress_controls.py` gained 5 new tests (S3 region resolution + default-region fallback + allowlist enforcement; SharePoint fixed-host resolution + allowlist enforcement) — 29 passed, up from 24. Full suite (`DISPLAY=:99 pytest tests/`, Xvfb): 775 passed, up from 770, same pre-existing Chromium-binary/no-display baseline (16 failed, 5 errors), zero regressions.
 
 **Revisit when:** starting 5c (the remaining ~14 adapters: `email_adapter.py`, `excel_adapter.py`, `pdf_adapter.py`, `chatops_adapter.py`, `defect_tracker_adapter.py`, `automation_anywhere_adapter.py`, `composio_adapter.py`, `performance_adapter.py`, `security_headers_adapter.py`, `accessibility_adapter.py`, `workflow_adapter.py`, `playwright_validator.py`, `fake_adapter.py`, `file_adapter.py`). Also worth a future pass: dedicated test files for `azure_adapter.py`/`gcp_adapter.py`/`sharepoint_adapter.py`, none of which currently have one.
+
+## D-087 — Phase 5c: remaining capability adapters (2026-07-28)
+
+Debug/review pass over the last ~14 capability adapters flagged in D-086's
+"Revisit when" note: `email_adapter.py`, `excel_adapter.py`, `pdf_adapter.py`,
+`chatops_adapter.py`, `defect_tracker_adapter.py`,
+`automation_anywhere_adapter.py`, `composio_adapter.py`,
+`performance_adapter.py`, `security_headers_adapter.py`,
+`accessibility_adapter.py`, `workflow_adapter.py`, `playwright_validator.py`,
+`fake_adapter.py`, `file_adapter.py`.
+
+**One real bug found and fixed, in `email_adapter.py`'s `_poll_email`
+IMAP loop.** The "limit search to 20 messages for performance" check
+(`if evidence["checked_emails"] >= 20: break`) was written *after* an
+unconditional `break` earlier in the same loop body — dead code that
+could never execute, since the `passed = True; break` a few lines above
+it always exits the loop first, and the mismatch/`continue` paths never
+reach it either since it's outside their control flow. Net effect: the
+documented 20-message search cap did not exist in practice — a poll
+against a large mailbox with no matching message would scan every email
+in the inbox on every call, not just the most recent 20.
+
+Fix: moved the cap check to the top of the loop body, before the
+`fetch` call, checked against the count *before* incrementing (so
+exactly 20 messages are fetched/inspected, not 21). Regression coverage
+added in a new `tests/test_email_adapter.py` (mocked `imaplib.IMAP4_SSL`):
+one test confirms the loop stops at exactly 20 checked messages when
+nothing matches across a 50-message mailbox, another confirms a match
+found before the cap short-circuits normally.
+
+**Everything else in this batch reviewed clean**, no further bugs found:
+`excel_adapter.py`, `pdf_adapter.py` (incl. its OCR fallback path),
+`chatops_adapter.py`, `defect_tracker_adapter.py`,
+`automation_anywhere_adapter.py` (largest file in the batch, 526 lines —
+N1/N2/P1/P2 logic, token cache, multi-target polling, all read cleanly),
+`composio_adapter.py`, `performance_adapter.py`, `security_headers_adapter.py`,
+`accessibility_adapter.py`, `workflow_adapter.py`, `playwright_validator.py`,
+`fake_adapter.py`, `file_adapter.py` all reviewed line-by-line with no
+further issues found.
+
+**Verified:** `tests/test_email_adapter.py` (new, 2 tests) both pass.
+`tests/test_phase_n_automation_anywhere.py` + `tests/test_phase_p_automation_anywhere.py`
++ `tests/test_automation_anywhere.py` (32 tests), `tests/test_accessibility_adapter.py`,
+`tests/test_composio_adapter.py`, `tests/test_cloud_workflow_adapters.py`,
+`tests/test_performance_adapter.py`, `tests/test_defect_tracker_adapter.py`,
+`tests/test_security_headers_adapter.py`, `tests/test_pdf_ocr.py` all
+re-run and pass (the accessibility/performance browser-dependent tests
+fail only with the pre-existing Chromium-binary-unavailable sandbox
+error, confirmed by inspecting `result.evidence["error"]` directly, not
+a regression). Full suite: 763 passed / 1 xfailed / 30 failed / 5 errors
+-- identical pre-existing Chromium-binary/no-display sandbox baseline,
+zero regressions, plus the 2 new tests.
+
+**Phase 5 (all sub-phases 5a/5b/5c) is now complete** -- every adapter
+in `agents/capability/` has had a dedicated debug/review pass.
+
+**Next real action:** Phase 6 -- `orchestrator/` top-level orchestration
+core (`run_engine.py`, `healing_loop.py`, `autoscan.py`, `guardrails.py`,
+`memory.py`, `skill_store.py`, `quarantine_store.py`, `spec_validator.py`,
+`backend_router.py`/`hermes_client.py`/`http_retry.py`,
+`report_aggregator.py`, `scheduler.py`, `webhook_listener.py`), per the
+existing 0-9 phase plan.

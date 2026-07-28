@@ -293,3 +293,72 @@ def test_gcp_storage_can_now_be_allowlist_restricted():
     assert result.passed is False
     assert result.evidence.get("rejected") is True
     assert "storage.googleapis.com" in result.evidence["reason"]
+
+
+def test_s3_cloud_capability_resolves_to_region_based_default_host():
+    """
+    Regression test (Phase 5b, decisions.md D-086): CapabilityType.CLOUD
+    (S3 via agents/capability/cloud_adapter.py) never had its endpoint
+    resolved here at all -- unlike GCP_STORAGE above (D-050), so
+    settings.allowed_capability_hosts never actually restricted S3
+    traffic. boto3's virtual-hosted endpoint is deterministic given the
+    same 'region_name' param the adapter itself reads.
+    """
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.CLOUD,
+        target="",
+        params={"bucket": "b", "key": "f", "region_name": "eu-west-1"},
+    )
+    assert _extract_egress_host(payload) == "s3.eu-west-1.amazonaws.com"
+
+
+def test_s3_cloud_capability_defaults_to_us_east_1_when_region_unset():
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.CLOUD,
+        target="",
+        params={"bucket": "b", "key": "f"},
+    )
+    assert _extract_egress_host(payload) == "s3.us-east-1.amazonaws.com"
+
+
+def test_s3_cloud_capability_can_now_be_allowlist_restricted():
+    settings.allowed_capability_hosts = ["some-other-host.example.com"]
+    result = route_capability(
+        CapabilityCheckInput(
+            capability=CapabilityType.CLOUD,
+            target="",
+            params={"bucket": "b", "key": "f"},
+        )
+    )
+    assert result.passed is False
+    assert result.evidence.get("rejected") is True
+    assert "s3.us-east-1.amazonaws.com" in result.evidence["reason"]
+
+
+def test_sharepoint_resolves_to_fixed_graph_host():
+    """
+    Regression test (Phase 5b, decisions.md D-086): sharepoint_adapter.py
+    talks to a hardcoded Microsoft Graph host regardless of tenant/site/
+    drive -- this was previously mislabeled as an unresolvable,
+    tenant-specific SDK endpoint and left as a documented fail-open case.
+    """
+    payload = CapabilityCheckInput(
+        capability=CapabilityType.SHAREPOINT,
+        target="",
+        params={"tenant_id": "t", "site_id": "s", "file_path": "f.txt"},
+    )
+    assert _extract_egress_host(payload) == "graph.microsoft.com"
+
+
+def test_sharepoint_can_now_be_allowlist_restricted():
+    settings.allowed_capability_hosts = ["some-other-host.example.com"]
+    result = route_capability(
+        CapabilityCheckInput(
+            capability=CapabilityType.SHAREPOINT,
+            target="",
+            params={"tenant_id": "t", "site_id": "s", "file_path": "f.txt"},
+        )
+    )
+    assert result.passed is False
+    assert result.evidence.get("rejected") is True
+    assert "graph.microsoft.com" in result.evidence["reason"]
