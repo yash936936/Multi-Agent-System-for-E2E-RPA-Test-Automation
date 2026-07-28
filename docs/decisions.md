@@ -5124,3 +5124,49 @@ lines): `execute` was already flag-audited in an earlier pass; still
 open are `init`, `ui-audit`, `capability-check`, `debug`, `explain`,
 `audit-report`, `schedule`, `skills`, `baselines` commands, plus
 `api/routers/runs.py`'s remaining endpoints and (optionally) `webui/`.
+
+## D-090 — Phase 8: entry points (aura/ CLI + api/ REST) (2026-07-28)
+
+Debug/review pass over the last phase in the 0-9 remediation plan: the
+entry-point layers. `aura/` CLI (main.py, execute_cmd.py, preflight.py,
+live_view.py, and the init/ui-audit/capability-check/debug/explain/
+audit-report/schedule/skills/baselines commands, 2199 lines) and `api/`
+REST (main.py, security.py, user_store.py, spec_builder.py, run_store.py,
+and the auth/runs/users/adapters/webhooks routers, 1300 lines).
+
+**No crash bugs or logic errors found.** Every CLI command reviewed
+delegates correctly to its underlying subsystem, `main.py`'s exit-code
+contract (D-026) and crash boundary (D-`AF1`) are both sound, and
+`execute_cmd.py`'s Brain-delegation split (D-075) holds together end to
+end. On the API side, `security.py`'s vault/JWT-secret separation
+(D-017), `user_store.py`'s namespaced OAuth-identity fix, and
+`run_store.py`'s trend-analytics/flaky-candidate queries all read
+cleanly; `runs.py`'s route-registration order (analytics routes ahead
+of the `/{run_id}` catch-all) and its 404-not-403 privacy posture
+(D-032) are both correct and consistent.
+
+**One minor dead-code cleanup, not a functional bug:**
+`api/routers/runs.py` had an unused `import time` (dead leftover --
+`time` isn't referenced anywhere in the file) -- removed. Nothing else
+in this batch needed a fix.
+
+**Verified:** `tests/test_cli.py` + `tests/test_api_service.py` (29
+tests) pass. Full suite: 764 passed / 1 xfailed / 30 failed / 5 errors
+-- identical pre-existing Chromium-binary/no-display sandbox baseline,
+zero regressions.
+
+**This closes out the entire Phase 0-9 remediation plan.** Every
+subsystem in the codebase (config/schemas, runtime hooks, vision layer,
+planner/data-synth, all 20+ capability adapters across 5a/5b/5c,
+orchestration core, brain coordination layer, and now both entry-point
+surfaces) has had a dedicated debug/review pass, with real bugs found
+and fixed along the way (see D-087 (email poll-loop search-cap dead
+code), D-088 (cross-modal-heal SkillRecord/skill_store.add crash), and
+this entry for the Phase 5c-8 run specifically) and the full regression
+suite held steady throughout at zero new failures.
+
+**Suggested next step (not part of the original numbered plan):**
+Phase 9 -- re-run the full suite including the browser-dependent
+integration tier on a machine with real Chromium binaries and network
+access (the sandbox here cannot install `cdn.playwright.dev` assets),
+to catch anything the unit-level phases couldn't exercise end-to-end.

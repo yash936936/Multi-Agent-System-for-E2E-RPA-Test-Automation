@@ -621,3 +621,27 @@ Phase 8 -- entry points: `aura/` CLI (~2199 lines: `init`, `ui-audit`,
 flag-audited) and `api/` REST (~1300 lines: `api/routers/runs.py`'s
 remaining endpoints, plus optionally `webui/` if the dashboard should
 be included). This is the last phase in the original 0-9 plan.
+
+## Update — 2026-07-28 — Phase 8 (entry points) done (D-090)
+
+**Phase 8 is done -- this closes out the entire Phase 0-9 remediation
+plan.** Reviewed both entry-point surfaces: `aura/` CLI (main.py,
+execute_cmd.py, preflight.py, live_view.py, and all nine standalone
+commands: init/ui-audit/capability-check/debug/explain/audit-report/
+schedule/skills/baselines) and `api/` REST (main.py, security.py,
+user_store.py, spec_builder.py, run_store.py, and the auth/runs/users/
+adapters/webhooks routers).
+
+No crash bugs or logic errors found. One minor dead-code cleanup:
+removed an unused `import time` in `api/routers/runs.py`. Full detail:
+`docs/decisions.md` D-090. Full suite: 764 passed / 1 xfailed / 30
+failed / 5 errors -- identical pre-existing Chromium-binary/no-display
+sandbox baseline, zero regressions.
+
+## Next action
+The original 0-9 phase plan is now complete end to end. Suggested
+follow-on (not part of the numbered plan): Phase 9 -- re-run the full
+suite including the browser-dependent integration tier on a machine
+with real Chromium binaries and network access (this sandbox blocks
+`cdn.playwright.dev`), to catch anything the unit-level phases couldn't
+exercise end-to-end.
