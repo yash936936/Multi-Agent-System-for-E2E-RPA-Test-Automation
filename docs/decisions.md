@@ -5252,3 +5252,79 @@ environment that can actually verify the click now lands correctly.
 
 **Recommended housekeeping (not done here, needs your local machine):**
 delete the 5 stale test files listed above from your working directory.
+
+## D-092 — Correction to D-091: real root cause of the executor failure was cross-file settings pollution, not (only) DPI (2026-07-28)
+
+You re-ran the suite after D-091's fixes were applied (confirmed:
+`test_run_engine.py` now passes cleanly, proving that fix works). But
+`test_executor_dom_path.py::
+test_dual_verification_disagreement_falls_back_when_winner_dispatch_fails`
+still failed identically. Investigated properly this time instead of
+assuming D-091's fix already covered it.
+
+**Real root cause: `tests/test_browser_hooks.py` (one of the five files
+D-091 already identified as stale/orphaned) was not just noise -- it
+was actively poisoning the test run.** Its
+`test_firefox_engine_selected_launches_firefox_not_chromium` sets
+`settings.playwright_browser = "firefox"` directly on the shared,
+module-level `settings` singleton, with no `monkeypatch.setattr` and no
+restoring teardown of its own (unlike the current, non-stale
+`tests/test_cross_browser.py`, which properly saves/restores this exact
+field around every test via its own autouse fixture -- this stale file
+predates that isolation existing at all). Pytest collects/runs test
+files in alphabetical order by default, and "test_browser_hooks.py"
+sorts before "test_executor_dom_path.py", so the leaked `"firefox"`
+value silently persisted for every later test in that same run.
+
+`runtime/hooks/browser.py::get_click_point_in_page` early-returns `None`
+whenever `settings.playwright_browser != "chromium"` (CDP is
+Chromium-only). With the leaked value in place, translation never even
+ran for the rest of the session -- `_dispatch_ocr` fell back to the raw,
+untranslated `os_fallback.click(ocr_result.x, ocr_result.y)` path, which
+misses whenever the browser window isn't at the OS screen's origin --
+exactly the failure this test's own `_production_screenshot` docstring
+already documents as the known bug shape it exists to catch. D-091's DPI
+scaling fix to that same function was still a real, independently-verified
+bug (confirmed against Chrome's CDP documentation) and is being kept, but
+it was never reached in this failure -- the early-return fired first.
+Confirmed this whole chain by reading the actual guard clause in
+`browser.py` and the leaking test's own code (visible in your pasted
+traceback), not by guessing.
+
+**Two fixes, both more durable than "please delete the stale file and
+hope this specific leak shape never recurs":**
+
+1. `scripts/remove_stale_tests.py` -- a real cleanup script (not just
+   instructions) that deletes the five confirmed-orphaned files from a
+   local working directory (`--dry-run` supported). Root cause of their
+   existence, per D-091, is unchanged: extracting a delivered zip on top
+   of an existing folder never deletes files no longer in the new
+   archive.
+2. **`conftest.py`'s autouse isolation fixture now snapshots and
+   restores `settings.playwright_browser`/`playwright_headless`/
+   `record_video`/`record_trace` around every single test in the whole
+   suite**, not just the ones that happen to remember their own
+   save/restore discipline. This doesn't depend on identifying every
+   individual leaking test (there could be others, in files that don't
+   exist yet); it makes the *category* of "a test mutates the shared
+   settings singleton directly and forgets to clean up" structurally
+   unable to survive past the test that caused it, regardless of which
+   file does it or whether it's stale. New
+   `tests/test_root_conftest_settings_isolation.py` proves this: it
+   reproduces the exact leak shape directly (mutate `playwright_browser`
+   with no teardown, named to sort alphabetically before the check) and
+   confirms the next test sees the restored default -- verified this
+   fails without the conftest.py fix and passes with it before
+   finalizing (temporarily reverted the fix, reran, saw the expected
+   AssertionError, then restored it).
+
+**Verified:** new test passes (and was confirmed to fail without the
+fix). Full suite: 767 passed / 1 xfailed / 30 failed / 5 errors --
+identical pre-existing Chromium-binary/no-display sandbox baseline, zero
+regressions, plus the 2 new tests. Re-run
+`python scripts/remove_stale_tests.py` then the full suite on your
+Windows machine -- with the stale file physically gone AND the
+conftest.py safety net in place, `test_dual_verification_disagreement_
+falls_back_when_winner_dispatch_fails` should now pass for real, and any
+DPI-scaling-only failure (a display at other than 100% scaling) would be
+covered separately by D-091's fix.

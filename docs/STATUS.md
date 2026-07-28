@@ -683,3 +683,39 @@ zero regressions.
 Delete the 5 stale test files above from your local working directory,
 then re-run the full suite on your Windows machine to confirm both real
 fixes hold under the actual conditions that exposed them.
+
+## Update — 2026-07-28 — Real root cause found: cross-file test pollution (D-092)
+
+Your re-run confirmed D-091's `test_run_engine.py` fix works (now
+passes cleanly). But the executor dual-verification test still failed
+identically -- so this was investigated properly rather than assumed
+fixed.
+
+**Real root cause:** the stale `tests/test_browser_hooks.py` (one of
+the 5 orphaned files from D-091) sets `settings.playwright_browser =
+"firefox"` directly with no teardown, and since pytest runs files
+alphabetically, that leaks into every later test in the run --
+including the executor test, whose OCR-fallback coordinate translation
+silently no-ops whenever `playwright_browser != "chromium"`. D-091's
+DPI fix was real but never got reached here.
+
+**Two fixes:**
+1. `scripts/remove_stale_tests.py` -- run this to actually delete the 5
+   stale files (`python scripts/remove_stale_tests.py`, or add
+   `--dry-run` to preview first).
+2. `conftest.py` now snapshots/restores `playwright_browser` (and 3
+   related fields) around every test in the whole suite, so this class
+   of leak can't survive past whichever test causes it -- regardless of
+   which file, present or future. New
+   `tests/test_root_conftest_settings_isolation.py` proves it (verified
+   failing without the fix, passing with it).
+
+Full detail: `docs/decisions.md` D-092. Full suite here: 767 passed / 1
+xfailed / 30 failed / 5 errors -- identical documented baseline, zero
+regressions.
+
+## Next action
+Run `python scripts/remove_stale_tests.py` on your Windows machine, then
+re-run the full suite. With the stale file physically gone and the
+conftest.py safety net in place, the executor test should now pass for
+real.
