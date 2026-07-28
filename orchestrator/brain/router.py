@@ -114,7 +114,6 @@ class Router:
         from orchestrator.run_engine import RunEngine
         from orchestrator.schemas import RequirementInput
         from orchestrator.skill_store import SkillStore
-        from orchestrator.spec_validator import SpecValidationError
 
         requirement_text = intent.get("requirement_text")
         auto_approve = intent.get("auto_approve", False)

@@ -601,3 +601,23 @@ Phase 7 -- `orchestrator/brain/` coordination layer (`router.py`,
 `policy.py`, `intent.py`, `context.py`, 737 lines). Small, but every
 surviving intent funnels through it, so worth a focused single-session
 pass per the original phase plan.
+
+## Update — 2026-07-28 — Phase 7 (orchestrator/brain/) done (D-089)
+
+**Phase 7 is done.** Reviewed `orchestrator/brain/` (`intent.py`,
+`context.py`, `brain.py`, `policy.py`, `router.py`). No crash bugs or
+logic errors found -- this layer is in good shape. One minor cleanup:
+removed an unused `SpecValidationError` import in `router.py` (dead
+code; that error is correctly caught by the CLI/API callers, not the
+Router, per this module's own documented boundary). Full detail:
+`docs/decisions.md` D-089. Full suite: 764 passed / 1 xfailed / 30
+failed / 5 errors -- identical pre-existing Chromium-binary/no-display
+sandbox baseline, zero regressions.
+
+## Next action
+Phase 8 -- entry points: `aura/` CLI (~2199 lines: `init`, `ui-audit`,
+`capability-check`, `debug`, `explain`, `audit-report`, `schedule`,
+`skills`, `baselines` commands still open; `execute` already
+flag-audited) and `api/` REST (~1300 lines: `api/routers/runs.py`'s
+remaining endpoints, plus optionally `webui/` if the dashboard should
+be included). This is the last phase in the original 0-9 plan.

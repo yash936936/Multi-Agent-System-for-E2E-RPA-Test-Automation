@@ -4732,7 +4732,6 @@ tests called them — editing `brain_knowledge/rules/discovery.yaml` or
   param and, when none is given, constructs its own `Policy()` and
   sources vocab/band values from it — this is the load-bearing change:
   editing `brain_knowledge/rules/discovery.yaml`/`bands.yaml` now
-  
   actually changes OCR classification behavior for the first time since
   Phase B2 shipped those files.
 - **Deliberately not done:** passing a shared `Policy` instance down
@@ -5085,3 +5084,43 @@ sandbox baseline, zero regressions, plus the 1 new test.
 (`router.py`, `policy.py`, `intent.py`, `context.py`, 737 lines) -- small,
 but every surviving intent funnels through it, so a bug here would affect
 every entrypoint simultaneously; good candidate for a single focused pass.
+
+## D-089 — Phase 7: orchestrator/brain/ coordination layer (2026-07-28)
+
+Debug/review pass over `orchestrator/brain/` (`__init__.py`, `brain.py`,
+`context.py`, `intent.py`, `policy.py`, `router.py`, 737 lines) -- the
+layer every surviving `IntentKind` funnels through.
+
+**No crash bugs or logic errors found.** `intent.py`, `context.py`,
+`brain.py`, and `policy.py` all read cleanly line-by-line -- `policy.py`
+in particular is careful and consistent about its fallback-to-hardcoded-
+default posture whenever `brain_knowledge/rules/*.yaml` is missing or
+malformed. `router.py`'s six intent handlers (`execute_spec`/
+`execute_prompt`/`execute_interactive`/`ui_audit`/`capability_check`,
+`execute_spec`/`execute_prompt` sharing one implementation) all correctly
+delegate to existing subsystems (`RunEngine`, `ui_audit_runner`,
+`OrchestratorKernel`) without reimplementing any of them, matching the
+module's own stated "Router doesn't render, doesn't reimplement" boundary.
+
+**One minor cleanup, not a functional bug:** `router.py`'s
+`_handle_execute_requirement` imported `SpecValidationError` from
+`orchestrator.spec_validator` but never used it -- dead code left over
+from before the "Router doesn't catch, the CLI/API caller does" design
+was settled (confirmed: `aura/cli/execute_cmd.py` and
+`api/routers/runs.py` both already catch `SpecValidationError` around
+their own calls into the Brain, which is the actually-correct place for
+it per this module's own documented boundary). Removed the unused
+import; no behavior change.
+
+**Verified:** `tests/test_brain.py` + `tests/test_brain_b3.py` (13 tests)
+pass. Full suite: 764 passed / 1 xfailed / 30 failed / 5 errors --
+identical pre-existing Chromium-binary/no-display sandbox baseline, zero
+regressions.
+
+**Phase 7 is done.** Combined with Phases 0-6 (all sub-phases), the
+entire 0-9 remediation-pass phase plan now has one item left: **Phase 8
+-- entry points** (`aura/` CLI, ~2199 lines, and `api/` REST, ~1300
+lines): `execute` was already flag-audited in an earlier pass; still
+open are `init`, `ui-audit`, `capability-check`, `debug`, `explain`,
+`audit-report`, `schedule`, `skills`, `baselines` commands, plus
+`api/routers/runs.py`'s remaining endpoints and (optionally) `webui/`.
