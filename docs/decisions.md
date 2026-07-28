@@ -5170,3 +5170,85 @@ Phase 9 -- re-run the full suite including the browser-dependent
 integration tier on a machine with real Chromium binaries and network
 access (the sandbox here cannot install `cdn.playwright.dev` assets),
 to catch anything the unit-level phases couldn't exercise end-to-end.
+
+## D-091 — Real Phase 9 run (Windows, real Chromium): 2 real bugs found (2026-07-28)
+
+You ran the full suite on a real Windows machine with real Chromium
+installed and network access -- the actual Phase 9 this plan always
+needed and this sandbox could never do (blocked from
+`cdn.playwright.dev`). Result: 17 failed / 1172 passed / 2 xfailed.
+
+**15 of the 17 failures are not real bugs -- they're stale, orphaned
+test files.** `tests/test_explore_against_fixtures.py`,
+`tests/test_explore_cmd.py`, `tests/test_browser_hooks.py`, and
+`tests/test_reporting.py` (plus `tests/test_vision_dom.py`) do not exist
+anywhere in this codebase -- confirmed by checking: none of these five
+files are present in the repo this decision log describes. They
+reference APIs removed/renamed in earlier phases (`run_exploration` was
+removed from `orchestrator/ui_audit_runner.py` in the pre-session Phase 0
+explore-removal; `read_records(category=...)`/anomaly-shape assertions
+were superseded by the current `decision_trace_log.py`/
+`test_decision_trace_log.py`). Root cause: extracting each delivered zip
+on top of an existing working directory adds/updates files but never
+deletes ones that no longer exist in the new archive, so old test
+modules survive indefinitely once orphaned. Action: delete these five
+files from the working directory (or always extract into a clean
+folder) -- there is nothing to fix in the source for these.
+
+**2 of the 17 failures are real, and both are fixed here:**
+
+1. **`runtime/hooks/browser.py::_BrowserSession.get_click_point_in_page`
+   -- DIP-vs-physical-pixel unit bug.** CDP's `Browser.getWindowForTarget`
+   bounds are documented as DIP (device-independent/CSS pixels), not the
+   physical device pixels mss/OCR coordinates use. The code subtracted
+   `bounds` directly from a physical-pixel screen coordinate with no dpr
+   scaling on `bounds` itself -- correct only by coincidence on a 100%-
+   scaled display (where DIP == physical pixels), and silently wrong on
+   any HiDPI/scaled Windows display (125%, 150%, etc. -- the overwhelming
+   majority of real laptops), which is exactly what exposed it on a real
+   machine: `tests/test_executor_dom_path.py::
+   test_dual_verification_disagreement_falls_back_when_winner_dispatch_fails`
+   reported `dispatched_via == "ocr"` (a "successful" click) while the
+   page's own click handler never actually fired, because the translated
+   point was off by however many physical pixels the scaling factor
+   introduced. Fixed by scaling `bounds["left"]`/`bounds["top"]` by `dpr`
+   before mixing them with the already-physical-pixel `screen_x`/
+   `screen_y` and `chrome_h_css * dpr` values. New regression test
+   `tests/test_browser_hook.py::
+   test_get_click_point_in_page_scales_dip_bounds_by_device_pixel_ratio`
+   uses dpr=2 specifically because dpr=1 can't distinguish correct from
+   buggy math (the existing scrollbar-width regression test from an
+   earlier phase used dpr=1 and couldn't have caught this).
+
+2. **`tests/test_run_engine.py` -- missing planner-backend test
+   isolation.** `config/settings.py`'s `settings` singleton is
+   constructed once at import time, before `conftest.py`'s autouse
+   env-var-deletion fixture ever runs -- so an operator's own real `.env`
+   (e.g. `AURA_PLANNER_BACKEND=hermes_agent`, set for their own manual
+   AURA use outside of tests) bakes permanently into the shared singleton
+   and is never undone by that fixture. This file's 6 tests that call
+   `RunEngine.run()` (not `run_spec()`) route through `generate_spec()`
+   and therefore read that singleton directly, so on a machine with such
+   a `.env` present they silently attempted a real Hermes connection
+   (refused), escalated to a real cloud LLM call (succeeded, live), and
+   asserted against whatever that live, non-deterministic spec produced
+   instead of the offline heuristic parser these "clean pipeline" tests
+   were written against -- `test_run_engine_completes_full_login_flow`'s
+   final status came back FAILED as a result. `tests/
+   test_decision_trace_log.py` already has the correct fix for this exact
+   class of leak (`monkeypatch.setattr(global_settings, "planner_backend",
+   "heuristic")`); `test_run_engine.py` was just missing it. Added an
+   autouse fixture applying the same pattern to every test in the file.
+
+**Verified:** both new/updated tests pass locally (sandbox still can't
+launch real Chromium, so the DIP fix is verified via the mocked-CDP unit
+test, not an end-to-end click). Full suite here: 765 passed / 1 xfailed
+/ 30 failed / 5 errors -- identical pre-existing Chromium-binary/
+no-display sandbox baseline, zero regressions, plus the 1 new test.
+**You should re-run the full suite on your Windows machine** to confirm
+both fixes hold under the real conditions that exposed them (real
+Chromium, real DPI scaling, and your real .env) -- that's the only
+environment that can actually verify the click now lands correctly.
+
+**Recommended housekeeping (not done here, needs your local machine):**
+delete the 5 stale test files listed above from your working directory.

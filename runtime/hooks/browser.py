@@ -281,14 +281,15 @@ class _BrowserSession:
         real desktop (observed: jumping to the taskbar).
 
         Uses one Chromium DevTools Protocol call (Browser.getWindowForTarget)
-        to get this window's actual on-screen bounds -- CDP reports these in
-        the same physical-pixel space mss captures in, so no separate DPI
-        conversion is needed for that part. window.devicePixelRatio and
-        outerWidth/outerHeight - innerWidth/innerHeight (both CSS pixels,
-        read directly from the page) give the browser chrome's size, which
-        is subtracted before converting the remaining offset into CSS
-        pixels (Playwright's own mouse coordinate space) by dividing by
-        the device pixel ratio once.
+        to get this window's actual on-screen bounds. These are documented
+        as DIP (device-independent/CSS pixels), NOT the physical device
+        pixels mss/OCR coordinates use -- so bounds are scaled by
+        window.devicePixelRatio before being mixed with screen_x/screen_y
+        below. window.devicePixelRatio and outerWidth/outerHeight -
+        innerWidth/innerHeight (both CSS pixels, read directly from the
+        page) give the browser chrome's size, which is subtracted before
+        converting the remaining offset into CSS pixels (Playwright's own
+        mouse coordinate space) by dividing by the device pixel ratio once.
 
         Simplification: assumes standard top-only chrome (title bar/tabs/
         address bar) with no left/right chrome (devtools panel undocked to
@@ -319,8 +320,19 @@ class _BrowserSession:
             # the vertical scrollbar's width (on the content's *right*
             # edge), not left-side chrome, and must not be folded into
             # this offset.
-            content_left_screen = bounds["left"]
-            content_top_screen = bounds["top"] + chrome_h_css * dpr
+            # bounds (Browser.getWindowForTarget) is documented as DIP
+            # (device-independent pixels), the same space as CSS pixels,
+            # NOT physical device pixels -- unlike screen_x/screen_y (from
+            # mss/OCR) and chrome_h_css*dpr just below, both of which are
+            # already in physical-pixel space. bounds must be scaled by dpr
+            # before being mixed with those physical-pixel values, or the
+            # translated point is wrong on any display with dpr != 1 (i.e.
+            # any Windows scaling setting other than 100%) -- confirmed as
+            # a real bug via a live-machine test failure: the OCR fallback
+            # reported a completed click, but the click landed at the wrong
+            # on-screen point and the page's own handler never fired.
+            content_left_screen = bounds["left"] * dpr
+            content_top_screen = bounds["top"] * dpr + chrome_h_css * dpr
             viewport_x = (screen_x - content_left_screen) / dpr
             viewport_y = (screen_y - content_top_screen) / dpr
             if viewport_x < 0 or viewport_y < 0:

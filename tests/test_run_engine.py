@@ -19,9 +19,35 @@ from orchestrator.memory import RunMemoryStore
 from orchestrator.run_engine import RunEngine
 from orchestrator.schemas import RunStatus
 from orchestrator.skill_store import SkillStore
+from config.settings import settings as global_settings
 from target_app.demo_login_app import render_login_screen
 
 REQUIREMENT_PATH = Path(__file__).resolve().parent.parent / "requirements_input" / "example_login_flow.md"
+
+
+@pytest.fixture(autouse=True)
+def _force_heuristic_planner_backend(monkeypatch):
+    """
+    This module's tests call RunEngine.run() (not run_spec()), which routes
+    through Planner.generate_spec() and therefore reads the process-wide
+    `settings` singleton's `planner_backend`/`enable_cloud_planner` fields.
+    That singleton (config/settings.py's `settings = Settings()`) is built
+    once at import time -- before conftest.py's autouse env-var-deletion
+    fixture ever runs -- so an operator's own real .env (e.g.
+    AURA_PLANNER_BACKEND=hermes_agent, set for their own manual AURA usage
+    outside of tests) bakes permanently into it and is NOT undone by that
+    fixture. Without this, these "clean, deterministic, fully offline"
+    pipeline tests silently attempt a real network call to a local Hermes
+    Agent, escalate to a real cloud LLM on failure, and assert against
+    whatever that live (and possibly differently-worded) spec produced --
+    exactly the failure observed on a real dev machine with such a .env
+    present. Forcing the heuristic backend here (same pattern already used
+    correctly in tests/test_decision_trace_log.py) makes every test in this
+    file deterministic and network-free regardless of the operator's local
+    environment.
+    """
+    monkeypatch.setattr(global_settings, "planner_backend", "heuristic")
+    monkeypatch.setattr(global_settings, "enable_cloud_planner", False)
 
 
 @pytest.fixture()

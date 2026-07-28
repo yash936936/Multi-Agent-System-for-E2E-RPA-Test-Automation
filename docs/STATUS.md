@@ -645,3 +645,41 @@ suite including the browser-dependent integration tier on a machine
 with real Chromium binaries and network access (this sandbox blocks
 `cdn.playwright.dev`), to catch anything the unit-level phases couldn't
 exercise end-to-end.
+
+## Update — 2026-07-28 — Real Phase 9 run: 2 real bugs found and fixed (D-091)
+
+You ran the real Phase 9 (full suite on a Windows machine with real
+Chromium + network) that the sandbox could never do. Result: 17 failed.
+
+**15 of 17 are stale orphaned test files, not bugs** -- delete these
+five from your working directory (they reference APIs removed/renamed
+in earlier phases, and don't exist in the repo this doc describes):
+  - `tests/test_explore_against_fixtures.py`
+  - `tests/test_explore_cmd.py`
+  - `tests/test_browser_hooks.py`
+  - `tests/test_reporting.py`
+  - `tests/test_vision_dom.py`
+Root cause: extracting a delivered zip on top of an existing folder
+adds/updates files but never deletes ones no longer in the archive.
+Always extract into a clean folder to avoid this going forward.
+
+**2 of 17 are real bugs, both fixed:**
+1. `runtime/hooks/browser.py`'s `get_click_point_in_page` mixed DIP
+   (CDP bounds) with physical-pixel (mss/OCR) coordinates with no dpr
+   scaling on the bounds -- wrong on any HiDPI/scaled Windows display.
+   Fixed; new test uses dpr=2 to actually catch it (dpr=1 can't).
+2. `tests/test_run_engine.py` had no planner-backend test isolation, so
+   an operator's real `.env` (e.g. `AURA_PLANNER_BACKEND=hermes_agent`)
+   silently drove these "clean offline pipeline" tests through a real
+   network-dependent path instead. Added the same
+   `monkeypatch.setattr(settings, "planner_backend", "heuristic")`
+   pattern already used correctly elsewhere in the suite.
+
+Full detail: `docs/decisions.md` D-091. Full suite here: 765 passed / 1
+xfailed / 30 failed / 5 errors -- identical documented sandbox baseline,
+zero regressions.
+
+## Next action
+Delete the 5 stale test files above from your local working directory,
+then re-run the full suite on your Windows machine to confirm both real
+fixes hold under the actual conditions that exposed them.

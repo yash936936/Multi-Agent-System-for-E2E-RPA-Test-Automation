@@ -219,3 +219,59 @@ def test_get_click_point_in_page_does_not_shift_x_by_scrollbar_width():
     assert result == (10, 20), (
         f"expected (10, 20) with no x-shift from the scrollbar-width chrome value, got {result}"
     )
+
+
+def test_get_click_point_in_page_scales_dip_bounds_by_device_pixel_ratio():
+    """
+    Regression test: Browser.getWindowForTarget's `bounds` are documented
+    by the CDP spec as DIP (device-independent/CSS pixels) -- NOT the
+    physical device pixels mss/OCR coordinates (screen_x/screen_y) use.
+    The old code subtracted `bounds` directly from a physical-pixel
+    screen coordinate with no dpr scaling on `bounds` itself, so on any
+    display with devicePixelRatio != 1 (i.e. any Windows scaling setting
+    other than 100%, which is most laptops) the translated point was
+    wrong -- confirmed on a real Windows machine: `_dispatch_ocr` reported
+    a completed click (`dispatched_via == "ocr"`), but the click landed
+    at the wrong on-screen point and the page's own click handler never
+    fired.
+
+    Uses devicePixelRatio=2 (a common HiDPI/150%+ scaling value) where a
+    bounds-scaling bug can't hide the way it would at dpr=1 (where DIP
+    and physical pixels are numerically identical).
+    """
+    from runtime.hooks.browser import _BrowserSession
+
+    class FakeCdpSession:
+        def send(self, method):
+            assert method == "Browser.getWindowForTarget"
+            # DIP coordinates -- window sits at (100, 50) in DIP space.
+            return {"bounds": {"left": 100, "top": 50}}
+
+    class FakeContext:
+        def new_cdp_session(self, page):
+            return FakeCdpSession()
+
+    class FakePage:
+        def evaluate(self, script):
+            if "devicePixelRatio" in script:
+                return 2
+            if "outerWidth - window.innerWidth" in script:
+                return 0
+            if "outerHeight - window.innerHeight" in script:
+                return 80  # CSS pixels -- title bar + toolbar, top-only chrome
+            raise AssertionError(f"unexpected evaluate() call: {script!r}")
+
+    session = _BrowserSession()
+    session._page = FakePage()
+    session._context = FakeContext()
+
+    # Content-relative (10, 20) CSS/viewport point, at dpr=2:
+    #   content_left_screen (physical) = bounds.left * dpr = 100 * 2 = 200
+    #   content_top_screen (physical)  = bounds.top * dpr + chrome_h_css * dpr
+    #                                   = 50*2 + 80*2 = 260
+    #   screen_x = content_left_screen + viewport_x * dpr = 200 + 10*2 = 220
+    #   screen_y = content_top_screen  + viewport_y * dpr = 260 + 20*2 = 300
+    result = session.get_click_point_in_page(220, 300)
+    assert result == (10, 20), (
+        f"expected (10, 20) after correctly scaling DIP bounds by devicePixelRatio, got {result}"
+    )
