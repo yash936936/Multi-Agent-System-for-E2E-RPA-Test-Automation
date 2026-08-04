@@ -22,6 +22,8 @@ see the [Docs](#docs) section at the bottom.
   - [`aura execute`](#aura-execute)
   - [`aura schedule`](#aura-schedule)
   - [`aura skills`](#aura-skills)
+  - [`aura baselines`](#aura-baselines)
+  - [Other commands](#other-commands) (`doctor`, `ui-audit`, `capability-check`, `debug`, `explain`, `audit-report`, `trigger`)
 - [Configuration (.env)](#configuration-env)
 - [Planner backends](#planner-backends)
 - [Reports & output locations](#reports--output-locations)
@@ -40,7 +42,7 @@ see the [Docs](#docs) section at the bottom.
 - **Synthetic Data Generator** — produces realistic + edge-case test data (usernames, emails, boundary values, etc.)
 - **Self-healing loop** — when a step fails, diagnoses why, tries a fix, and remembers it as a reusable "skill" so the same failure doesn't need re-diagnosing next time
 - **Guardrails** — stops runaway retry loops instead of hammering a broken step forever
-- **Zero cloud reliance** — no screenshots, requirements, or business data ever leave the machine; the planner has no network-capable code path at all (see decisions.md D-018)
+- **Offline by default** — screenshots, requirements, and business data stay on the machine unless you explicitly opt in; the planner defaults to a local heuristic/local-LLM backend, and the optional `cloud_llm` backend (any OpenAI-compatible endpoint) only activates if you set `AURA_PLANNER_BACKEND=cloud_llm` and a `cloud_llm_base_url` (see [Planner backends](#planner-backends) and decisions.md D-018/D-044)
 
 ---
 
@@ -72,7 +74,7 @@ run.bat execute --url https://example.com --prompt "Describe what to test"
 **Automated PowerShell (equivalent, if you prefer running the script directly):**
 
 ```powershell
-cd aura_build
+cd AURA-QA-Testing-Automation
 .\scripts\setup_windows.ps1
 ```
 
@@ -81,7 +83,7 @@ This creates the venv, installs AURA, auto-detects Tesseract if it's in a common
 **Manual (if you'd rather do it step by step, or the script doesn't fit your setup):**
 
 ```powershell
-cd aura_build
+cd AURA-QA-Testing-Automation
 python -m venv .venv
 .venv\Scripts\activate
 pip install --upgrade pip
@@ -90,7 +92,7 @@ pip install -e ".[dev]"
 
 ### Point AURA at your Tesseract install
 
-Create a `.env` file in `aura_build\` (same folder as `pyproject.toml`):
+Create a `.env` file in the project root (same folder as `pyproject.toml`):
 
 ```
 AURA_TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
@@ -362,9 +364,26 @@ aura baselines reject dashboard_after_login                       # confirm a fl
 
 ---
 
+### Other commands
+
+These aren't in the main workflow above but are part of the installed CLI (`aura --help` lists all of them):
+
+| Command | What it does |
+|---|---|
+| `aura doctor` | Checks the local environment (Tesseract, planner backend config incl. Hermes Agent reachability, screenshot backend, Playwright browser binary, optional capability-adapter SDKs) and prints a report. Run it before `aura execute` to catch a missing dependency early instead of mid-run. Never blocks by itself; exit code reflects whether hard-blocking checks passed. |
+| `aura ui-audit <url>` | Standalone nav/hero/footer click-and-diff sweep plus a real HTTP link check, without wrapping a full spec/requirement run around it — the same engine `aura execute --ui-audit` uses. Options: `--max-elements`, `--link-scope {all,footer,nav}`. |
+| `aura capability-check <type> <target>` | Checks one backend capability directly (an API endpoint, a DB row, a file, etc.) without writing a spec around it — `<type>` is one of `orchestrator/schemas.py`'s `CapabilityType` values (`api`, `database`, `email`, `file_system`, `excel`, `cloud`, `pdf_ocr`, `workflow`, `azure_blob`, `fake`, ...). Options: `--params '<json>'`, `--expected '<json>'`. |
+| `aura debug <path>` | Scans a Python file or directory for common bug patterns and reports them — detection only, never modifies code. Options: `--out <file.md>`, `--no-ruff`. |
+| `aura explain <run_id>` | Prints the merged, chronological decision timeline for a run (planner backend attempts, click-audit decisions, assertion checks). Option: `--json`. |
+| `aura audit-report <run_id>` | Checks a run's logged assertion and click-resolution records for known anomaly shapes (e.g. a silently-non-escalated failure, or a click that produced no on-screen change) without eyeballing the full timeline by hand. Option: `--full` also prints the complete merged timeline (same one `aura explain` uses). |
+| `aura trigger listen` | Starts the inbound webhook listener for CI/CD integrations. |
+| `aura trigger process` | Processes pending webhook triggers and queues them for execution. |
+
+---
+
 ## Configuration (.env)
 
-All settings live in `config\settings.py` and can be overridden via a `.env` file in `aura_build\` (prefix `AURA_`) or environment variables. None of these require a network call — everything defaults to fully offline behavior.
+All settings live in `config\settings.py` and can be overridden via a `.env` file in the project root (prefix `AURA_`) or environment variables. By default everything runs fully offline; the one exception is the optional `cloud_llm` planner backend, which is off unless you explicitly set `AURA_PLANNER_BACKEND=cloud_llm` and a `cloud_llm_base_url` (see [Planner backends](#planner-backends)).
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -703,7 +722,7 @@ ruff check .              # lint
 ## Project structure
 
 ```
-aura_build/
+AURA-QA-Testing-Automation/
 ├── install.bat           # One-click Windows setup (wraps scripts/setup_windows.ps1)
 ├── run.bat               # Launches aura without manually activating .venv
 ├── models/               # Drop a .gguf file here for the local LLM backend -- auto-detected, no .env editing

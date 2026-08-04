@@ -3,7 +3,7 @@
 
 > **2026-07-04 note:** this document describes the CLI/TUI flow, which remains the primary, fully-working way to use AURA. A separate web dashboard and REST API also exist in the codebase (`api/`, `webui/`) but are an early preview, not yet functional end-to-end (the run-execution endpoint doesn't call the real engine yet) — see `README.md`'s "Web dashboard & REST API" section and `STATUS.md` before pointing a user at it.
 
-This document describes AURA from the perspective of the human user (QA engineer / RPA developer), covering the CLI/TUI and optional dashboard experience. All orchestration behind these flows runs through the **Hermes Agent API**.
+This document describes AURA from the perspective of the human user (QA engineer / RPA developer), covering the CLI/TUI and optional dashboard experience. Orchestration behind these flows runs through the in-repo orchestrator kernel (`orchestrator/kernel.py`); a real Hermes Agent instance can optionally back the Planner (`AURA_PLANNER_BACKEND=hermes_agent`) but is not required.
 
 ---
 
@@ -20,20 +20,17 @@ Schedule Recurring Runs
 ## 2. Detailed Flow
 
 ### 2.1 Installation & First-Run Setup
-1. User installs the Hermes Agent framework:
-   ```bash
-   curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
-   ```
-2. `hermes setup` wizard runs, connecting the Hermes Agent API to the user's chosen local runtime.
-3. AURA's own setup wizard (`aura init`) registers the Planner, Vision, and Data Synth tools with the Hermes Agent API and asks:
+1. User installs AURA itself (`pip install -e .` from the repo root, or `install.bat`) — no separate Hermes Agent framework install is required; see `docs/README.md` for the real steps.
+2. `aura init` runs AURA's own setup wizard, which registers the Planner, Vision, and Data Synth tools with the in-repo orchestrator kernel and asks:
    - Target application type (desktop / web)
    - Whether to enable scheduled unattended runs and, if so, which local notification channel to use.
    - How aggressively to compress/release sub-agent resources between calls (default: maximum compression, on-demand only).
+3. *(Optional, advanced)* if the user already runs a real Hermes Agent instance and wants its persistent memory/skill recall, they can point AURA at it via `AURA_PLANNER_BACKEND=hermes_agent` / `AURA_HERMES_AGENT_BASE_URL` — this is opt-in and not part of first-run setup.
 
 ### 2.2 Requirement Upload
-1. User places a requirement doc (Markdown, PDF, or plain text) into `requirements/` or drags it into the AURA TUI.
+1. User places a requirement doc (Markdown, PDF, or plain text) into `requirements_input/`.
 2. AURA displays: *"Ingesting requirement... Planner Agent generating test spec"*.
-3. Progress streams live in the TUI via the Hermes Agent API's native streaming tool output.
+3. Progress streams live in the TUI.
 
 ### 2.3 Spec Review (Human Checkpoint)
 1. The generated Test Spec is rendered as a readable checklist (not raw JSON) in the TUI:
@@ -55,7 +52,7 @@ Schedule Recurring Runs
    ⚠ Step 7/20: Assert dashboard visible    [FAILED — self-healing...]
    ✓ Step 7/20: Assert dashboard visible    [healed via skill SKILL-2026-0417]
    ```
-2. The user may interrupt-and-redirect at any point (a native Hermes Agent API feature) — e.g., pause the run to manually inspect a screenshot.
+2. The user may interrupt-and-redirect at any point — e.g., pause the run to manually inspect a screenshot.
 3. Low-confidence actions pause briefly with an inline prompt: *"Vision agent 62% confident — approve this click? [y/N/skip]"* (configurable to fully autonomous mode for CI pipelines).
 
 ### 2.5 Self-Healing Notification
@@ -71,12 +68,10 @@ Schedule Recurring Runs
 
 ### 2.7 Escalation Handling
 1. Steps that hit the loop-guardrail hard-stop appear in a dedicated **"Needs Review"** queue.
-2. The user can:
-   - Manually re-record the correct action (teaches the Vision agent a ground-truth interaction, stored as a high-confidence skill).
-   - Mark the underlying application behavior as a genuine bug (auto-drafts a bug report using the Planner agent, with repro steps and screenshots attached).
+2. The user reviews the failure and decides whether to fix the underlying application, adjust the spec, or manually re-approve a step.
 
 ### 2.8 Scheduling Recurring Runs
-1. User runs `aura schedule add "0 2 * * *" TC-SUITE-REGRESSION` (wraps the Hermes Agent API's native scheduler).
+1. User runs `aura schedule add "0 2 * * *" TC-SUITE-REGRESSION` (wraps `APScheduler`, see `docs/TRD.md` §5.4).
 2. Nightly runs execute unattended; only a summary notification (pass/fail counts) is relayed via the configured local channel — full report and screenshots remain local.
 3. The user reviews the accumulated "Needs Review" queue each morning.
 
@@ -93,7 +88,7 @@ Schedule Recurring Runs
 | **TUI (primary)** | Live run monitoring, spec approval, interrupt-and-redirect |
 | **HTML Report** | Post-run detailed review, stakeholder sharing |
 | **PDF Export** | Compliance/audit sign-off artifact |
-| **CLI commands** | `aura init`, `aura execute`, `aura schedule`, `aura skills` |
+| **CLI commands** | `aura init`, `aura execute`, `aura schedule`, `aura skills`, `aura baselines`, plus `doctor`/`ui-audit`/`capability-check`/`debug`/`explain`/`audit-report`/`trigger` — see `docs/README.md` for the full reference |
 | **Notification relay (optional)** | Local channel — summary-only |
 
 ---

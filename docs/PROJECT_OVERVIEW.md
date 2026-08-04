@@ -1,105 +1,64 @@
 # AURA — Autonomous Unified RPA Agent
 
-**Autonomous Offline Multi-Agent System for End-to-End RPA Test Automation**
-*Orchestrated via the Hermes Agent API*
+**Offline multi-agent system for RPA/UI test automation.**
 
-> Prepared by: Prakhar Doneria · Focus: AI Agents, Software Engineering, Autonomous Testing, RPA
+## 1. What AURA is
 
----
+AURA plans, generates, executes, self-heals, and reports on QA test suites. It locates UI elements via the DOM (accessibility tree, primary path) or OCR-on-screenshot (fallback, no DOM available) instead of relying only on brittle fixed selectors.
 
-## 1. What is AURA?
+The orchestration/dispatch layer is an in-repo kernel (`orchestrator/kernel.py`) with no required external services. An optional integration with a real [Hermes Agent](https://github.com/NousResearch/hermes-agent) instance exists for anyone who already runs one and wants its memory/skill recall (`orchestrator/hermes_client.py`, `AURA_PLANNER_BACKEND=hermes_agent`) — off by default.
 
-AURA is a fully **offline, privacy-preserving multi-agent QA system** that plans, generates, executes, self-heals, and reports on RPA test suites without ever touching the cloud. It replaces brittle DOM-locator automation with **vision-first, agent-orchestrated testing** — bots that "see" the screen the way a human QA engineer would, and reason about failures instead of just throwing a stack trace.
+## 2. Core behavior
 
-The system's core dispatch layer is an in-repo orchestrator kernel (`orchestrator/kernel.py`) that implements the same tool-calling contract originally proposed for an external Hermes Agent dependency, without requiring one (see `docs/decisions.md` D-006) -- so AURA runs standalone with zero external services. As of Phase W (D-047), a real, optional integration with **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** also exists: if you already run a Hermes Agent instance, AURA can route spec generation through it (`orchestrator/hermes_client.py`, `AURA_PLANNER_BACKEND=hermes_agent`) to get its persistent memory and skill recall on the far end. This is opt-in, not a requirement -- the in-repo kernel remains the default and only mandatory dispatch layer. No fixed hardware profile is assumed — the system is designed to be **compressed and optimized as aggressively as technically possible** so its footprint can be tuned to whatever the host machine can spare.
+- **Offline by default** — the heuristic parser and local `.gguf` LLM planner backends make no network calls. The optional `cloud_llm` backend (any OpenAI-compatible HTTP endpoint) only activates if you set `AURA_PLANNER_BACKEND=cloud_llm` and `cloud_llm_base_url`. Capability adapters (API/DB/email/file/cloud-storage checks) are network- or filesystem-facing by design when configured to be — see `docs/README.md#configuration-env`.
+- **DOM-first, OCR fallback** — `agents/vision/dom_locator.py` resolves elements via the accessibility tree when a live Playwright page exists; `runtime/hooks/os_fallback.py` + OCR is the fallback for native desktop apps or the no-URL `--interactive` case.
+- **Self-healing** — a failed step's diagnosis is stored as a `SkillRecord` (`orchestrator/skill_store.py`) keyed by `failure_signature`; on later runs, matching skills are retrieved via `difflib`-based text similarity (`find_similar()`) before a step is attempted. No embedding model or network call is involved. Skills export/import in an `agentskills.io`-compatible JSON format.
+- **Loop guardrails** — configurable warn/hard-stop thresholds on repeated identical failures and no-progress loops (`orchestrator/guardrails.py`).
+- **Confidence-gated actions** — the vision agent's `execute_step` reports a confidence score per action; below `vision_confidence_threshold` (default `0.75`), the step is escalated instead of executed (`config/settings.py`).
+- **HTML/PDF reporting** — per-run reports rendered via Jinja2 templates (`reports/`).
+- **Scheduled runs** — `aura schedule add "<cron>" <test_id>` wraps `APScheduler` (`orchestrator/scheduler.py`); nightly runs post a summary-only notification, not the full report.
+- **Resource use is not tied to a fixed hardware baseline** — sub-agents run on demand per call rather than staying resident.
 
----
+## 3. Agent roster
 
-## 2. Why This Matters
-
-Traditional RPA scripts break the moment a `div` ID changes or a button moves 4px. QA teams spend more time **maintaining** bots than the bots save. AURA's pitch:
-
-- **Zero cloud reliance** — all orchestration and inference run locally through the Hermes Agent API; no source code, credentials, or business data ever leaves the machine.
-- **Visual, not DOM-based** — the vision sub-agent reads the screen like a human, so cosmetic/DOM changes don't break tests.
-- **Self-healing** — failures feed back into the orchestrator's memory as diagnosed "skills" so the same class of failure is auto-corrected next run.
-- **Minimal footprint by design** — every sub-agent is invoked on demand and released immediately after use, with resource usage compressed as far as the runtime allows rather than being tied to any assumed hardware baseline.
-
----
-
-## 3. Agent Roster
-
-| Agent | Role | Invocation |
+| Agent | Role | Where |
 |---|---|---|
-| **Orchestrator** | Routes tasks, maintains memory/skills, enforces loop guardrails, aggregates reports | Hermes Agent API (native) |
-| **Planner & Auditor** | Converts requirements → structured test specs; root-cause diagnosis | Hermes Agent tool call |
-| **Vision Execution Core** | Screen-based UI understanding, coordinate-based interaction, visual assertions | Hermes Agent tool call |
-| **Synthetic Data Generator** | Generates realistic + edge-case mock data | Hermes Agent tool call |
+| Orchestrator | Task routing, memory/skills, guardrails, report aggregation | `orchestrator/kernel.py` |
+| Planner & Auditor | Requirement → structured test spec; root-cause diagnosis | `agents/planner/` |
+| Vision Execution Core | Element location, interaction, visual assertions | `agents/vision/` |
+| Synthetic Data Generator | Realistic + edge-case mock data | `agents/data_synth/` |
 
-The three sub-agents are exposed to the Orchestrator purely as **tools** behind the Hermes Agent API — the Orchestrator only needs each tool's name, input schema, and output contract, never the details of what answers the call underneath. This keeps the system fully swappable and lets each sub-agent's implementation be compressed or resized independently without touching the orchestration logic.
-
----
-
-## 4. Repository Structure
+## 4. Repository structure
 
 ```
-aura/
-├── README.md            ← you are here
-├── PRD.md                ← product requirements
-├── TRD.md                ← technical/architecture spec
-├── WORKFLOW.md           ← agent-to-agent operational workflow
-├── APPFLOW.md             ← end-user / UI application flow
-├── orchestrator/          ← Hermes Agent config, skills, memory store
+AURA-QA-Testing-Automation/
+├── docs/                 ← PRD.md, TRD.md, WORKFLOW.md, APPFLOW.md, README.md, this file
+├── aura/                 ← CLI entry point (aura/main.py) and command implementations (aura/cli/)
+├── orchestrator/         ← kernel, run engine, healing loop, skill store, scheduler
 ├── agents/
-│   ├── planner/            ← spec-generation & diagnosis tool definitions
-│   ├── vision/               ← screenshot pipeline & interaction tool definitions
-│   └── data_synth/            ← mock data generator tool definitions
-├── runtime/               ← OS hooks, screenshot capture, click dispatch
-├── reports/                ← self-healing logs, HTML/PDF test reports
-└── config/                 ← Hermes Agent tool registry, compression policy
+│   ├── planner/            ← spec generation & diagnosis
+│   ├── vision/              ← screenshot/DOM pipeline & interaction
+│   ├── data_synth/          ← mock data generator
+│   └── capability/          ← API/DB/Email/File/Excel/PDF/Cloud/Workflow adapters
+├── runtime/hooks/        ← OS hooks, screenshot capture, click dispatch
+├── reports/              ← HTML/PDF report rendering
+├── config/               ← settings.py, tool registry
+├── api/                  ← FastAPI service layer (preview — see docs/README.md)
+├── webui/                ← static web dashboard served by api/main.py
+└── tests/                ← pytest suite
 ```
 
----
+## 5. Quick start
 
-## 5. Key Improvements Over the Original Proposal
+See `docs/README.md` for the maintained install and run instructions (`aura init`, `aura execute requirements_input\example_login_flow.md`, `aura execute --all`).
 
-1. **Hermes Agent API replaces the static Python state handler** — real tool-calling, a structured request/response protocol, and persistent cross-run memory (skills) instead of a hard-coded loop.
-2. **Self-healing skill library** — every diagnosed failure becomes a reusable "skill" (compatible with the open [agentskills.io](https://agentskills.io) standard) so recurring UI regressions are fixed automatically on subsequent runs.
-3. **Loop guardrails** — stuck-agent detection (repeated identical failures, no-progress loops) with configurable warn/hard-stop thresholds, preventing runaway retries on flaky UIs.
-4. **RAG-based regression memory** — historical failure/fix pairs are indexed locally and retrieved to speed up root-cause diagnosis.
-5. **Confidence-gated visual actions** — the vision agent emits a confidence score per interaction; low-confidence actions are escalated to the planner instead of executed blind.
-6. **Structured HTML/PDF reporting layer** — auto-generated per-run reports with before/after screenshots, diffs, and self-healing changelogs.
-7. **Scheduled/unattended runs** — the Hermes Agent's built-in scheduler enables nightly regression sweeps with report delivery to local-network channels, fully offline-capable.
-8. **Maximal compression, no assumed baseline** — every sub-agent is loaded/unloaded on demand and shrunk as far as technically possible, so the same architecture scales down to constrained machines without redesign.
+## 6. Documentation map
 
----
+- **[PRD.md](./PRD.md)** — problem, personas, goals, scope
+- **[TRD.md](./TRD.md)** — architecture, data schemas
+- **[WORKFLOW.md](./WORKFLOW.md)** — agent-by-agent operational sequence
+- **[APPFLOW.md](./APPFLOW.md)** — user-facing flow from requirement upload to report
 
-## 6. Quick Start (Planned)
+## 7. License & data handling
 
-```bash
-# 1. Install the Hermes Agent orchestration layer
-curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
-hermes setup   # connect Hermes Agent to your chosen local inference runtime
-
-# 2. Register the AURA sub-agent tools with Hermes Agent
-hermes tools register ./agents/planner
-hermes tools register ./agents/vision
-hermes tools register ./agents/data_synth
-
-# 3. Launch AURA
-python aura/main.py --spec ./requirements/login_flow.md --target ./target_app
-```
-
----
-
-## 7. Documentation Map
-
-- **[PRD.md](./PRD.md)** — problem, personas, goals, success metrics, scope
-- **[TRD.md](./TRD.md)** — architecture, orchestration protocol, data schemas
-- **[WORKFLOW.md](./WORKFLOW.md)** — agent-by-agent operational sequence, including self-healing loop
-- **[APPFLOW.md](./APPFLOW.md)** — user-facing flow from requirement upload to final report
-
----
-
-## 8. License & Data Handling
-
-MIT-licensed reference implementation. No telemetry; no data leaves the host machine, satisfying regulated/air-gapped QA environments.
+MIT-licensed. No telemetry. Network calls only occur where explicitly configured (see §2).

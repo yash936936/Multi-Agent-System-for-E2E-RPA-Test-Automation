@@ -117,9 +117,13 @@ Every step's trace entry (D-057) carries `verification_source`
 `raw_evidence` blob — not just the derived pass/fail boolean. If you add
 a new verification path, populate both; a trace entry with a boolean but
 no `raw_evidence` is exactly the class of gap D-054–D-056 found by
-reading source, not by reading the trace. `tests/test_trace_exhaustiveness.py`
-(AA2) enforces every `ActionType` fills this in — extend it alongside any
-new action type.
+reading source, not by reading the trace.
+
+No test currently enforces this exhaustively per `ActionType`.
+`verification_source`/`raw_evidence` usage is exercised indirectly by
+`tests/test_orchestration_misc.py` and `tests/test_healing_loop.py`, but
+neither is a completeness check. Treat the paragraph above as the intended
+convention, not a guarantee backed by a coverage test today.
 
 ---
 

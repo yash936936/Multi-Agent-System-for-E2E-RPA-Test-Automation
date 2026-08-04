@@ -1,7 +1,7 @@
 # WORKFLOW.md
 ## AURA — Agent-to-Agent Operational Workflow
 
-This document describes the runtime sequence of agent interactions, coordinated through the **Hermes Agent API**, for a single test-suite execution, including the self-healing feedback loop.
+This document describes the runtime sequence of agent interactions, coordinated through the in-repo orchestrator kernel (`orchestrator/kernel.py`), for a single test-suite execution, including the self-healing feedback loop. (A real Hermes Agent instance can optionally back the Planner tool call — `AURA_PLANNER_BACKEND=hermes_agent` — but is not required.)
 
 ---
 
@@ -13,7 +13,7 @@ This document describes the runtime sequence of agent interactions, coordinated 
       ▼
 ┌──────────────────────┐
 │ 1. Orchestrator boots     │  ← ingest doc, check skill memory for known patterns
-│    & routes (Hermes Agent) │
+│    & routes                │
 └──────────┬────────────┘
            ▼
 ┌──────────────────────┐
@@ -44,7 +44,7 @@ This document describes the runtime sequence of agent interactions, coordinated 
 ## 2. Step-by-Step Sequence
 
 ### Step 0 — Session Bootstrap
-- The Orchestrator starts up via the Hermes Agent API and registers the Planner, Vision, and Data Synth tools.
+- The Orchestrator starts up and registers the Planner, Vision, and Data Synth tools.
 - Queries the local skill library for any skills matching the target application's identifier (e.g., `app_id: "internal-crm-v3"`).
 
 ### Step 1 — Requirement Ingestion & Spec Generation
@@ -104,7 +104,7 @@ For each step in the test spec:
 | Same failure repeats (2×) | Loop guardrail `warn_after.exact_failure` | Inject warning, continue with modified strategy |
 | Same failure repeats (5×) | Loop guardrail `hard_stop_after.exact_failure` | Hard stop, escalate to human queue |
 | Spec/data schema mismatch | Validation error | Re-prompt Planner once, then escalate |
-| Sub-agent unavailable mid-run | Tool call failure via Hermes Agent API | Orchestrator persists state, retries, or aborts gracefully |
+| Sub-agent unavailable mid-run | Tool call failure | Orchestrator persists state, retries, or aborts gracefully |
 
 ---
 

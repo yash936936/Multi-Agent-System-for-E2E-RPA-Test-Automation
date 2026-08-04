@@ -1,5 +1,7 @@
 # AURA Re-Architecture Plan
 
+> **Current status:** Phase 1 (`aura explain <run_id>`), Phase 2 (DOM-first dispatch), and Phase 4 (MutationObserver-based change detection, `agents/vision/dom_change_detector.py`) are implemented. Phase 3 ("full removal of OS-level mouse/keyboard/screen dependency") is not complete — `pyautogui`/`mss` usage remains in `runtime/hooks/os_fallback.py`, `runtime/hooks/browser.py`, and `runtime/hooks/interact.py`, scoped to the no-live-Playwright-page fallback path rather than removed. Phase descriptions below are the original plan, not a live status board.
+
 Scope: (1) real integration-test fixture tier, (2) DOM-first dispatch
 everywhere + full removal of OS-level mouse/keyboard/screen dependency,
 (3) MutationObserver-based change detection replacing pixel-hash-diff,
