@@ -38,10 +38,11 @@ see the [Docs](#docs) section at the bottom.
 ## What it does
 
 - **Planner** — turns a plain-English requirement doc (Markdown) into a structured, steppable test spec
-- **Vision Execution Core** — takes real screenshots, locates elements via OCR, clicks/types like a human would
+- **Vision Execution Core** — for browser targets, runs a dual-verification loop: an accessibility-tree/DOM locator (Playwright) and a screenshot+OCR locator (Tesseract) both resolve the target *every time*, and their results are cross-checked before a click/type is dispatched (see "OCR + DOM dual verification" below); for native desktop targets with no accessibility tree, it falls back to OCR-only, screenshot-based locating
 - **Synthetic Data Generator** — produces realistic + edge-case test data (usernames, emails, boundary values, etc.)
 - **Self-healing loop** — when a step fails, diagnoses why, tries a fix, and remembers it as a reusable "skill" so the same failure doesn't need re-diagnosing next time
 - **Guardrails** — stops runaway retry loops instead of hammering a broken step forever
+- **OCR + DOM dual verification (browser targets)** — since Phase U, every locate step on a live browser page runs *both* a Playwright accessibility-tree/DOM locator and a screenshot+OCR locator, not one-or-the-other. If they agree, AURA dispatches through whichever scored higher and tags the action "dual-method-confirmed." If they disagree (different elements above threshold), it logs both candidates and resolves via a configurable tie-break (highest confidence by default, or an LLM semantic check — see "LLM semantic dual-verification tie-break"). If only one method clears the confidence threshold, AURA proceeds on that one alone ("single-method"). Native desktop targets with no accessibility tree (e.g. the bundled Tkinter demo app) have no DOM to check against, so they run OCR-only.
 - **Offline by default** — screenshots, requirements, and business data stay on the machine unless you explicitly opt in; the planner defaults to a local heuristic/local-LLM backend, and the optional `cloud_llm` backend (any OpenAI-compatible endpoint) only activates if you set `AURA_PLANNER_BACKEND=cloud_llm` and a `cloud_llm_base_url` (see [Planner backends](#planner-backends) and decisions.md D-018/D-044)
 
 ---
@@ -269,7 +270,7 @@ aura execute <test_id_or_path> --continuous-audit                 # extra LLM se
 
 ### Testing a live website
 
-AURA is vision-first, not DOM-based — it screenshots whatever's on screen and reads it with OCR, so a website in a browser window is tested exactly the same way as the bundled Tkinter demo app. As of this release, AURA can open the browser itself instead of requiring someone to pre-position it at the right page:
+**Note on architecture (this section predates Phase U):** AURA started as a purely vision/OCR tool, and that framing still applies to native desktop targets (the bundled Tkinter demo app, or any app with no browser accessibility tree) — those are screenshotted and read with OCR only. For browser targets, that's no longer the whole picture: since Phase U (`docs/decisions.md` D-043), AURA runs **both** a Playwright DOM/accessibility-tree locator **and** the OCR locator on every step and cross-checks them — see "OCR + DOM dual verification" below for what that actually does. As of this release, AURA can open the browser itself instead of requiring someone to pre-position it at the right page:
 
 ```powershell
 # Fastest path: point AURA at a URL, no requirement doc needed.
@@ -713,9 +714,11 @@ The target application must be visible and the screen unlocked while AURA runs �
 ## Running the test suite
 
 ```powershell
-python -m pytest -q      # full test suite (205 tests as of this doc revision)
+python -m pytest -q      # full test suite
 ruff check .              # lint
 ```
+
+The suite has grown well past its original size (roughly 97 test files / ~980 test functions as of this doc revision — run `pytest --collect-only -q` locally for the exact current count, since this changes often). On a Windows machine with real Chromium and a display, the developer's own last documented full run (`docs/STATUS.md`, 2026-07-28) was 767 passed / 1 xfailed / 30 failed / 5 errors — the 30 failures and 5 errors are described there as a pre-existing sandbox/headless baseline (no display, blocked CDN for browser binaries), not new regressions, but that also means **a genuinely clean, zero-failure run has not been demonstrated end-to-end in that log** — see "Known limitations" below.
 
 ---
 
@@ -742,16 +745,18 @@ AURA-QA-Testing-Automation/
 
 ---
 
-## Docs
+## Known limitations (prototype status)
 
-Design/architecture documents (product requirements, technical architecture, agent workflow, end-user flow):
+AURA works — the CLI/`RunEngine` path runs real tests, generates real reports, and the self-healing/dual-verification/capability-adapter machinery described above is real, exercised code, not vaporware. But this is still a prototype/actively-developed project, not a finished, production-hardened product. Worth knowing before relying on it:
 
-- [Project Overview](./docs/PROJECT_OVERVIEW.md)
-- [PRD](./docs/PRD.md) — goals, personas, requirements, success metrics
-- [TRD](./docs/TRD.md) — architecture, tool-calling protocol, data schemas
-- [WORKFLOW](./docs/WORKFLOW.md) — agent-to-agent operational sequence
-- [APPFLOW](./docs/APPFLOW.md) — end-user experience flow
-- [decisions.md](./decisions.md) — running log of every architectural decision and why it was made
-- [STATUS.md](./STATUS.md) — current build status, known gaps, closed items
-- [Roadmap.md](./Roadmap.md) — capability-adapter/service-layer phases (13–19), including known gaps in the API/service layer
-- [progress.md](./progress.md) — dated build log, newest entry first
+- **The web dashboard and REST API are a preview, not production-ready.** Per `docs/APPFLOW.md` and the "Web dashboard & REST API" section above: the run-execution endpoint isn't fully wired to `RunEngine` for every mode, the `--scroll-test`/`--ui-audit` sweep isn't exposed over the API at all yet, run state is in-memory only (a process restart loses run history), and there's no live JWT/token revocation. The CLI is the primary, fully-working way to use AURA — treat `api/`/`webui/` as a preview of the direction, not something to point real users at yet.
+- **No demonstrated fully-clean end-to-end test run.** The developers' own last full documented run on a real Windows machine (`docs/STATUS.md`, 2026-07-28) was 767 passed / 1 xfailed / 30 failed / 5 errors. That's characterized in the log as a known sandbox/headless-environment baseline rather than fresh regressions, but there's no later log showing all 30+5 resolved to zero — so "the whole suite is green" hasn't actually been shown, only "the failures are the same ones as before, plus a couple of specific bugs we fixed."
+- **The DOM-vs-OCR disagreement path is a real, unresolved ambiguity case, not just a formality.** When the DOM locator and OCR locator both clear the confidence threshold but point at different elements, AURA doesn't have a way to know which one is actually right — it falls back to a numeric tie-break (highest confidence) or an optional LLM semantic check. Both are heuristics, not ground truth; a wrong tie-break means AURA clicks/reads the wrong element with the same confidence tagging as a clean single-method match.
+- **The automatic link check under `--ui-audit` cannot see JavaScript-injected links.** It reads raw server-delivered HTML only, so client-rendered (React/Next.js/Angular-style) navigation that's injected after page load is invisible to it. This is surfaced honestly (`client_rendered_suspected: true`) rather than silently skipped, but it's still a real coverage gap on a lot of modern sites.
+- **Page-load "settle" detection is a fixed timer, not a real signal.** After navigation, AURA waits a fixed 2.5s by default rather than watching for an actual network-idle/DOM-ready event, since it has no DOM/network hook to wait on for that. Slow-loading pages can produce false failures unless you add an explicit wait step or raise the delay.
+- **Repo hygiene issues have caused real, documented bugs before.** `docs/STATUS.md`'s D-091/D-092 entries describe stale/orphaned test files surviving a bad zip-extraction workflow and leaking global state across the test suite (one test set `playwright_browser = "firefox"` with no teardown, silently breaking an unrelated later test) — a `scripts/remove_stale_tests.py` cleanup script and a `conftest.py` settings-isolation fix now guard against a recurrence, but it's a sign the project has gone through genuine instability, not a spotless build history.
+- **Native (non-browser) desktop app automation is explicitly out of scope going forward.** The OS-level `pyautogui`/`mss` fallback still exists for one narrow case (`--interactive` with no `--url`), but general native desktop app testing isn't a supported target of the current architecture — everything else routes through AURA's own Playwright-launched browser session.
+- **Some backend capability adapters are intentionally thin.** For example, the Cloud adapter (`agents/capability/cloud_adapter.py`) currently only really implements `s3_object_exists`; other `action` values are accepted but silently fall through to the same check rather than doing something distinct — don't assume adapter coverage matches its full advertised action list without checking the adapter source.
+
+None of this means the project doesn't work — the core CLI vision/DOM execution loop, self-healing, and reporting are real and tested — but it should be evaluated as an actively-developed prototype with disclosed gaps, not a finished, production-grade QA platform.
+
