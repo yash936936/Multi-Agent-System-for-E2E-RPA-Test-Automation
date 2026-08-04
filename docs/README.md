@@ -1,5 +1,4 @@
-# AURA — Autonomous Unified RPA Agent
-
+# AURA — Autonomous QA Testing Agent
 Offline, vision-first, self-healing QA test automation. AURA "looks" at your
 application through screenshots and reasons about what it sees — the way a
 human tester would — instead of relying on brittle DOM selectors/element IDs
